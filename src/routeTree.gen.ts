@@ -10,33 +10,167 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
+import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as ClientsRouteImport } from './routes/clients'
+import { Route as IdeationRouteImport } from './routes/ideation'
+import { Route as LeadsRouteImport } from './routes/leads'
+import { Route as MoneyRouteImport } from './routes/money'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as TeamRouteImport } from './routes/team'
+import { Route as ThumbnailsRouteImport } from './routes/thumbnails'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CalendarRoute = CalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClientsRoute = ClientsRouteImport.update({
+  id: '/clients',
+  path: '/clients',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IdeationRoute = IdeationRouteImport.update({
+  id: '/ideation',
+  path: '/ideation',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeadsRoute = LeadsRouteImport.update({
+  id: '/leads',
+  path: '/leads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MoneyRoute = MoneyRouteImport.update({
+  id: '/money',
+  path: '/money',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TeamRoute = TeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ThumbnailsRoute = ThumbnailsRouteImport.update({
+  id: '/thumbnails',
+  path: '/thumbnails',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/calendar': typeof CalendarRoute
+  '/clients': typeof ClientsRoute
+  '/ideation': typeof IdeationRoute
+  '/leads': typeof LeadsRoute
+  '/money': typeof MoneyRoute
+  '/onboarding': typeof OnboardingRoute
+  '/settings': typeof SettingsRoute
+  '/team': typeof TeamRoute
+  '/thumbnails': typeof ThumbnailsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/calendar': typeof CalendarRoute
+  '/clients': typeof ClientsRoute
+  '/ideation': typeof IdeationRoute
+  '/leads': typeof LeadsRoute
+  '/money': typeof MoneyRoute
+  '/onboarding': typeof OnboardingRoute
+  '/settings': typeof SettingsRoute
+  '/team': typeof TeamRoute
+  '/thumbnails': typeof ThumbnailsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
+  '/calendar': typeof CalendarRoute
+  '/clients': typeof ClientsRoute
+  '/ideation': typeof IdeationRoute
+  '/leads': typeof LeadsRoute
+  '/money': typeof MoneyRoute
+  '/onboarding': typeof OnboardingRoute
+  '/settings': typeof SettingsRoute
+  '/team': typeof TeamRoute
+  '/thumbnails': typeof ThumbnailsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/analytics'
+    | '/calendar'
+    | '/clients'
+    | '/ideation'
+    | '/leads'
+    | '/money'
+    | '/onboarding'
+    | '/settings'
+    | '/team'
+    | '/thumbnails'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/analytics'
+    | '/calendar'
+    | '/clients'
+    | '/ideation'
+    | '/leads'
+    | '/money'
+    | '/onboarding'
+    | '/settings'
+    | '/team'
+    | '/thumbnails'
+  id:
+    | '__root__'
+    | '/'
+    | '/analytics'
+    | '/calendar'
+    | '/clients'
+    | '/ideation'
+    | '/leads'
+    | '/money'
+    | '/onboarding'
+    | '/settings'
+    | '/team'
+    | '/thumbnails'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnalyticsRoute: typeof AnalyticsRoute
+  CalendarRoute: typeof CalendarRoute
+  ClientsRoute: typeof ClientsRoute
+  IdeationRoute: typeof IdeationRoute
+  LeadsRoute: typeof LeadsRoute
+  MoneyRoute: typeof MoneyRoute
+  OnboardingRoute: typeof OnboardingRoute
+  SettingsRoute: typeof SettingsRoute
+  TeamRoute: typeof TeamRoute
+  ThumbnailsRoute: typeof ThumbnailsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +182,91 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/calendar': {
+      id: '/calendar'
+      path: '/calendar'
+      fullPath: '/calendar'
+      preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/clients': {
+      id: '/clients'
+      path: '/clients'
+      fullPath: '/clients'
+      preLoaderRoute: typeof ClientsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ideation': {
+      id: '/ideation'
+      path: '/ideation'
+      fullPath: '/ideation'
+      preLoaderRoute: typeof IdeationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leads': {
+      id: '/leads'
+      path: '/leads'
+      fullPath: '/leads'
+      preLoaderRoute: typeof LeadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/money': {
+      id: '/money'
+      path: '/money'
+      fullPath: '/money'
+      preLoaderRoute: typeof MoneyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/team': {
+      id: '/team'
+      path: '/team'
+      fullPath: '/team'
+      preLoaderRoute: typeof TeamRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/thumbnails': {
+      id: '/thumbnails'
+      path: '/thumbnails'
+      fullPath: '/thumbnails'
+      preLoaderRoute: typeof ThumbnailsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnalyticsRoute: AnalyticsRoute,
+  CalendarRoute: CalendarRoute,
+  ClientsRoute: ClientsRoute,
+  IdeationRoute: IdeationRoute,
+  LeadsRoute: LeadsRoute,
+  MoneyRoute: MoneyRoute,
+  OnboardingRoute: OnboardingRoute,
+  SettingsRoute: SettingsRoute,
+  TeamRoute: TeamRoute,
+  ThumbnailsRoute: ThumbnailsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
