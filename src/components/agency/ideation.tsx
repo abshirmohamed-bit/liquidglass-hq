@@ -64,7 +64,9 @@ function IdeationChat({ threadId, initialMessages }: { threadId: string; initial
     textarea.current?.focus();
     const key = `ideation-draft-${threadId}`;
     const pending = sessionStorage.getItem(key);
-    if (pending) { sessionStorage.removeItem(key); void sendMessage({ text: pending }); }
+    if (!pending) return;
+    const timer = setTimeout(() => { sessionStorage.removeItem(key); void sendMessage({ text: pending }); }, 0);
+    return () => clearTimeout(timer);
   }, [threadId, sendMessage]);
   return <div className="chat-workspace"><Conversation className="chat-transcript"><ConversationContent>{messages.map(message => <Message key={message.id} from={message.role}><MessageContent>{message.parts.map((part, index) => {
     if (part.type === 'text') return <MessageResponse key={index}>{part.text}</MessageResponse>;
