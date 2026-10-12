@@ -26,7 +26,14 @@ export const listLibrary = createServerFn({ method: "GET" }).middleware([require
   ]);
   if (s.error) throw new Error(s.error.message);
   if (a.error) throw new Error(a.error.message);
-  return { sources: s.data, assets: a.data, clips: c.data ?? [] };
+  const sign = async (u: string | null) => {
+    if (!u?.startsWith("storage://media/")) return u;
+    return (await context.supabase.storage.from("media").createSignedUrl(u.slice(16), 7 * 86400)).data?.signedUrl ?? null;
+  };
+  const sources = await Promise.all(s.data.map(async (x) => ({ ...x, thumbnail_url: await sign(x.thumbnail_url) })));
+  const clips = await Promise.all((c.data ?? []).map(async (x) => ({ ...x, thumbnail_url: await sign(x.thumbnail_url), video_url: await sign(x.video_url) })));
+  const assets = await Promise.all(a.data.map(async (x) => ({ ...x, url: await sign(x.url) })));
+  return { sources, assets, clips };
 });
 
 const sourceFields = (x: EngineAsset) => ({ engine_asset_id: x.id, public_url: x.url ?? null, duration_ms: x.length != null ? Math.round(x.length * 1000) : null, size_bytes: x.size ?? null, width: x.width ?? null, height: x.height ?? null, fps: x.fps ?? null, source_height: x.height ?? null, quality_warning: !!x.quality_warning, thumbnail_url: x.thumbnail_url ?? null, status: "READY", error: null });
