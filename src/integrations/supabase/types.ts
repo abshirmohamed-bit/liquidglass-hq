@@ -229,6 +229,41 @@ export type Database = {
           },
         ]
       }
+      daily_objectives: {
+        Row: {
+          created_at: string
+          day: string
+          done: boolean
+          id: string
+          owner_id: string
+          text: string
+        }
+        Insert: {
+          created_at?: string
+          day?: string
+          done?: boolean
+          id?: string
+          owner_id?: string
+          text: string
+        }
+        Update: {
+          created_at?: string
+          day?: string
+          done?: boolean
+          id?: string
+          owner_id?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_objectives_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ideation_messages: {
         Row: {
           content: string | null
