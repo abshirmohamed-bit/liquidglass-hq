@@ -183,3 +183,40 @@ export function assForClip(c: ClipFinish, w: number, h: number, segments: { star
     watermark: c.watermark_text?.trim() ? { text: c.watermark_text, pos: ov.watermark?.pos ?? "centre-below-captions", opacity: ov.watermark?.opacity ?? 0.5 } : null,
   });
 }
+
+export type FinishSpec = {
+  durationMs: number; style: CaptionStyle; captionsOn: boolean; cues: Cue[]; // cues in output time
+  title: { text: string; style: TitleStyle; y: number; highlight_word?: string | undefined; highlight?: keyof typeof HIGHLIGHTS | undefined } | null;
+  watermark: { text: string; pos: WatermarkPos; opacity: number } | null;
+};
+/** What to draw on the burned-in layer for a clip, with cue times moved to output time; null when nothing is drawn. */
+export function finishSpec(c: ClipFinish, segments: { start_ms: number; end_ms: number }[]): FinishSpec | null {
+  if (!hasFinish(c)) return null;
+  const ov = (c.overlays ?? {}) as Overlays;
+  const cues: Cue[] = [];
+  for (const q of (Array.isArray(c.captions) ? c.captions : []) as Cue[]) {
+    const a = toOutput(Math.max(q.start_ms, segments[0]?.start_ms ?? 0), segments), b = toOutput(q.end_ms, segments) ?? toOutput(segments.find((s) => q.end_ms > s.end_ms && q.start_ms < s.end_ms)?.end_ms ?? -1, segments);
+    if (a != null && b != null && b > a) cues.push({ start_ms: a, end_ms: b, text: q.text });
+  }
+  return {
+    durationMs: segments.reduce((n, x) => n + x.end_ms - x.start_ms, 0), style: styleFor(c.caption_style_id, c.caption_style as Partial<CaptionStyle> | null),
+    captionsOn: (c.caption_options as { enabled?: boolean } | null)?.enabled !== false, cues,
+    title: c.title_text?.trim() ? { text: c.title_text, style: (TITLE_STYLES as readonly string[]).includes(c.title_style ?? "") ? (c.title_style as TitleStyle) : "bold_band", y: ov.title?.y ?? 14, highlight_word: ov.title?.highlight_word, highlight: ov.title?.highlight } : null,
+    watermark: c.watermark_text?.trim() ? { text: c.watermark_text, pos: ov.watermark?.pos ?? "centre-below-captions", opacity: ov.watermark?.opacity ?? 0.5 } : null,
+  };
+}
+/** Splits the clip into intervals where the drawn layer is constant (cue changes and, for karaoke/typewriter, word changes). */
+export function layerIntervals(spec: FinishSpec): { start_ms: number; end_ms: number; cue: Cue | null; word: number }[] {
+  const per = spec.style.animation === "karaoke" || spec.style.animation === "typewriter";
+  const cuts = new Set<number>([0, spec.durationMs]);
+  if (spec.captionsOn) for (const q of spec.cues) { cuts.add(q.start_ms); cuts.add(q.end_ms); if (per) { const n = q.text.split(/\s+/).filter(Boolean).length; for (let i = 1; i < n; i++) cuts.add(Math.round(q.start_ms + ((q.end_ms - q.start_ms) * i) / n)); } }
+  const t = [...cuts].filter((x) => x >= 0 && x <= spec.durationMs).sort((a, b) => a - b);
+  const out: { start_ms: number; end_ms: number; cue: Cue | null; word: number }[] = [];
+  for (let i = 0; i + 1 < t.length; i++) {
+    const a = t[i]!, b = t[i + 1]!; if (b - a < 1) continue;
+    const mid = (a + b) / 2, cue = spec.captionsOn ? cueAt(spec.cues, mid) : null;
+    const n = cue ? cue.text.split(/\s+/).filter(Boolean).length : 0;
+    out.push({ start_ms: a, end_ms: b, cue, word: cue ? Math.min(n - 1, Math.floor(((mid - cue.start_ms) / (cue.end_ms - cue.start_ms)) * n)) : -1 });
+  }
+  return out;
+}
