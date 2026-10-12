@@ -346,7 +346,7 @@ function JobCard({ job, refresh }: { job: Job; refresh: () => Promise<void> }) {
             : <Button size="sm" variant="outline" onClick={() => { setCount(job.suggested_count ?? 4); setChanging(true); }}><Pencil />Change</Button>}
         </div>
       </div>}
-      {job.status === "COMPLETED" && <Link className="btn-chip" to="/review"><ChevronRight />Review clips</Link>}
+      {job.status === "COMPLETED" && <Link className="btn-chip" to="/review" search={{ job: job.id }}><ChevronRight />Review clips</Link>}
       {job.status === "FAILED" && <p className="caption text-destructive">{job.error ?? "The clip job failed."}</p>}
     </div>
   </article>;

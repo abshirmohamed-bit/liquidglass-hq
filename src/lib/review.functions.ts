@@ -1,23 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/integrations/supabase/types";
+import { sign, editsOf, must } from "./review-helpers";
 import { EXPORT_SIZES, EXPORT_STALE_MS, STORAGE_PREFIX, makeShareToken, mergeIssue, mergeSegments, shareTokenValid, trimIssue } from "./review-rules";
-
-type Db = SupabaseClient<Database>;
-const WEEK = 7 * 86400;
-
-/** storage://media/<path> → a signed https URL; other URLs pass through. */
-async function sign(db: Db, url: string | null | undefined): Promise<string | null> {
-  if (!url) return null;
-  if (!url.startsWith(STORAGE_PREFIX)) return url;
-  const r = await db.storage.from("media").createSignedUrl(url.slice(STORAGE_PREFIX.length), WEEK);
-  return r.data?.signedUrl ?? null;
-}
-type Edits = { found?: { start_ms: number; end_ms: number }; trimmed?: boolean; segments?: { start_ms: number; end_ms: number }[]; exported?: { start_ms: number; end_ms: number }; export_started_at?: string; client_feedback?: string };
-const editsOf = (e: unknown): Edits => (e && typeof e === "object" ? (e as Edits) : {});
-const must = <T,>(r: { data: T; error: { message: string } | null }) => { if (r.error) throw new Error(r.error.message); return r.data; };
 
 export const reviewData = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
   const db = context.supabase;
@@ -33,7 +18,7 @@ export const reviewData = createServerFn({ method: "GET" }).middleware([requireS
     db.from("source_assets").select("id,name,duration_ms,fps,width,height,transcript,public_url,thumbnail_url"),
     db.from("team_logins").select("user_id,name"),
   ]);
-  const me = must(await db.from("profiles").select("display_name").eq("id", context.userId).maybeSingle());
+  const me = (await db.from("profiles").select("display_name").eq("id", context.userId).maybeSingle()).data;
   const srcs = await Promise.all(must(sources).map(async (s) => ({ ...s, playUrl: await sign(db, s.public_url), thumbnail_url: await sign(db, s.thumbnail_url) })));
   const list = await Promise.all(must(clips).map(async (c) => ({ ...c, video_url: await sign(db, c.video_url), thumbnail_url: await sign(db, c.thumbnail_url) })));
   const people = [{ user_id: context.userId, name: me?.display_name || "Me" }, ...must(members).filter((m) => m.user_id !== context.userId)];
@@ -43,7 +28,8 @@ export const reviewData = createServerFn({ method: "GET" }).middleware([requireS
 export const updateClip = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ id: z.string().uuid(), title: z.string().trim().min(1).max(200).optional(), favorite: z.boolean().optional(), disliked: z.boolean().optional(), assignee: z.string().uuid().nullable().optional() }))
   .handler(async ({ context, data }) => {
-    const { id, ...fields } = data;
+    const { id, ...rest } = data;
+    const fields = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as { title?: string; favorite?: boolean; disliked?: boolean; assignee?: string | null };
     must(await context.supabase.from("clips").update(fields).eq("id", id).select("id").single());
     // Dislikes are the finder feedback: the clip engine reads disliked clips when it picks the next moments.
     return true;
@@ -115,8 +101,7 @@ export const startExport = createServerFn({ method: "POST" }).middleware([requir
     return { workspace: (await db.rpc("workspace_of", { _uid: context.userId })).data as string, jobs: out };
   });
 
-const finishInput = z.object({ exportId: z.string().min(5).max(80), path: z.string().max(400).nullable(), thumbPath: z.string().max(400).nullable(), width: z.number().int().nullable(), height: z.number().int().nullable(), size: z.number().int().nullable(), lengthSec: z.number().nullable(), error: z.string().max(500).optional() });
-export const finishExport = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator(finishInput)
+export const finishExport = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator(z.object({ exportId: z.string().min(5).max(80), path: z.string().max(400).nullable(), thumbPath: z.string().max(400).nullable(), width: z.number().int().nullable(), height: z.number().int().nullable(), size: z.number().int().nullable(), lengthSec: z.number().nullable(), error: z.string().max(500).optional() }))
   .handler(async ({ context, data }) => {
     const { applyEngineEvent } = await import("./engine-events.server");
     const ev = data.error || !data.path
@@ -165,7 +150,7 @@ export const decideShared = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     if (!shareTokenValid(data.token)) throw new Error("This review link has expired.");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const c = must(await supabaseAdmin.from("clips").select("id,owner_id,title,job_id,status,edits").eq("id", data.clipId).eq("share_token", data.token).maybeSingle());
+    const c = (await supabaseAdmin.from("clips").select("id,owner_id,title,job_id,status,edits").eq("id", data.clipId).eq("share_token", data.token).maybeSingle()).data;
     if (!c) throw new Error("Clip not found.");
     const e = editsOf(c.edits);
     const patch = data.decision === "APPROVE"
