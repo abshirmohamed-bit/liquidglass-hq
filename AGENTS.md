@@ -28,3 +28,4 @@
 - Existing agency tables carry RESTRICTIVE admin-only policies; clients/analytics_snapshots allow CLIENT reads of their own client only. Field-level rules (Submission status/comment, Post status) are enforced by triggers, not UI.
 - Every crayZmundo Engine call goes through engineClient in src/lib/engine.server.ts (ENGINE_URL in app_settings, ENGINE_API_KEY secret); no vendor fallbacks.
 - Sign-up is disabled; users are created only by admins via createTeamLogin on the Team tab.
+- Library upload limits, resolution badges, upscale note and 30-day trash purge live in src/lib/library-rules.ts; Engine-deleting logic is shared in src/lib/library.server.ts so the UI and nightly purge behave the same.
