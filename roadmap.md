@@ -1,4 +1,5 @@
 # Agency Admin first pass
+- [ ] Recheck Prompt 1 against the exact palette, glass treatments, typography and both themes before Prompt 2 testing.
 - [x] Prompt 1: themed shell, sidebar, empty agency tables; navigation/theme/schema tests passed.
 - [ ] Prompt 2: client pages implemented; rule tests and signed-out protection pass. Signed-in create/edit/read/delete verification awaits the first user signup. Live analysis awaits YouTube key.
 - [ ] Prompt 3: money and shared financial calculations.
