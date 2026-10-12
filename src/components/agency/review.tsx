@@ -5,7 +5,7 @@ import { Check, X, Scissors, Play, Copy, Star, ThumbsDown, Download, Share2, Mer
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
-import { assForClip } from "@/lib/finish-rules";
+import { finishSpec } from "@/lib/finish-rules";
 import { Distribute } from "./posts";
 import { reviewData, updateClip, setClipStatus, trimClip, duplicateClip, mergeClips, startExport, finishExport, shareJob } from "@/lib/review.functions";
 import { CLIP_STATUSES, FLAG_FILTERS, defaultJob, filterClips, fromLabel, formatPrecise, parsePrecise, trimIssue, transcriptWords, sliceWords, snapToSentence, needsReexport, srtFor, timelineFile, mergeIssue, exportSize, type Resolution, type TimelineFormat } from "@/lib/review-rules";
@@ -45,7 +45,7 @@ export function Review({ job: jobParam }: { job?: string | undefined }) {
       for (const j of r.jobs) {
         const c = d?.clips.find((x) => x.id === j.clipId); const size = exportSize(res, c?.aspect);
         try {
-          const out = await renderClip(r.workspace, { ...j, w: size.w, h: size.h, ass: c ? assForClip(c, size.w, size.h, j.segments) : null }, (s) => setRendering((m) => ({ ...m, [j.clipId]: s })));
+          const out = await renderClip(r.workspace, { ...j, w: size.w, h: size.h, finish: c ? finishSpec(c, j.segments) : null }, (s) => setRendering((m) => ({ ...m, [j.clipId]: s })));
           await finishExport({ data: { exportId: j.exportId, ...out } });
           toast.success(`${j.title} is ready`);
         } catch (e) { await finishExport({ data: { exportId: j.exportId, path: null, thumbPath: null, width: null, height: null, size: null, lengthSec: null, error: e instanceof Error ? e.message : "Render failed" } }); err(e); }

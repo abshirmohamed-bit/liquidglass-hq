@@ -195,7 +195,7 @@ export function finishSpec(c: ClipFinish, segments: { start_ms: number; end_ms: 
   const ov = (c.overlays ?? {}) as Overlays;
   const cues: Cue[] = [];
   for (const q of (Array.isArray(c.captions) ? c.captions : []) as Cue[]) {
-    const a = toOutput(Math.max(q.start_ms, segments[0]?.start_ms ?? 0), segments), b = toOutput(q.end_ms, segments) ?? toOutput(segments.find((s) => q.end_ms > s.end_ms && q.start_ms < s.end_ms)?.end_ms ?? -1, segments);
+    const a = toOutput(q.start_ms, segments) ?? toOutput(segments[0]?.start_ms ?? 0, segments), b = toOutput(q.end_ms, segments) ?? toOutput(q.end_ms - 1, segments);
     if (a != null && b != null && b > a) cues.push({ start_ms: a, end_ms: b, text: q.text });
   }
   return {

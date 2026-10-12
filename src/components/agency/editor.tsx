@@ -6,7 +6,7 @@ import { ArrowLeft, Captions, Save, Send, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { editorData, saveFinish, transcribeChunk } from "@/lib/finish.functions";
 import { startExport, finishExport } from "@/lib/review.functions";
-import { CAPTION_PRESETS, TITLE_STYLES, TITLE_STYLE_NAMES, HIGHLIGHTS, WATERMARK_POS, ASPECTS, styleFor, wordsFromChunks, cuesFromWords, wordsFromCues, cueAt, assForClip, type CaptionStyle, type Cue, type Overlays, type TitleStyle, type WatermarkPos } from "@/lib/finish-rules";
+import { CAPTION_PRESETS, TITLE_STYLES, TITLE_STYLE_NAMES, HIGHLIGHTS, WATERMARK_POS, ASPECTS, styleFor, wordsFromChunks, cuesFromWords, wordsFromCues, cueAt, finishSpec, type CaptionStyle, type Cue, type Overlays, type TitleStyle, type WatermarkPos } from "@/lib/finish-rules";
 import { exportSize } from "@/lib/review-rules";
 import { Distribute } from "./posts";
 
@@ -80,10 +80,10 @@ export function Editor({ clipId }: { clipId: string }) {
       const r = await startExport({ data: { ids: [clipId], resolution: res } });
       const j = r.jobs[0]; if (!j) { toast.error("Approve the clip in Review before exporting."); return; }
       const size = exportSize(res, aspect);
-      const fresh = { ...c!, ...patch(), captions: cues } as Parameters<typeof assForClip>[0];
+      const fresh = { ...c!, ...patch(), captions: cues } as Parameters<typeof finishSpec>[0];
       const { renderClip } = await import("@/lib/media-render");
       try {
-        const o = await renderClip(r.workspace, { ...j, aspect, w: size.w, h: size.h, ass: assForClip(fresh, size.w, size.h, j.segments) }, setBusy);
+        const o = await renderClip(r.workspace, { ...j, aspect, w: size.w, h: size.h, finish: finishSpec(fresh, j.segments) }, setBusy);
         await finishExport({ data: { exportId: j.exportId, ...o } }); toast.success("Exported with captions");
       } catch (e) { await finishExport({ data: { exportId: j.exportId, path: null, thumbPath: null, width: null, height: null, size: null, lengthSec: null, error: e instanceof Error ? e.message : "Render failed" } }); throw e; }
       await qc.invalidateQueries({ queryKey: ["editor", clipId] }); await qc.invalidateQueries({ queryKey: ["review"] });
