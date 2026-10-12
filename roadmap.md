@@ -21,3 +21,9 @@
   - [ ] Prompt 5 … Prompt 12.
 - [ ] USER PRIORITY (credits limited): paste URL → AI fetches YouTube video → prompt options (genre, length, timeframe, captions preset, aspect) → AI clips → Library; edit clip: caption position (single or many clips), title, caption style; schedule posts to connected socials inside crayZmundo (OpusClip-like).
 - [x] Verify account flow and test each prompt before proceeding.
+
+## Priority flow status
+- [x] Clip editor: transcribe captions, fix words, 20 styles, drag position, title, handle, aspect; export burns them in (tested end-to-end)
+- [ ] Review page full export/share test (Prompt 4)
+- [ ] Posts: manual scheduling built, not yet tested; automatic posting blocked on each platform's developer approval
+- [ ] Paste-a-YouTube-link clipping: blocked, no reliable rights-compliant way to fetch YouTube videos

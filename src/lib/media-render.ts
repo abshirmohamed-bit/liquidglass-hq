@@ -1,3 +1,4 @@
+import { layerIntervals, HIGHLIGHTS, type FinishSpec } from "@/lib/finish-rules";
 /**
  * Browser-side media work for the internal crayZmundo engine: ffmpeg.wasm is
  * lazy-loaded only on demand (never during SSR). Files are cached per URL for
@@ -102,7 +103,7 @@ function probe(blob: Blob): Promise<{ w: number; h: number; sec: number }> {
   });
 }
 
-export type RenderJob = { clipId: string; exportId: string; aspect: string | null; sourceUrl: string | null; segments: { start_ms: number; end_ms: number }[]; w: number; h: number; ass?: string | null };
+export type RenderJob = { clipId: string; exportId: string; aspect: string | null; sourceUrl: string | null; segments: { start_ms: number; end_ms: number }[]; w: number; h: number; finish?: FinishSpec | null };
 export type RenderResult = { path: string; thumbPath: string | null; width: number; height: number; size: number; lengthSec: number };
 
 /** Cuts the segments, crops/scales to the export size, joins them, uploads to storage. */
@@ -127,17 +128,17 @@ export async function renderClip(workspace: string, job: RenderJob, onStatus: (s
       if (await ff.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "-movflags", "+faststart", "merged.mp4"]) !== 0) throw new Error("Could not join the clips.");
       final = "merged.mp4";
     }
-    if (job.ass) {
+    if (job.finish) {
       onStatus("Burning in captions…");
-      await fonts(ff);
-      await ff.writeFile("subs.ass", new TextEncoder().encode(job.ass));
-      if (await ff.exec(["-i", final, "-vf", "subtitles=subs.ass:fontsdir=/fonts", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", "styled.mp4"]) !== 0) throw new Error("Could not burn in the captions.");
+      const list = await drawLayer(ff, job.finish, job.w, job.h);
+      if (await ff.exec(["-i", final, "-f", "concat", "-safe", "0", "-i", "layer.txt", "-filter_complex", "[1:v]format=rgba[o];[0:v][o]overlay=0:0:eof_action=pass", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", "styled.mp4"]) !== 0) throw new Error("Could not burn in the captions.");
+      for (const f of list) await ff.deleteFile(f).catch(() => {});
       parts.push(final); final = "styled.mp4";
     }
     await ff.exec(["-ss", "0.5", "-i", final, "-frames:v", "1", "-vf", "scale=360:-2", "thumb.jpg"]);
     const video = (await ff.readFile(final)) as Uint8Array;
     let thumb: Uint8Array | null = null; try { thumb = (await ff.readFile("thumb.jpg")) as Uint8Array; } catch { thumb = null; }
-    for (const f of [...parts, "merged.mp4", "styled.mp4", "subs.ass", "list.txt", "thumb.jpg"]) await ff.deleteFile(f).catch(() => {});
+    for (const f of [...parts, "merged.mp4", "styled.mp4", "layer.txt", "list.txt", "thumb.jpg"]) await ff.deleteFile(f).catch(() => {});
     const blob = new Blob([video.slice().buffer], { type: "video/mp4" });
     const meta = await probe(blob);
     onStatus("Uploading…");
@@ -165,4 +166,66 @@ export function inspectVideo(file: File): Promise<{ durationMs: number; width: n
     v.onerror = () => { URL.revokeObjectURL(u); reject(new Error("This video can't be read in the browser.")); };
     v.src = u;
   });
+}
+
+let canvasFont: Promise<void> | null = null;
+function loadCanvasFont() {
+  canvasFont ??= (async () => { const f = new FontFace("CzCaption", `url(${FONT_URL})`, { weight: "800" }); await f.load(); document.fonts.add(f); })();
+  return canvasFont;
+}
+function wrap(ctx: CanvasRenderingContext2D, words: string[], max: number): string[][] {
+  const lines: string[][] = [[]];
+  for (const w of words) { const cur = lines[lines.length - 1]!; if (cur.length && ctx.measureText([...cur, w].join(" ")).width > max) lines.push([w]); else cur.push(w); }
+  return lines;
+}
+/** Draws one transparent frame per constant interval (same look as the editor preview) and writes the timed concat list. */
+async function drawLayer(ff: FF, spec: FinishSpec, w: number, h: number): Promise<string[]> {
+  await loadCanvasFont();
+  const k = w / 1080, cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+  const ctx = cv.getContext("2d")!, files: string[] = [], lines: string[] = [];
+  const st = spec.style, size = st.size * k;
+  const drawWords = (words: { t: string; color: string }[], cx: number, cy: number, fs: number, opts: { outline: string; ow: number; shadow: boolean; box: string | null; maxW: number }) => {
+    ctx.font = `800 ${fs}px CzCaption`; ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+    const rows = wrap(ctx, words.map((x) => x.t), opts.maxW); let i = 0; const lh = fs * 1.2, top = cy - ((rows.length - 1) * lh) / 2;
+    rows.forEach((row, r) => {
+      const y = top + r * lh, full = ctx.measureText(row.join(" ")).width; let x = cx - full / 2;
+      if (opts.box) { ctx.fillStyle = opts.box; const p = 14 * k; ctx.beginPath(); ctx.roundRect(x - p, y - lh / 2, full + 2 * p, lh, 10 * k); ctx.fill(); }
+      for (const t of row) {
+        const wd = words[i++]!; ctx.shadowColor = opts.shadow ? "rgba(0,0,0,.6)" : "transparent"; ctx.shadowBlur = opts.shadow ? 6 * k : 0; ctx.shadowOffsetY = opts.shadow ? 3 * k : 0;
+        if (opts.ow > 0) { ctx.strokeStyle = opts.outline; ctx.lineWidth = opts.ow * 2; ctx.strokeText(t, x, y); }
+        ctx.shadowColor = "transparent"; ctx.fillStyle = wd.color; ctx.fillText(t, x, y); x += ctx.measureText(t + " ").width;
+      }
+    });
+    return top + rows.length * lh;
+  };
+  const hex = (c: string, a: number) => { const n = parseInt(c.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+  const ivs = layerIntervals(spec);
+  for (let n = 0; n < ivs.length; n++) {
+    const iv = ivs[n]!; ctx.clearRect(0, 0, w, h);
+    let capBottom = (st.y / 100) * h + size;
+    if (iv.cue) {
+      const raw = iv.cue.text.split(/\s+/).filter(Boolean).map((t) => (st.uppercase ? t.toUpperCase() : t));
+      const shown = st.animation === "typewriter" ? raw.slice(0, iv.word + 1) : raw;
+      capBottom = drawWords(shown.map((t, j) => ({ t, color: st.active && j === iv.word && st.animation !== "typewriter" ? st.active : st.fill })), (st.x / 100) * w, (st.y / 100) * h, size,
+        { outline: st.outline, ow: st.box ? 0 : st.outlineW * k, shadow: st.shadow && !st.box, box: st.box ? hex(st.boxColor, st.boxOpacity) : null, maxW: w * 0.84 });
+    }
+    if (spec.title) {
+      const t = spec.title, up = t.style === "headline" || t.style === "bold_band", hw = (t.highlight_word ?? "").toLowerCase().replace(/[^\w']/g, "");
+      drawWords(t.text.trim().split(/\s+/).map((x) => (up ? x.toUpperCase() : x)).map((x) => ({ t: x, color: t.style === "headline" && hw && x.toLowerCase().replace(/[^\w']/g, "") === hw ? HIGHLIGHTS[t.highlight ?? "yellow"] : "#FFFFFF" })), w / 2, (t.y / 100) * h, 66 * k,
+        { outline: "#000000", ow: t.style === "minimal" ? 2 * k : 5 * k, shadow: true, box: t.style === "boxed" || t.style === "bold_band" ? "rgba(0,0,0,.55)" : null, maxW: w * 0.88 });
+    }
+    if (spec.watermark) {
+      const m = spec.watermark, mg = 40 * k; ctx.globalAlpha = m.opacity;
+      const x = m.pos.endsWith("left") ? mg + 120 * k : m.pos.endsWith("right") ? w - mg - 120 * k : w / 2;
+      const y = m.pos.startsWith("top") ? mg + 30 * k : m.pos.startsWith("bottom") ? h - mg - 30 * k : Math.min(h - mg, capBottom + 20 * k);
+      drawWords([{ t: m.text, color: "#FFFFFF" }], x, y, 34 * k, { outline: "rgba(0,0,0,.5)", ow: 2 * k, shadow: false, box: null, maxW: w });
+      ctx.globalAlpha = 1;
+    }
+    const blob: Blob = await new Promise((r) => cv.toBlob((b) => r(b!), "image/png"));
+    const f = `L${n}.png`; await ff.writeFile(f, new Uint8Array(await blob.arrayBuffer())); files.push(f);
+    lines.push(`file '${f}'`, `duration ${((iv.end_ms - iv.start_ms) / 1000).toFixed(3)}`);
+  }
+  if (files.length) lines.push(`file '${files[files.length - 1]}'`);
+  await ff.writeFile("layer.txt", new TextEncoder().encode(lines.join("\n")));
+  return files;
 }

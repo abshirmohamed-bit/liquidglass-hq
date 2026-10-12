@@ -6,7 +6,7 @@ import { ArrowLeft, Captions, Save, Send, Sparkles, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { editorData, saveFinish, transcribeChunk } from "@/lib/finish.functions";
 import { startExport, finishExport } from "@/lib/review.functions";
-import { CAPTION_PRESETS, TITLE_STYLES, TITLE_STYLE_NAMES, HIGHLIGHTS, WATERMARK_POS, ASPECTS, styleFor, wordsFromChunks, cuesFromWords, wordsFromCues, cueAt, assForClip, type CaptionStyle, type Cue, type Overlays, type TitleStyle, type WatermarkPos } from "@/lib/finish-rules";
+import { CAPTION_PRESETS, TITLE_STYLES, TITLE_STYLE_NAMES, HIGHLIGHTS, WATERMARK_POS, ASPECTS, styleFor, wordsFromChunks, cuesFromWords, wordsFromCues, cueAt, finishSpec, type CaptionStyle, type Cue, type Overlays, type TitleStyle, type WatermarkPos } from "@/lib/finish-rules";
 import { exportSize } from "@/lib/review-rules";
 import { Distribute } from "./posts";
 
@@ -63,13 +63,12 @@ export function Editor({ clipId }: { clipId: string }) {
     try {
       const { audioChunks } = await import("@/lib/media-render");
       setBusy("Loading video tools…");
-      const chunks = await audioChunks(src, start, end, 4000, (x) => { console.info("[transcribe]", x); setBusy(x); });
+      const chunks = await audioChunks(src, start, end, 4000, setBusy);
       const out: Cue[] = new Array(chunks.length);
       let done = 0;
-      const run = async (i: number) => { const ch = chunks[i]!; out[i] = { start_ms: ch.start_ms, end_ms: ch.end_ms, text: await transcribeChunk({ data: { audio: b64(ch.data), mime: "audio/mpeg" } }) }; console.info("[transcribe] chunk", i, ch.data.length, JSON.stringify(out[i]?.text).slice(0, 80)); setBusy(`Transcribing ${++done}/${chunks.length}`); };
+      const run = async (i: number) => { const ch = chunks[i]!; out[i] = { start_ms: ch.start_ms, end_ms: ch.end_ms, text: await transcribeChunk({ data: { audio: b64(ch.data), mime: "audio/mpeg" } }) }; setBusy(`Transcribing ${++done}/${chunks.length}`); };
       for (let i = 0; i < chunks.length; i += 3) await Promise.all([i, i + 1, i + 2].filter((x) => x < chunks.length).map(run));
       const next = cuesFromWords(wordsFromChunks(out.filter((x) => x.text)), style.maxWords);
-      console.info("[transcribe] done", next.length);
       if (!next.length) toast.error("No speech was found in this clip."); else { setCues(next); toast.success(`${next.length} caption lines ready — edit any word below`); }
     } catch (e) { err(e); } finally { setBusy(""); }
   }
@@ -80,10 +79,10 @@ export function Editor({ clipId }: { clipId: string }) {
       const r = await startExport({ data: { ids: [clipId], resolution: res } });
       const j = r.jobs[0]; if (!j) { toast.error("Approve the clip in Review before exporting."); return; }
       const size = exportSize(res, aspect);
-      const fresh = { ...c!, ...patch(), captions: cues } as Parameters<typeof assForClip>[0];
+      const fresh = { ...c!, ...patch(), captions: cues } as Parameters<typeof finishSpec>[0];
       const { renderClip } = await import("@/lib/media-render");
       try {
-        const o = await renderClip(r.workspace, { ...j, aspect, w: size.w, h: size.h, ass: assForClip(fresh, size.w, size.h, j.segments) }, setBusy);
+        const o = await renderClip(r.workspace, { ...j, aspect, w: size.w, h: size.h, finish: finishSpec(fresh, j.segments) }, setBusy);
         await finishExport({ data: { exportId: j.exportId, ...o } }); toast.success("Exported with captions");
       } catch (e) { await finishExport({ data: { exportId: j.exportId, path: null, thumbPath: null, width: null, height: null, size: null, lengthSec: null, error: e instanceof Error ? e.message : "Render failed" } }); throw e; }
       await qc.invalidateQueries({ queryKey: ["editor", clipId] }); await qc.invalidateQueries({ queryKey: ["review"] });
