@@ -80,8 +80,8 @@ h3 { font-size:17px;font-weight:600;letter-spacing:0; }
 h1 { font-size: 32px; font-weight: 600; margin: 0; line-height: 1.25; letter-spacing: 0; }
 .page-subtitle { color: var(--muted-foreground); margin: 9px 0 0; font-size: 15px; }
 .section-tag { font-size: 11px; font-weight: 500; color: var(--muted-foreground); border: .5px solid var(--border); border-radius: 30px; padding: 7px 12px; }
-.glass-panel { background: var(--glass); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter:var(--glass-blur); border: var(--hairline) solid var(--border); border-radius: var(--radius-card); box-shadow: var(--glass-shadow); }
-.glass-dialog { background:var(--modal-glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:var(--hairline) solid var(--border);border-radius:var(--radius-modal);box-shadow:var(--glass-shadow); }
+.glass-panel { background: var(--glass); backdrop-filter: blur(40px) saturate(180%); border: var(--hairline) solid var(--border); border-radius: var(--radius-card); box-shadow: var(--glass-shadow); }
+.glass-dialog { background:var(--modal-glass);backdrop-filter:blur(40px) saturate(180%);border:var(--hairline) solid var(--border);border-radius:var(--radius-modal);box-shadow:var(--glass-shadow); }
 .glass-scrim { backdrop-filter:blur(8px); }
 .placeholder-panel { min-height: 390px; display: flex; align-items: center; justify-content: center; text-align: center; position: relative; }
 .placeholder-inner { display: flex; flex-direction: column; align-items: center; }
