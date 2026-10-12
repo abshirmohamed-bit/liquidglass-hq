@@ -39,11 +39,13 @@ export const sendThumbnailMessage = createServerFn({ method: "POST" })
     if (prior.error) throw new Error(prior.error.message);
     const u = await sb.from("thumbnail_messages").insert({ session_id: sessionId, role: "user", content: data.text });
     if (u.error) throw new Error(u.error.message);
-    const knowledge = await sb.from("knowledge_entries").select("learned_principle,user_input").eq("scope", "THUMBNAIL").is("client_id", null);
+    const knowledge = await sb.from("knowledge_entries").select("learned_principle,user_input,scope,client_id").or(`and(scope.eq.THUMBNAIL_GLOBAL,client_id.is.null),and(scope.eq.THUMBNAIL_CLIENT,client_id.eq.${data.clientId})`).order("timestamp");
+    if (knowledge.error) throw new Error(knowledge.error.message);
     const { planThumbnail } = await import("./thumbnails.server");
     const plan = await planThumbnail({
       history: prior.data.map((m) => `${m.role}: ${historyLine(m)}`),
-      knowledge: (knowledge.data ?? []).map((k) => k.learned_principle || k.user_input || "").filter(Boolean),
+      knowledge: knowledge.data.filter((k) => k.scope === "THUMBNAIL_GLOBAL").map((k) => k.learned_principle),
+      clientKnowledge: knowledge.data.filter((k) => k.scope === "THUMBNAIL_CLIENT").map((k) => k.learned_principle),
       client: client.data.name,
       request: data.text,
     });

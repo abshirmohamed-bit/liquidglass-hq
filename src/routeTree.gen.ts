@@ -16,9 +16,9 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
-import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TeamRouteImport } from './routes/team'
 import { Route as AuthenticatedMoneyRouteImport } from './routes/_authenticated.money'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedThumbnailsRouteImport } from './routes/_authenticated.thumbnails'
 import { Route as ApiIdeationRouteImport } from './routes/api.ideation'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated.clients.index'
@@ -60,11 +60,6 @@ const OnboardingRoute = OnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const TeamRoute = TeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -73,6 +68,11 @@ const TeamRoute = TeamRouteImport.update({
 const AuthenticatedMoneyRoute = AuthenticatedMoneyRouteImport.update({
   id: '/money',
   path: '/money',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedThumbnailsRoute = AuthenticatedThumbnailsRouteImport.update({
@@ -117,9 +117,9 @@ export interface FileRoutesByFullPath {
   '/calendar': typeof CalendarRoute
   '/leads': typeof LeadsRoute
   '/onboarding': typeof OnboardingRoute
-  '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
   '/money': typeof AuthenticatedMoneyRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -134,9 +134,9 @@ export interface FileRoutesByTo {
   '/calendar': typeof CalendarRoute
   '/leads': typeof LeadsRoute
   '/onboarding': typeof OnboardingRoute
-  '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
   '/money': typeof AuthenticatedMoneyRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -153,9 +153,9 @@ export interface FileRoutesById {
   '/calendar': typeof CalendarRoute
   '/leads': typeof LeadsRoute
   '/onboarding': typeof OnboardingRoute
-  '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
   '/_authenticated/money': typeof AuthenticatedMoneyRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -172,9 +172,9 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/leads'
     | '/onboarding'
-    | '/settings'
     | '/team'
     | '/money'
+    | '/settings'
     | '/thumbnails'
     | '/api/ideation'
     | '/clients/$clientId'
@@ -189,9 +189,9 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/leads'
     | '/onboarding'
-    | '/settings'
     | '/team'
     | '/money'
+    | '/settings'
     | '/thumbnails'
     | '/api/ideation'
     | '/clients/$clientId'
@@ -207,9 +207,9 @@ export interface FileRouteTypes {
     | '/calendar'
     | '/leads'
     | '/onboarding'
-    | '/settings'
     | '/team'
     | '/_authenticated/money'
+    | '/_authenticated/settings'
     | '/_authenticated/thumbnails'
     | '/api/ideation'
     | '/_authenticated/clients/$clientId'
@@ -226,7 +226,6 @@ export interface RootRouteChildren {
   CalendarRoute: typeof CalendarRoute
   LeadsRoute: typeof LeadsRoute
   OnboardingRoute: typeof OnboardingRoute
-  SettingsRoute: typeof SettingsRoute
   TeamRoute: typeof TeamRoute
   ApiIdeationRoute: typeof ApiIdeationRoute
 }
@@ -282,13 +281,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/team': {
       id: '/team'
       path: '/team'
@@ -301,6 +293,13 @@ declare module '@tanstack/react-router' {
       path: '/money'
       fullPath: '/money'
       preLoaderRoute: typeof AuthenticatedMoneyRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/thumbnails': {
@@ -350,6 +349,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedMoneyRoute: typeof AuthenticatedMoneyRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedThumbnailsRoute: typeof AuthenticatedThumbnailsRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedIdeationThreadIdRoute: typeof AuthenticatedIdeationThreadIdRoute
@@ -359,6 +359,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMoneyRoute: AuthenticatedMoneyRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedThumbnailsRoute: AuthenticatedThumbnailsRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedIdeationThreadIdRoute: AuthenticatedIdeationThreadIdRoute,
@@ -378,7 +379,6 @@ const rootRouteChildren: RootRouteChildren = {
   CalendarRoute: CalendarRoute,
   LeadsRoute: LeadsRoute,
   OnboardingRoute: OnboardingRoute,
-  SettingsRoute: SettingsRoute,
   TeamRoute: TeamRoute,
   ApiIdeationRoute: ApiIdeationRoute,
 }
