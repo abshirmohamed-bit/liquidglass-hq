@@ -8,7 +8,7 @@
 - [x] Prompt 4: live streamed Ideation replies, separate persistent histories, follow-up memory, client tags/context, saved tool results, search, panel toggle, Enter/Shift+Enter, cancellation readback and deletion tested; both themes visually checked and 12 regression tests passed. Live YouTube inspection remains blocked by the missing YouTube key; its unavailable state was tested. Test records removed.
 - [x] Prompt 5: Thumbnails chat with creative direction, client tag, grouped searchable sessions, ratings, variations carousel, overlay editor, connect-key state; 5 rule tests + signed-in flow passed. Live image generation waits on Higgsfield key + secret.
 - [x] Prompt 6: Settings AI Training (thumbnail + video trainers, global or per-client, add/edit/delete, summary, reset, 1.16M-char paste stored); knowledge injected into Ideation and Thumbnails; 5 rule tests + signed-in flow passed.
-- [ ] Prompt 7: persistent client titles/ideas and training.
+- [x] Prompt 7: client-page Suggested Titles (last 5 long-form × 3) and Suggested Ideas, saved until Regenerate, per-client feedback training; 3 rule tests + signed-in flow passed. Titles wait on YouTube key.
 - [ ] Prompt 8: analytics and manual snapshots.
 - [ ] Prompt 9: calendar, dashboard, team, leads and onboarding.
 - [ ] Prompt 10: secure integrations, team access and Discord tracking.

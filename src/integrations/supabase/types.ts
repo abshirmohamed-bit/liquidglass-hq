@@ -119,6 +119,48 @@ export type Database = {
           },
         ]
       }
+      client_suggestions: {
+        Row: {
+          client_id: string
+          content: Json
+          generated_at: string
+          id: string
+          kind: string
+          owner_id: string
+        }
+        Insert: {
+          client_id: string
+          content: Json
+          generated_at?: string
+          id?: string
+          kind: string
+          owner_id?: string
+        }
+        Update: {
+          client_id?: string
+          content?: Json
+          generated_at?: string
+          id?: string
+          kind?: string
+          owner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_suggestions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_suggestions_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           channel_summary: string | null
