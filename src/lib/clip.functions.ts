@@ -47,7 +47,7 @@ const jobFormSchema = z.object({
   editLevel: editLevelEnum.default("full"),
   aspect: aspectEnum.default("9:16"),
   layouts: z.array(layoutEnum).min(1).max(5).default(["streamer"]),
-  framing: z.enum(["auto", "both", "centre"]).default("auto"),
+  framing: z.enum(["AUTO", "BOTH", "CENTER"]).default("AUTO"),
   language: z.string().trim().max(12).default("auto"),
   captionLanguage: z.string().trim().max(12).default("same"),
   extras: extrasSchema.default({ removeSilences: false, removeFillers: false, zoom: "Balanced", autoTransitions: false, soundEffects: false, grade: "none", keywordHighlight: false, emojis: false, autoBroll: false }),
@@ -152,7 +152,7 @@ export const saveClipDefaults = createServerFn({ method: "POST" }).middleware([r
     aspect: aspectEnum, layout: layoutEnum,
     aiToggles: z.object({
       coverage: coverageEnum, mode: modeEnum, editLevel: editLevelEnum,
-      lengthPreset: z.string().max(10), framing: z.enum(["auto", "both", "centre"]),
+      lengthPreset: z.string().max(10), framing: z.enum(["AUTO", "BOTH", "CENTER"]),
       removeSilences: z.boolean(), removeFillers: z.boolean(), zoom: zoomEnum,
       autoTransitions: z.boolean(), soundEffects: z.boolean(), grade: gradeEnum,
       keywordHighlight: z.boolean(), emojis: z.boolean(), headlineTopN: z.number().int().min(0).max(50),
