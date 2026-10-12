@@ -12,6 +12,4 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
-  // ffmpeg.wasm spawns its own worker by URL; the dep optimizer hangs bundling it.
-  vite: { optimizeDeps: { exclude: ["@ffmpeg/ffmpeg", "@ffmpeg/util"] } },
 });
