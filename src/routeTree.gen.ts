@@ -14,7 +14,6 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CalendarRouteImport } from './routes/calendar'
-import { Route as ClientsRouteImport } from './routes/clients'
 import { Route as IdeationRouteImport } from './routes/ideation'
 import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as MoneyRouteImport } from './routes/money'
@@ -22,7 +21,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TeamRouteImport } from './routes/team'
 import { Route as ThumbnailsRouteImport } from './routes/thumbnails'
-import { Route as AuthenticatedClientsRouteImport } from './routes/_authenticated.clients'
+import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated.clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated.clients.$clientId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -47,11 +46,6 @@ const AuthRoute = AuthRouteImport.update({
 const CalendarRoute = CalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ClientsRoute = ClientsRouteImport.update({
-  id: '/clients',
-  path: '/clients',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IdeationRoute = IdeationRouteImport.update({
@@ -89,16 +83,17 @@ const ThumbnailsRoute = ThumbnailsRouteImport.update({
   path: '/thumbnails',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedClientsRoute = AuthenticatedClientsRouteImport.update({
-  id: '/clients',
-  path: '/clients',
-  getParentRoute: () => AuthenticatedRoute,
-} as any)
+const AuthenticatedClientsIndexRoute =
+  AuthenticatedClientsIndexRouteImport.update({
+    id: '/clients/',
+    path: '/clients/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedClientsClientIdRoute =
   AuthenticatedClientsClientIdRouteImport.update({
-    id: '/$clientId',
-    path: '/$clientId',
-    getParentRoute: () => AuthenticatedClientsRoute,
+    id: '/clients/$clientId',
+    path: '/clients/$clientId',
+    getParentRoute: () => AuthenticatedRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -106,7 +101,6 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AnalyticsRoute
   '/auth': typeof AuthRoute
   '/calendar': typeof CalendarRoute
-  '/clients': typeof AuthenticatedClientsRouteWithChildren
   '/ideation': typeof IdeationRoute
   '/leads': typeof LeadsRoute
   '/money': typeof MoneyRoute
@@ -115,13 +109,13 @@ export interface FileRoutesByFullPath {
   '/team': typeof TeamRoute
   '/thumbnails': typeof ThumbnailsRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/clients/': typeof AuthenticatedClientsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/auth': typeof AuthRoute
   '/calendar': typeof CalendarRoute
-  '/clients': typeof AuthenticatedClientsRouteWithChildren
   '/ideation': typeof IdeationRoute
   '/leads': typeof LeadsRoute
   '/money': typeof MoneyRoute
@@ -130,6 +124,7 @@ export interface FileRoutesByTo {
   '/team': typeof TeamRoute
   '/thumbnails': typeof ThumbnailsRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/clients': typeof AuthenticatedClientsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -138,7 +133,6 @@ export interface FileRoutesById {
   '/analytics': typeof AnalyticsRoute
   '/auth': typeof AuthRoute
   '/calendar': typeof CalendarRoute
-  '/clients': typeof ClientsRoute
   '/ideation': typeof IdeationRoute
   '/leads': typeof LeadsRoute
   '/money': typeof MoneyRoute
@@ -146,8 +140,8 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
   '/thumbnails': typeof ThumbnailsRoute
-  '/_authenticated/clients': typeof AuthenticatedClientsRouteWithChildren
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -156,7 +150,6 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/auth'
     | '/calendar'
-    | '/clients'
     | '/ideation'
     | '/leads'
     | '/money'
@@ -165,13 +158,13 @@ export interface FileRouteTypes {
     | '/team'
     | '/thumbnails'
     | '/clients/$clientId'
+    | '/clients/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/analytics'
     | '/auth'
     | '/calendar'
-    | '/clients'
     | '/ideation'
     | '/leads'
     | '/money'
@@ -180,6 +173,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/thumbnails'
     | '/clients/$clientId'
+    | '/clients'
   id:
     | '__root__'
     | '/'
@@ -187,7 +181,6 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/auth'
     | '/calendar'
-    | '/clients'
     | '/ideation'
     | '/leads'
     | '/money'
@@ -195,8 +188,8 @@ export interface FileRouteTypes {
     | '/settings'
     | '/team'
     | '/thumbnails'
-    | '/_authenticated/clients'
     | '/_authenticated/clients/$clientId'
+    | '/_authenticated/clients/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -205,7 +198,6 @@ export interface RootRouteChildren {
   AnalyticsRoute: typeof AnalyticsRoute
   AuthRoute: typeof AuthRoute
   CalendarRoute: typeof CalendarRoute
-  ClientsRoute: typeof ClientsRoute
   IdeationRoute: typeof IdeationRoute
   LeadsRoute: typeof LeadsRoute
   MoneyRoute: typeof MoneyRoute
@@ -250,13 +242,6 @@ declare module '@tanstack/react-router' {
       path: '/calendar'
       fullPath: '/calendar'
       preLoaderRoute: typeof CalendarRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/clients': {
-      id: '/clients'
-      path: '/clients'
-      fullPath: '/clients'
-      preLoaderRoute: typeof ClientsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/ideation': {
@@ -308,40 +293,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThumbnailsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/clients': {
-      id: '/_authenticated/clients'
+    '/_authenticated/clients/': {
+      id: '/_authenticated/clients/'
       path: '/clients'
-      fullPath: '/clients'
-      preLoaderRoute: typeof AuthenticatedClientsRouteImport
+      fullPath: '/clients/'
+      preLoaderRoute: typeof AuthenticatedClientsIndexRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/clients/$clientId': {
       id: '/_authenticated/clients/$clientId'
-      path: '/$clientId'
+      path: '/clients/$clientId'
       fullPath: '/clients/$clientId'
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
-      parentRoute: typeof AuthenticatedClientsRoute
+      parentRoute: typeof AuthenticatedRoute
     }
   }
 }
 
-interface AuthenticatedClientsRouteChildren {
-  AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
-}
-
-const AuthenticatedClientsRouteChildren: AuthenticatedClientsRouteChildren = {
-  AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
-}
-
-const AuthenticatedClientsRouteWithChildren =
-  AuthenticatedClientsRoute._addFileChildren(AuthenticatedClientsRouteChildren)
-
 interface AuthenticatedRouteChildren {
-  AuthenticatedClientsRoute: typeof AuthenticatedClientsRouteWithChildren
+  AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
+  AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedClientsRoute: AuthenticatedClientsRouteWithChildren,
+  AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
+  AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -354,7 +330,6 @@ const rootRouteChildren: RootRouteChildren = {
   AnalyticsRoute: AnalyticsRoute,
   AuthRoute: AuthRoute,
   CalendarRoute: CalendarRoute,
-  ClientsRoute: ClientsRoute,
   IdeationRoute: IdeationRoute,
   LeadsRoute: LeadsRoute,
   MoneyRoute: MoneyRoute,
