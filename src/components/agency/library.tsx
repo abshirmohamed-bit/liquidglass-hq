@@ -48,7 +48,7 @@ export function Library() {
           set({ error: undefined, retry: undefined });
           await putFile(s.url, s.method, s.headers, file, (pct) => set({ pct }));
           await uploadComplete({ data: { uploadId: s.uploadId, rowId: s.rowId, table: s.table } });
-          if (subtitle && s.table === "source_assets") await uploadSubtitle(subtitle, s.rowId);
+          if (subtitle && s.table === "source_assets" && s.rowId) await uploadSubtitle(subtitle, s.rowId);
           setProgress((all) => all.filter((x) => x.name !== file.name)); toast.success(`${file.name} is ready`);
         } catch (e) { set({ error: e instanceof Error ? e.message : "Upload failed", retry: attempt }); }
         await refresh();
@@ -61,8 +61,8 @@ export function Library() {
     const s = await uploadStart({ data: { filename: file.name, contentType: "text/plain", sizeBytes: file.size, source: "UPLOAD" } }).catch(() => null);
     if (!s) throw new Error("Could not upload subtitles");
     await putFile(s.url, s.method, s.headers, file, () => {});
-    await uploadComplete({ data: { uploadId: s.uploadId, rowId: s.rowId, table: s.table } });
-    await attachSubtitles({ data: { sourceId, srtUrl: s.url.split("?")[0] } });
+    const done = await uploadComplete({ data: { uploadId: s.uploadId, rowId: null, table: "subtitle" } });
+    if (done.url) await attachSubtitles({ data: { sourceId, srtUrl: done.url } });
   }
 
   return <div className="page library-page">

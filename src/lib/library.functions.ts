@@ -37,12 +37,12 @@ export const uploadStart = createServerFn({ method: "POST" }).middleware([requir
   .handler(async ({ context, data }) => {
     const bad = validateUpload(data.filename, data.sizeBytes); if (bad) throw new Error(bad);
     const kind = kindOf(data.filename)!;
-    if (kind === "SUBTITLE") throw new Error("Attach subtitles next to a video upload or link.");
     const r = await (await engine())<{ id: string; url: string; method?: string; headers?: Record<string, string> }>("POST", "/v1/uploads", { filename: data.filename, content_type: data.contentType, size_bytes: data.sizeBytes });
     if (!r.ok) fail(r.error);
     const up = (r as { data: { id: string; url: string; method?: string; headers?: Record<string, string> } }).data;
-    let rowId: string; let table: "source_assets" | "assets";
-    if (kind === "VIDEO" && data.source === "UPLOAD") {
+    let rowId: string | null = null; let table: "source_assets" | "assets" | "subtitle" = "subtitle";
+    if (kind === "SUBTITLE") { /* subtitle files get no row; their url is stored on the source */ }
+    else if (kind === "VIDEO" && data.source === "UPLOAD") {
       const ins = await context.supabase.from("source_assets").insert({ name: data.filename, kind: "UPLOAD", status: "UPLOADING", size_bytes: data.sizeBytes }).select("id").single();
       if (ins.error) throw new Error(ins.error.message); rowId = ins.data.id; table = "source_assets";
     } else {
@@ -55,24 +55,30 @@ export const uploadStart = createServerFn({ method: "POST" }).middleware([requir
 
 /** engineUpload action "complete". */
 export const uploadComplete = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ uploadId: z.string().min(1).max(200), rowId: z.string().uuid(), table: z.enum(["source_assets", "assets"]), failed: z.string().max(500).optional() }))
-  .handler(async ({ context, data }) => {
-    const markFail = async (message: string) => { await context.supabase.from(data.table).update({ status: "FAILED", error: message }).eq("id", data.rowId); throw new Error(message); };
+  .inputValidator(z.object({ uploadId: z.string().min(1).max(200), rowId: z.string().uuid().nullable(), table: z.enum(["source_assets", "assets", "subtitle"]), failed: z.string().max(500).optional() }))
+  .handler(async ({ context, data }): Promise<{ url: string | null }> => {
+    if (data.table === "subtitle" || !data.rowId) {
+      const r = await (await engine())<EngineAsset>("POST", `/v1/uploads/${encodeURIComponent(data.uploadId)}/complete`);
+      if (!r.ok) throw new Error(r.error.message);
+      return { url: r.data.url ?? null };
+    }
+    const rowId = data.rowId; const table = data.table;
+    const markFail = async (message: string) => { await context.supabase.from(table).update({ status: "FAILED", error: message }).eq("id", rowId); throw new Error(message); };
     if (data.failed) return markFail(data.failed);
     const ec = await engine();
     const r = await ec<EngineAsset>("POST", `/v1/uploads/${encodeURIComponent(data.uploadId)}/complete`);
     if (!r.ok) return markFail(r.error.message);
     const x = r.data;
-    if (data.table === "source_assets") {
-      const u = await context.supabase.from("source_assets").update(sourceFields(x)).eq("id", data.rowId);
+    if (table === "source_assets") {
+      const u = await context.supabase.from("source_assets").update(sourceFields(x)).eq("id", rowId);
       if (u.error) throw new Error(u.error.message);
     } else {
-      const row = await context.supabase.from("assets").select("type").eq("id", data.rowId).single();
+      const row = await context.supabase.from("assets").select("type").eq("id", rowId).single();
       if (row.data?.type === "FONT") { const f = await ec("POST", "/v1/fonts", { asset_id: x.id }); if (!f.ok) return markFail(f.error.message); }
-      const u = await context.supabase.from("assets").update({ engine_asset_id: x.id, url: x.url ?? null, duration_ms: x.length != null ? Math.round(x.length * 1000) : null, size_bytes: x.size ?? null, status: "READY", error: null }).eq("id", data.rowId);
+      const u = await context.supabase.from("assets").update({ engine_asset_id: x.id, url: x.url ?? null, duration_ms: x.length != null ? Math.round(x.length * 1000) : null, size_bytes: x.size ?? null, status: "READY", error: null }).eq("id", rowId);
       if (u.error) throw new Error(u.error.message);
     }
-    return true;
+    return { url: null };
   });
 
 /** Subtitle files: uploaded through the Engine, then aligned once the source is READY. */
