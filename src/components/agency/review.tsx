@@ -4,6 +4,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X, Scissors, Play, Copy, Star, ThumbsDown, Download, Share2, Merge, FileCode, Captions } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Link } from "@tanstack/react-router";
+import { assForClip } from "@/lib/finish-rules";
+import { Distribute } from "./posts";
 import { reviewData, updateClip, setClipStatus, trimClip, duplicateClip, mergeClips, startExport, finishExport, shareJob } from "@/lib/review.functions";
 import { CLIP_STATUSES, FLAG_FILTERS, defaultJob, filterClips, fromLabel, formatPrecise, parsePrecise, trimIssue, transcriptWords, sliceWords, snapToSentence, needsReexport, srtFor, timelineFile, mergeIssue, exportSize, type Resolution, type TimelineFormat } from "@/lib/review-rules";
 
@@ -42,7 +45,7 @@ export function Review({ job: jobParam }: { job?: string | undefined }) {
       for (const j of r.jobs) {
         const c = d?.clips.find((x) => x.id === j.clipId); const size = exportSize(res, c?.aspect);
         try {
-          const out = await renderClip(r.workspace, { ...j, w: size.w, h: size.h }, (s) => setRendering((m) => ({ ...m, [j.clipId]: s })));
+          const out = await renderClip(r.workspace, { ...j, w: size.w, h: size.h, ass: c ? assForClip(c, size.w, size.h, j.segments) : null }, (s) => setRendering((m) => ({ ...m, [j.clipId]: s })));
           await finishExport({ data: { exportId: j.exportId, ...out } });
           toast.success(`${j.title} is ready`);
         } catch (e) { await finishExport({ data: { exportId: j.exportId, path: null, thumbPath: null, width: null, height: null, size: null, lengthSec: null, error: e instanceof Error ? e.message : "Render failed" } }); err(e); }
@@ -87,7 +90,7 @@ export function Review({ job: jobParam }: { job?: string | undefined }) {
       <Button size="sm" variant="outline" onClick={async () => { void 0; const ready = selected.filter((c) => c.video_url); if (!ready.length) { toast.error("None of the selected clips are exported yet."); return; } const { zipSync } = (await import(/* @vite-ignore */ ZIP_LIB as string)) as { zipSync: (f: Record<string, Uint8Array>, o: { level: 0 }) => Uint8Array }; const files: Record<string, Uint8Array> = {}; for (const c of ready) files[`${(c.title ?? "clip").replace(/[^\w -]+/g, "")}-${c.id.slice(0, 6)}.mp4`] = new Uint8Array(await (await fetch(c.video_url!)).arrayBuffer()); save("clips.zip", zipSync(files, { level: 0 }).slice().buffer, "application/zip"); }}><Download />Download selected</Button>
       <Button size="sm" variant="outline" onClick={async () => { const bad = mergeIssue(selected); if (bad) { toast.error(bad); return; } try { await mergeClips({ data: { ids: sel } }); setSel([]); await refresh(); toast.success("Merged into a new clip"); } catch (e) { err(e); } }}><Merge />Merge</Button>
       <Button size="sm" variant="ghost" disabled title="Comes with Prompt 10">Schedule selected</Button>
-      <Button size="sm" variant="ghost" disabled title="Comes with Prompt 5">Apply my brand kit</Button>
+      <Button size="sm" variant="ghost" onClick={() => toast.info("Open one clip in the editor and use “Apply to other clips”.")}>Apply my style</Button>
       <Button size="sm" variant="ghost" disabled title="Comes with Prompt 11">Edit with AI</Button>
     </section>}
     {q.isLoading ? <p className="muted">Loading…</p> : !clips.length ? <section className="glass-panel placeholder-panel"><p>No clips match. Clips appear here when a clip job completes.</p></section> :
@@ -108,7 +111,7 @@ function Grades({ c }: { c: Clip }) {
 function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTrim, onPreview, onScore, onExport, res, setRes, refresh, source, search }: {
   c: Clip; data: Data; selected: boolean; focused: boolean; rendering?: string | undefined; onSelect: (v: boolean) => void; onAct: (s: "APPROVED" | "REJECTED") => void; onTrim: () => void; onPreview: () => void; onScore: () => void; onExport: () => void; res: Resolution; setRes: (r: Resolution) => void; refresh: () => Promise<void>; source?: Source | undefined; search: string;
 }) {
-  const [title, setTitle] = useState(c.title ?? "");
+  const [title, setTitle] = useState(c.title ?? ""); const [posting, setPosting] = useState(false);
   const upd = async (f: Parameters<typeof updateClip>[0]["data"]) => { try { await updateClip({ data: f }); await refresh(); } catch (e) { err(e); } };
   const reexport = needsReexport(c);
   const dur = (c.end_ms ?? 0) - (c.start_ms ?? 0);
@@ -146,8 +149,10 @@ function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTr
       <Button size="sm" variant="outline" disabled={!transcriptWords(source?.transcript).length} title={transcriptWords(source?.transcript).length ? "" : "Transcribe the source first (Prompt 5)"} onClick={() => save(`${c.title ?? "clip"}.srt`, srtFor(transcriptWords(source?.transcript), c.start_ms ?? 0, c.end_ms ?? 0))}><Captions />Captions</Button>
       <select aria-label="Export timeline XML" value="" onChange={(e) => e.target.value && timeline(e.target.value as TimelineFormat)}><option value="">Timeline XML…</option><option value="fcpxml">Final Cut Pro</option><option value="premiere">Premiere Pro</option><option value="edl">DaVinci Resolve (EDL)</option></select>
       <Button size="sm" variant="ghost" disabled title="Formats studio comes with Prompt 6">Formats</Button>
-      <Button size="sm" variant="ghost" disabled title="Posting comes next">Post</Button>
+      <Button size="sm" onClick={() => setPosting(true)}>Post</Button>
     </div>}
+    <div className="review-actions"><Button size="sm" variant="outline" asChild><Link to="/editor/$clipId" params={{ clipId: c.id }}>Edit captions & title</Link></Button></div>
+    {posting && <Distribute clip={c} onClose={() => setPosting(false)} />}
   </article>;
 }
 
@@ -174,7 +179,7 @@ function PreviewModal({ clip, source, search, onClose, onExport, refresh }: { cl
       <Button size="sm" disabled title="Posting comes next">Publish</Button>
       <Button size="sm" onClick={onExport} disabled={clip.status !== "APPROVED" && !needsReexport(clip)}>Export</Button>
       {clip.video_url ? <Button size="sm" variant="outline" asChild><a href={clip.video_url} download>Download</a></Button> : <Button size="sm" variant="outline" disabled title="Export first">Download</Button>}
-      <Button size="sm" variant="ghost" disabled title="Comes with Prompt 5">Edit</Button>
+      <Button size="sm" variant="outline" asChild><Link to="/editor/$clipId" params={{ clipId: clip.id }}>Edit</Link></Button>
       {(["9:16", "1:1", "4:5", "16:9"] as const).map((a) => <Button key={a} size="sm" variant="ghost" disabled title="Comes with Prompt 5">{a}</Button>)}
       <Button size="sm" variant="outline" onClick={() => { const f = timelineFile("fcpxml", { title: clip.title ?? "clip", sourceName: source?.name ?? "source", sourceUrl: source?.playUrl ?? "", fps: Number(source?.fps) || 30, start_ms: clip.start_ms ?? 0, end_ms: clip.end_ms ?? 0, sourceMs: source?.duration_ms ?? 0 }); save(f.name, f.body, "application/xml"); }}><FileCode />Export timeline XML</Button>
       <Button size="sm" variant="outline" onClick={async () => { await duplicateClip({ data: { id: clip.id } }); await refresh(); toast.success("Duplicated"); }}><Copy />Duplicate</Button>
