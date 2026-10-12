@@ -113,7 +113,7 @@ export const createClipJob = createServerFn({ method: "POST" }).middleware([requ
       must_include: data.mustInclude as never,
       headline_top_n: data.headlineTopN,
       alternates: data.alternates,
-      edit_level: data.editLevel,
+      edit_level: (data.editLevel === "cuts_only" ? "clips" : data.editLevel),
       aspect: data.aspect,
       framing: data.framing,
       language: data.language,

@@ -136,7 +136,7 @@ function ClipJobForm({ sources, music, defaults, queue, initialSourceId, onDone 
     lengthPreset: f.lengthPreset, lengthMinS: f.lengthMinS, lengthMaxS: f.lengthMaxS,
     genre: f.genre === "Auto" && source?.niche ? defaultGenreFor(source.niche) : f.genre,
     mode: f.mode, prompt: f.prompt, mustInclude: mustList.slice(0, MAX_MUST_INCLUDE),
-    headlineTopN: f.headlineTopN, alternates: f.alternates, editLevel: (f.editLevel === "cuts_only" ? "clips" : f.editLevel), aspect: f.aspect,
+    headlineTopN: f.headlineTopN, alternates: f.alternates, editLevel: f.editLevel, aspect: f.aspect,
     layouts: f.layouts as ("full_video" | "streamer" | "split" | "two_up" | "three_up" | "four_up" | "screenshare" | "black_box" | "title_subtitles")[],
     framing: (f.framing === "auto" ? "AUTO" : f.framing === "centre" ? "CENTER" : "BOTH"), language: f.language, captionLanguage: f.captionLanguage,
     extras: { removeSilences: f.removeSilences, removeFillers: f.removeFillers, zoom: f.zoom, autoTransitions: f.autoTransitions, soundEffects: f.soundEffects, grade: f.grade, keywordHighlight: f.keywordHighlight, emojis: f.emojis, autoBroll: f.autoBroll },
