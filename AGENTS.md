@@ -10,7 +10,7 @@
 <!-- LOVABLE:END -->
 
 - Keep the shared agency shell and placeholder metadata in reusable agency components; each tab remains an independent route for later expansion.
-- Agency business records are private to their creator until explicit team membership is implemented; this prevents arbitrary signups accessing internal data.
+- Agency records belong to a workspace owner; team logins (team_logins, created only by the owner) resolve to that owner via workspace_of() in RLS and an insert trigger, so arbitrary signups still see nothing.
 - Store private integration credentials in managed server secrets, not app_settings; the settings table is for non-secret configuration only.
 - Placeholder pages are public and contain no business records; enforce authenticated routes and owner policies when adding real data screens.
 - Load agency records through authenticated server functions and one shared query; this keeps financial and client screens on the same source of truth.
@@ -22,3 +22,4 @@
 - Higgsfield image generation runs only in server code with key+secret from managed secrets; model/aspect/resolution constants live in src/lib/thumbnail-rules.ts so tests pin them.
 - Client title/idea results persist one row per client+kind in client_suggestions, replaced only on explicit regenerate; avoids re-generating on every visit.
 - Operational rules (capacity limit, lead pipeline totals, month grid, revenue this month) live in src/lib/ops-rules.ts; the dashboard reads shared agency + ops queries client-side because / is a public route.
+- Integration status derives from managed secret presence plus last test/disconnect flags in app_settings; guides and the Discord stage parser live in src/lib/integration-rules.ts.
