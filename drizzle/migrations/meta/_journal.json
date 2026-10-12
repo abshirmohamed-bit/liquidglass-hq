@@ -15,6 +15,13 @@
       "when": 1791806868463,
       "tag": "0001_ideation_message_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791811832156,
+      "tag": "0002_knowledge_client_scopes",
+      "breakpoints": true
     }
   ]
 }

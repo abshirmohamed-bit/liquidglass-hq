@@ -242,3 +242,12 @@ h1 { font-size: 32px; font-weight: 600; margin: 0; line-height: 1.25; letter-spa
 .thumb-canvas { width:100%;border-radius:12px;cursor:move;touch-action:none; }
 .thumb-overlay-controls { display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px; }
 @media(max-width:700px){.thumb-overlay-controls{grid-template-columns:1fr 1fr}.thumb-image.compact{flex-basis:240px}}
+.trainer { display:flex;flex-direction:column;gap:14px; }
+.trainer-actions { align-items:center; }
+.trainer-actions .chart-caption { margin-right:auto; }
+.trainer-log { display:flex;flex-direction:column;gap:12px;max-height:520px;overflow:auto;padding-right:4px; }
+.trainer-entry { display:flex;flex-direction:column;gap:8px;padding-bottom:12px;border-bottom:.5px solid var(--border); }
+.trainer-entry .actions { justify-content:flex-end;align-items:center; }
+.trainer-input { max-height:200px;overflow:auto; }
+.training-summary { max-width:min(760px,95vw); }
+.training-summary-body { max-height:60vh;overflow:auto; }

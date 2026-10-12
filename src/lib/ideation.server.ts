@@ -1,3 +1,4 @@
+import { knowledgeBlock } from "./training-rules";
 import { z } from "zod";
 import { convertToModelMessages, validateUIMessages, tool, generateId, type UIMessage } from "ai";
 import { authenticateRequest } from "./request-auth.server";
@@ -77,8 +78,13 @@ export async function handleIdeation(request: Request) {
   }));
   const knowledge = await supabase
     .from("knowledge_entries")
-    .select("learned_principle")
-    .eq("scope", "VIDEO_GLOBAL");
+    .select("learned_principle,scope")
+    .or(
+      thread.data.client_id
+        ? `and(scope.eq.VIDEO_GLOBAL,client_id.is.null),and(scope.eq.VIDEO_CLIENT,client_id.eq.${thread.data.client_id})`
+        : "and(scope.eq.VIDEO_GLOBAL,client_id.is.null)",
+    )
+    .order("timestamp");
   if (knowledge.error) return Response.json({ message: knowledge.error.message }, { status: 500 });
   const client = thread.data.client_id
     ? await supabase
@@ -88,7 +94,10 @@ export async function handleIdeation(request: Request) {
         .single()
     : null;
   if (client?.error) return Response.json({ message: client.error.message }, { status: 404 });
-  const system = `You are an expert content strategist specializing in personal-brand growth on YouTube and social media. You help ideate video titles, thumbnail concepts, content angles, hooks, and growth strategies. You remember everything in this thread and build on previous insights. When given a YouTube URL, analyze its content strategy and extract learnings. Use your channel tool for current uploads and your client tool for actual agency records. Never invent channel uploads, stats or offers. Only use long-form videos lasting at least 240 seconds (four minutes), regardless of YouTube tab. If a lookup is unavailable, explain this instead of claiming to inspect the channel. Client context: ${JSON.stringify(client?.data || {})}. Global video principles: ${knowledge.data.map((row) => row.learned_principle).join("\n")}`;
+  const system = `${knowledgeBlock("Global video knowledge (VIDEO_GLOBAL)", knowledge.data.filter((r) => r.scope === "VIDEO_GLOBAL").map((r) => r.learned_principle))}
+${thread.data.client_id ? knowledgeBlock("Client-specific video knowledge", knowledge.data.filter((r) => r.scope === "VIDEO_CLIENT").map((r) => r.learned_principle)) : ""}
+
+You are an expert content strategist specializing in personal-brand growth on YouTube and social media. You help ideate video titles, thumbnail concepts, content angles, hooks, and growth strategies. You remember everything in this thread and build on previous insights. When given a YouTube URL, analyze its content strategy and extract learnings. Use your channel tool for current uploads and your client tool for actual agency records. Never invent channel uploads, stats or offers. Only use long-form videos lasting at least 240 seconds (four minutes), regardless of YouTube tab. If a lookup is unavailable, explain this instead of claiming to inspect the channel. Client context: ${JSON.stringify(client?.data || {})}.`;
   const tools = {
     clients: tool({
       description: "Read actual agency clients visible to this signed-in user.",

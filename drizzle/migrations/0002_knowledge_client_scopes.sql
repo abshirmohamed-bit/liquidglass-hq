@@ -1,0 +1,2 @@
+ALTER TABLE public.knowledge_entries DROP CONSTRAINT knowledge_entries_scope_check;
+ALTER TABLE public.knowledge_entries ADD CONSTRAINT knowledge_entries_scope_check CHECK (scope = ANY (ARRAY['THUMBNAIL_GLOBAL','VIDEO_GLOBAL','THUMBNAIL_CLIENT','VIDEO_CLIENT','CLIENT_TITLES','CLIENT_IDEAS']) AND (scope NOT LIKE '%_CLIENT' OR client_id IS NOT NULL));

@@ -12,6 +12,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 import { AgencyShell } from "@/components/agency/shell";
+import { Toaster } from "@/components/ui/sonner";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 
@@ -135,6 +136,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <AgencyShell signedIn={signedIn}><Outlet /></AgencyShell>
+      <Toaster />
     </QueryClientProvider>
   );
 }

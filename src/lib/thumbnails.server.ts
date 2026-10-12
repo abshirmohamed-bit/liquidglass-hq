@@ -6,13 +6,14 @@ export function higgsfieldCredentials() {
   return key && secret ? `${key}:${secret}` : null;
 }
 
-export async function planThumbnail(input: { history: string[]; knowledge: string[]; client: string | null; request: string }) {
+import { knowledgeBlock } from "./training-rules";
+export async function planThumbnail(input: { history: string[]; knowledge: (string | null)[]; clientKnowledge: (string | null)[]; client: string | null; request: string }) {
   const apiKey = process.env["LOVABLE_API_KEY"];
   if (!apiKey) throw new Error("AI is not available right now.");
-  const system = `You are an expert YouTube thumbnail art director for personal-brand creators. Explain your creative direction and why in 1-3 short sentences, referencing trained patterns when relevant, then write a detailed image-generation prompt for a 16:9 thumbnail. Use the full session history: follow-up requests like "make the background darker" modify the previous design. Learn from ratings: repeat what scored high, avoid what scored low.
-Global thumbnail knowledge:
-${input.knowledge.length ? input.knowledge.map((k) => `- ${k}`).join("\n") : "- None yet."}
-${input.client ? `Client: ${input.client}` : ""}`;
+  const system = `${knowledgeBlock("Global thumbnail knowledge (THUMBNAIL_GLOBAL)", input.knowledge)}
+${input.client ? knowledgeBlock(`Knowledge specific to ${input.client}`, input.clientKnowledge) : ""}
+
+You are an expert YouTube thumbnail art director for personal-brand creators. First explain your creative direction in 1-3 short sentences, based on the training above and why it should work. Then produce an optimized nano-banana-pro image prompt targeting 16:9, 4K, bold and readable at small sizes, high contrast, and emotionally compelling. Use the full session history: follow-up requests like "make the background darker" modify the previous design. Learn from ratings: repeat what scored high, avoid what scored low.`;
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
