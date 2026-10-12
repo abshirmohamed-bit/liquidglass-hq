@@ -31,6 +31,7 @@ import { Route as ApiIdeationRouteImport } from './routes/api.ideation'
 import { Route as ReviewTokenRouteImport } from './routes/review_.$token'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated.clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated.clients.$clientId'
+import { Route as AuthenticatedEditorClipIdRouteImport } from './routes/_authenticated.editor.$clipId'
 import { Route as AuthenticatedIdeationIndexRouteImport } from './routes/_authenticated.ideation.index'
 import { Route as AuthenticatedIdeationThreadIdRouteImport } from './routes/_authenticated.ideation.$threadId'
 import { Route as ApiPublicHooksDiscordSyncRouteImport } from './routes/api/public/hooks/discord-sync'
@@ -148,6 +149,12 @@ const AuthenticatedClientsClientIdRoute =
     path: '/clients/$clientId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedEditorClipIdRoute =
+  AuthenticatedEditorClipIdRouteImport.update({
+    id: '/editor/$clipId',
+    path: '/editor/$clipId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedIdeationIndexRoute =
   AuthenticatedIdeationIndexRouteImport.update({
     id: '/ideation/',
@@ -199,6 +206,7 @@ export interface FileRoutesByFullPath {
   '/api/ideation': typeof ApiIdeationRoute
   '/review/$token': typeof ReviewTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/editor/$clipId': typeof AuthenticatedEditorClipIdRoute
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/ideation/': typeof AuthenticatedIdeationIndexRoute
@@ -227,6 +235,7 @@ export interface FileRoutesByTo {
   '/api/ideation': typeof ApiIdeationRoute
   '/review/$token': typeof ReviewTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/editor/$clipId': typeof AuthenticatedEditorClipIdRoute
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/ideation': typeof AuthenticatedIdeationIndexRoute
@@ -257,6 +266,7 @@ export interface FileRoutesById {
   '/api/ideation': typeof ApiIdeationRoute
   '/review_/$token': typeof ReviewTokenRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/_authenticated/editor/$clipId': typeof AuthenticatedEditorClipIdRoute
   '/_authenticated/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/ideation/': typeof AuthenticatedIdeationIndexRoute
@@ -287,6 +297,7 @@ export interface FileRouteTypes {
     | '/api/ideation'
     | '/review/$token'
     | '/clients/$clientId'
+    | '/editor/$clipId'
     | '/ideation/$threadId'
     | '/clients/'
     | '/ideation/'
@@ -315,6 +326,7 @@ export interface FileRouteTypes {
     | '/api/ideation'
     | '/review/$token'
     | '/clients/$clientId'
+    | '/editor/$clipId'
     | '/ideation/$threadId'
     | '/clients'
     | '/ideation'
@@ -344,6 +356,7 @@ export interface FileRouteTypes {
     | '/api/ideation'
     | '/review_/$token'
     | '/_authenticated/clients/$clientId'
+    | '/_authenticated/editor/$clipId'
     | '/_authenticated/ideation/$threadId'
     | '/_authenticated/clients/'
     | '/_authenticated/ideation/'
@@ -520,6 +533,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/editor/$clipId': {
+      id: '/_authenticated/editor/$clipId'
+      path: '/editor/$clipId'
+      fullPath: '/editor/$clipId'
+      preLoaderRoute: typeof AuthenticatedEditorClipIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/ideation/': {
       id: '/_authenticated/ideation/'
       path: '/ideation'
@@ -574,6 +594,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedThumbnailsRoute: typeof AuthenticatedThumbnailsRoute
   AuthenticatedToolsRoute: typeof AuthenticatedToolsRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
+  AuthenticatedEditorClipIdRoute: typeof AuthenticatedEditorClipIdRoute
   AuthenticatedIdeationThreadIdRoute: typeof AuthenticatedIdeationThreadIdRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
   AuthenticatedIdeationIndexRoute: typeof AuthenticatedIdeationIndexRoute
@@ -595,6 +616,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedThumbnailsRoute: AuthenticatedThumbnailsRoute,
   AuthenticatedToolsRoute: AuthenticatedToolsRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
+  AuthenticatedEditorClipIdRoute: AuthenticatedEditorClipIdRoute,
   AuthenticatedIdeationThreadIdRoute: AuthenticatedIdeationThreadIdRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
   AuthenticatedIdeationIndexRoute: AuthenticatedIdeationIndexRoute,
