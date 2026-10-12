@@ -79,5 +79,6 @@ export const transcribeChunk = createServerFn({ method: "POST" }).middleware([re
         }
       }
     }
+    if (!(done || deltas).trim()) console.warn("transcribe empty", bytes.length, res.headers.get("content-type"), buf.slice(0, 200));
     return (done || deltas).trim();
   });
