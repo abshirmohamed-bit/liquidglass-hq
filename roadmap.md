@@ -15,5 +15,7 @@
 - [x] Rename the app to crayZmundo.
 - [ ] crayZmundo Build Pack Prompts 1–12 (second doc), in order, testing after each; user approved continuing without further permission. Copy saved at .lovable/docs/crayzmundo-build-pack.txt.
   - [x] Build Pack Prompt 1: invite-only sign-in, roles (Admin/Client/Clipper), row + field security, engineClient, 16 new tables, account menu, CSP, 17-tab sidebar with role filtering, Engine/Anthropic/Instagram/TikTok/X cards; tested.
-  - [ ] Prompt 2 Library … Prompt 12 (next). Engine-dependent screens need ENGINE_URL + ENGINE_API_KEY.
+  - [x] Build Pack Prompt 2 Library: uploads/links/notes/Music tab, READY gating, status strip, resolution badges, 30-day trash purge; 5 rule tests + signed-in flow passed.
+  - [x] Build Pack Prompt 3 Clip jobs: AutoClip form (1min–3h source, range, coverage, auto/fixed count with suggested-count confirm + 10-min auto-continue, lengths, niche defaults, mode, steering prompt, must-includes, headline top N, alternates, edit level, aspect, framing, languages, extras), native clip engine (AI moments → QUEUED→PROCESSING→AWAITING_CONFIRMATION→COMPLETED), Clips list with stage/progress, completion toast + Review badge, HMAC webhook (t.v1, 5-min staleness, idempotency) + Settings test; 8 rule tests + signed-in E2E passed, test rows cleaned.
+  - [ ] Prompt 4 … Prompt 12 (next).
 - [x] Verify account flow and test each prompt before proceeding.

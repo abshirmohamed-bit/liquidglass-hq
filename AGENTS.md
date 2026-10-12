@@ -26,6 +26,7 @@
 
 - Roles live in public.user_roles (one row per user, default CLIPPER via auth trigger; CLIENT rows carry client_id); RLS uses is_admin/has_role/my_client security-definer helpers, and sidebar visibility comes from src/lib/roles.ts so UI and tests share one list.
 - Existing agency tables carry RESTRICTIVE admin-only policies; clients/analytics_snapshots allow CLIENT reads of their own client only. Field-level rules (Submission status/comment, Post status) are enforced by triggers, not UI.
-- Every crayZmundo Engine call goes through engineClient in src/lib/engine.server.ts (ENGINE_URL in app_settings, ENGINE_API_KEY secret); no vendor fallbacks.
+- Every crayZmundo Engine call goes through engineClient in src/lib/engine.server.ts (ENGINE_URL in app_settings, ENGINE_API_KEY secret); no vendor fallbacks. The user clarified the app itself is crayZmundo — clip upload, processing and review are built internally (clip_jobs.engine is always 'NATIVE'); external Engine settings remain only if the user later supplies a URL.
+- Clip job flow lives in src/lib/clip-engine.server.ts + clip.functions.ts with shared form/range rules in src/lib/clip-rules.ts; clip_jobs DB enums are uppercase (engine NATIVE, framing AUTO/BOTH/CENTER, edit_level clips/captions/cropped/full) and the UI maps its lowercase form values on submit.
 - Sign-up is disabled; users are created only by admins via createTeamLogin on the Team tab.
 - Library upload limits, resolution badges, upscale note and 30-day trash purge live in src/lib/library-rules.ts; Engine-deleting logic is shared in src/lib/library.server.ts so the UI and nightly purge behave the same.
