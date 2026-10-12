@@ -102,13 +102,3 @@ export const saveOverlay = createServerFn({ method: "POST" })
     if (r.error) throw new Error(r.error.message);
     return true;
   });
-
-export const deleteThumbnailSession = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ id: z.string().uuid() }))
-  .handler(async ({ context, data }) => {
-    await context.supabase.from("thumbnail_messages").delete().eq("session_id", data.id);
-    const r = await context.supabase.from("thumbnail_sessions").delete().eq("id", data.id);
-    if (r.error) throw new Error(r.error.message);
-    return true;
-  });
