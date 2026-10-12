@@ -1,4 +1,4 @@
-const ZIP_LIB = "https://esm.sh/fflate@0.8.2";
+const ZIP_LIB = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X, Scissors, Play, Copy, Star, ThumbsDown, Download, Share2, Merge, FileCode, Captions } from "lucide-react";
