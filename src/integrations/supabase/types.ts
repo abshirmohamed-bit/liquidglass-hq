@@ -90,11 +90,16 @@ export type Database = {
           created_at: string
           created_by: string
           duration_ms: number | null
+          engine_asset_id: string | null
+          error: string | null
           id: string
+          is_default: boolean
           license: string | null
           name: string
           owner_id: string
+          size_bytes: number | null
           source: string | null
+          status: string
           tags: Json
           trashed_at: string | null
           type: string
@@ -105,11 +110,16 @@ export type Database = {
           created_at?: string
           created_by?: string
           duration_ms?: number | null
+          engine_asset_id?: string | null
+          error?: string | null
           id?: string
+          is_default?: boolean
           license?: string | null
           name: string
           owner_id?: string
+          size_bytes?: number | null
           source?: string | null
+          status?: string
           tags?: Json
           trashed_at?: string | null
           type: string
@@ -120,11 +130,16 @@ export type Database = {
           created_at?: string
           created_by?: string
           duration_ms?: number | null
+          engine_asset_id?: string | null
+          error?: string | null
           id?: string
+          is_default?: boolean
           license?: string | null
           name?: string
           owner_id?: string
+          size_bytes?: number | null
           source?: string | null
+          status?: string
           tags?: Json
           trashed_at?: string | null
           type?: string
