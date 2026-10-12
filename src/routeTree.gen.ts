@@ -15,11 +15,18 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated.analytics'
 import { Route as AuthenticatedCalendarRouteImport } from './routes/_authenticated.calendar'
+import { Route as AuthenticatedCampaignsRouteImport } from './routes/_authenticated.campaigns'
+import { Route as AuthenticatedClipsRouteImport } from './routes/_authenticated.clips'
+import { Route as AuthenticatedFormatsRouteImport } from './routes/_authenticated.formats'
 import { Route as AuthenticatedLeadsRouteImport } from './routes/_authenticated.leads'
+import { Route as AuthenticatedLibraryRouteImport } from './routes/_authenticated.library'
 import { Route as AuthenticatedMoneyRouteImport } from './routes/_authenticated.money'
+import { Route as AuthenticatedPostsRouteImport } from './routes/_authenticated.posts'
+import { Route as AuthenticatedReviewRouteImport } from './routes/_authenticated.review'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated.settings'
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
 import { Route as AuthenticatedThumbnailsRouteImport } from './routes/_authenticated.thumbnails'
+import { Route as AuthenticatedToolsRouteImport } from './routes/_authenticated.tools'
 import { Route as ApiIdeationRouteImport } from './routes/api.ideation'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated.clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated.clients.$clientId'
@@ -56,14 +63,44 @@ const AuthenticatedCalendarRoute = AuthenticatedCalendarRouteImport.update({
   path: '/calendar',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCampaignsRoute = AuthenticatedCampaignsRouteImport.update({
+  id: '/campaigns',
+  path: '/campaigns',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedClipsRoute = AuthenticatedClipsRouteImport.update({
+  id: '/clips',
+  path: '/clips',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedFormatsRoute = AuthenticatedFormatsRouteImport.update({
+  id: '/formats',
+  path: '/formats',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedLeadsRoute = AuthenticatedLeadsRouteImport.update({
   id: '/leads',
   path: '/leads',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedLibraryRoute = AuthenticatedLibraryRouteImport.update({
+  id: '/library',
+  path: '/library',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMoneyRoute = AuthenticatedMoneyRouteImport.update({
   id: '/money',
   path: '/money',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedPostsRoute = AuthenticatedPostsRouteImport.update({
+  id: '/posts',
+  path: '/posts',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedReviewRoute = AuthenticatedReviewRouteImport.update({
+  id: '/review',
+  path: '/review',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
@@ -79,6 +116,11 @@ const AuthenticatedTeamRoute = AuthenticatedTeamRouteImport.update({
 const AuthenticatedThumbnailsRoute = AuthenticatedThumbnailsRouteImport.update({
   id: '/thumbnails',
   path: '/thumbnails',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedToolsRoute = AuthenticatedToolsRouteImport.update({
+  id: '/tools',
+  path: '/tools',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const ApiIdeationRoute = ApiIdeationRouteImport.update({
@@ -123,11 +165,18 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
+  '/campaigns': typeof AuthenticatedCampaignsRoute
+  '/clips': typeof AuthenticatedClipsRoute
+  '/formats': typeof AuthenticatedFormatsRoute
   '/leads': typeof AuthenticatedLeadsRoute
+  '/library': typeof AuthenticatedLibraryRoute
   '/money': typeof AuthenticatedMoneyRoute
+  '/posts': typeof AuthenticatedPostsRoute
+  '/review': typeof AuthenticatedReviewRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
   '/thumbnails': typeof AuthenticatedThumbnailsRoute
+  '/tools': typeof AuthenticatedToolsRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
@@ -141,11 +190,18 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/calendar': typeof AuthenticatedCalendarRoute
+  '/campaigns': typeof AuthenticatedCampaignsRoute
+  '/clips': typeof AuthenticatedClipsRoute
+  '/formats': typeof AuthenticatedFormatsRoute
   '/leads': typeof AuthenticatedLeadsRoute
+  '/library': typeof AuthenticatedLibraryRoute
   '/money': typeof AuthenticatedMoneyRoute
+  '/posts': typeof AuthenticatedPostsRoute
+  '/review': typeof AuthenticatedReviewRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/team': typeof AuthenticatedTeamRoute
   '/thumbnails': typeof AuthenticatedThumbnailsRoute
+  '/tools': typeof AuthenticatedToolsRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
@@ -161,11 +217,18 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/calendar': typeof AuthenticatedCalendarRoute
+  '/_authenticated/campaigns': typeof AuthenticatedCampaignsRoute
+  '/_authenticated/clips': typeof AuthenticatedClipsRoute
+  '/_authenticated/formats': typeof AuthenticatedFormatsRoute
   '/_authenticated/leads': typeof AuthenticatedLeadsRoute
+  '/_authenticated/library': typeof AuthenticatedLibraryRoute
   '/_authenticated/money': typeof AuthenticatedMoneyRoute
+  '/_authenticated/posts': typeof AuthenticatedPostsRoute
+  '/_authenticated/review': typeof AuthenticatedReviewRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/thumbnails': typeof AuthenticatedThumbnailsRoute
+  '/_authenticated/tools': typeof AuthenticatedToolsRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
@@ -181,11 +244,18 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/analytics'
     | '/calendar'
+    | '/campaigns'
+    | '/clips'
+    | '/formats'
     | '/leads'
+    | '/library'
     | '/money'
+    | '/posts'
+    | '/review'
     | '/settings'
     | '/team'
     | '/thumbnails'
+    | '/tools'
     | '/api/ideation'
     | '/clients/$clientId'
     | '/ideation/$threadId'
@@ -199,11 +269,18 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/analytics'
     | '/calendar'
+    | '/campaigns'
+    | '/clips'
+    | '/formats'
     | '/leads'
+    | '/library'
     | '/money'
+    | '/posts'
+    | '/review'
     | '/settings'
     | '/team'
     | '/thumbnails'
+    | '/tools'
     | '/api/ideation'
     | '/clients/$clientId'
     | '/ideation/$threadId'
@@ -218,11 +295,18 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/_authenticated/analytics'
     | '/_authenticated/calendar'
+    | '/_authenticated/campaigns'
+    | '/_authenticated/clips'
+    | '/_authenticated/formats'
     | '/_authenticated/leads'
+    | '/_authenticated/library'
     | '/_authenticated/money'
+    | '/_authenticated/posts'
+    | '/_authenticated/review'
     | '/_authenticated/settings'
     | '/_authenticated/team'
     | '/_authenticated/thumbnails'
+    | '/_authenticated/tools'
     | '/api/ideation'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/ideation/$threadId'
@@ -284,6 +368,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedCalendarRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/campaigns': {
+      id: '/_authenticated/campaigns'
+      path: '/campaigns'
+      fullPath: '/campaigns'
+      preLoaderRoute: typeof AuthenticatedCampaignsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/clips': {
+      id: '/_authenticated/clips'
+      path: '/clips'
+      fullPath: '/clips'
+      preLoaderRoute: typeof AuthenticatedClipsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/formats': {
+      id: '/_authenticated/formats'
+      path: '/formats'
+      fullPath: '/formats'
+      preLoaderRoute: typeof AuthenticatedFormatsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/leads': {
       id: '/_authenticated/leads'
       path: '/leads'
@@ -291,11 +396,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedLeadsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/library': {
+      id: '/_authenticated/library'
+      path: '/library'
+      fullPath: '/library'
+      preLoaderRoute: typeof AuthenticatedLibraryRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/money': {
       id: '/_authenticated/money'
       path: '/money'
       fullPath: '/money'
       preLoaderRoute: typeof AuthenticatedMoneyRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/posts': {
+      id: '/_authenticated/posts'
+      path: '/posts'
+      fullPath: '/posts'
+      preLoaderRoute: typeof AuthenticatedPostsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/review': {
+      id: '/_authenticated/review'
+      path: '/review'
+      fullPath: '/review'
+      preLoaderRoute: typeof AuthenticatedReviewRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/settings': {
@@ -317,6 +443,13 @@ declare module '@tanstack/react-router' {
       path: '/thumbnails'
       fullPath: '/thumbnails'
       preLoaderRoute: typeof AuthenticatedThumbnailsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/tools': {
+      id: '/_authenticated/tools'
+      path: '/tools'
+      fullPath: '/tools'
+      preLoaderRoute: typeof AuthenticatedToolsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/api/ideation': {
@@ -367,11 +500,18 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedCalendarRoute: typeof AuthenticatedCalendarRoute
+  AuthenticatedCampaignsRoute: typeof AuthenticatedCampaignsRoute
+  AuthenticatedClipsRoute: typeof AuthenticatedClipsRoute
+  AuthenticatedFormatsRoute: typeof AuthenticatedFormatsRoute
   AuthenticatedLeadsRoute: typeof AuthenticatedLeadsRoute
+  AuthenticatedLibraryRoute: typeof AuthenticatedLibraryRoute
   AuthenticatedMoneyRoute: typeof AuthenticatedMoneyRoute
+  AuthenticatedPostsRoute: typeof AuthenticatedPostsRoute
+  AuthenticatedReviewRoute: typeof AuthenticatedReviewRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedThumbnailsRoute: typeof AuthenticatedThumbnailsRoute
+  AuthenticatedToolsRoute: typeof AuthenticatedToolsRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedIdeationThreadIdRoute: typeof AuthenticatedIdeationThreadIdRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
@@ -381,11 +521,18 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedCalendarRoute: AuthenticatedCalendarRoute,
+  AuthenticatedCampaignsRoute: AuthenticatedCampaignsRoute,
+  AuthenticatedClipsRoute: AuthenticatedClipsRoute,
+  AuthenticatedFormatsRoute: AuthenticatedFormatsRoute,
   AuthenticatedLeadsRoute: AuthenticatedLeadsRoute,
+  AuthenticatedLibraryRoute: AuthenticatedLibraryRoute,
   AuthenticatedMoneyRoute: AuthenticatedMoneyRoute,
+  AuthenticatedPostsRoute: AuthenticatedPostsRoute,
+  AuthenticatedReviewRoute: AuthenticatedReviewRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedThumbnailsRoute: AuthenticatedThumbnailsRoute,
+  AuthenticatedToolsRoute: AuthenticatedToolsRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedIdeationThreadIdRoute: AuthenticatedIdeationThreadIdRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
