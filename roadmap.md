@@ -9,7 +9,7 @@
 - [x] Prompt 5: Thumbnails chat with creative direction, client tag, grouped searchable sessions, ratings, variations carousel, overlay editor, connect-key state; 5 rule tests + signed-in flow passed. Live image generation waits on Higgsfield key + secret.
 - [x] Prompt 6: Settings AI Training (thumbnail + video trainers, global or per-client, add/edit/delete, summary, reset, 1.16M-char paste stored); knowledge injected into Ideation and Thumbnails; 5 rule tests + signed-in flow passed.
 - [x] Prompt 7: client-page Suggested Titles (last 5 long-form × 3) and Suggested Ideas, saved until Regenerate, per-client feedback training; 3 rule tests + signed-in flow passed. Titles wait on YouTube key.
-- [ ] Prompt 8: analytics and manual snapshots.
+- [x] Prompt 8: Analytics with channel connect (URL or ID), all-clients comparison, per-client metrics, views/watch-time charts, top videos, manual snapshots; 2 rule tests + signed-in flow passed. Live pulls wait on YouTube key.
 - [ ] Prompt 9: calendar, dashboard, team, leads and onboarding.
 - [ ] Prompt 10: secure integrations, team access and Discord tracking.
 - [ ] After original prompts pass, read and implement the remaining prompts from https://docs.google.com/document/d/1spHExmCxvl-DDgI797gQYkjeZBQt-Jkk3dF3nTYWbK8/edit with a test after each; user approved continuing without further permission.
