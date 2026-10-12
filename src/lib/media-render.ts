@@ -5,16 +5,28 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 
-type FF = import("@ffmpeg/ffmpeg").FFmpeg;
+// ffmpeg.wasm loads from its CDN at runtime so the dev bundler never processes it.
+const FF_PKG = "https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm";
+const FF_CORE = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm";
+type FF = {
+  load(o: Record<string, string>): Promise<unknown>;
+  writeFile(n: string, d: Uint8Array): Promise<unknown>;
+  readFile(n: string): Promise<Uint8Array | string>;
+  deleteFile(n: string): Promise<unknown>;
+  exec(a: string[]): Promise<number>;
+  on(e: string, cb: (x: any) => void): void;
+  off(e: string, cb: (x: any) => void): void;
+};
+const blobUrl = async (url: string, type: string) => URL.createObjectURL(new Blob([await (await fetch(url)).blob()], { type }));
 let ffPromise: Promise<FF> | null = null;
 const written = new Map<string, string>();
 
 async function ffmpeg(): Promise<FF> {
   if (!ffPromise) ffPromise = (async () => {
-    const [{ FFmpeg }, { toBlobURL }] = await Promise.all([import("@ffmpeg/ffmpeg"), import("@ffmpeg/util")]);
-    const ff = new FFmpeg();
-    const base = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm";
-    await ff.load({ coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"), wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm") });
+    const { FFmpeg } = await import(/* @vite-ignore */ `${FF_PKG}/index.js`);
+    const ff: FF = new FFmpeg();
+    const classWorkerURL = URL.createObjectURL(new Blob([`import "${FF_PKG}/worker.js";`], { type: "text/javascript" }));
+    await ff.load({ classWorkerURL, coreURL: await blobUrl(`${FF_CORE}/ffmpeg-core.js`, "text/javascript"), wasmURL: await blobUrl(`${FF_CORE}/ffmpeg-core.wasm`, "application/wasm") });
     return ff;
   })();
   try { return await ffPromise; } catch (e) { ffPromise = null; throw e; }
