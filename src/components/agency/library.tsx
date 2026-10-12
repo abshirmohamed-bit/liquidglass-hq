@@ -69,7 +69,7 @@ export function Library() {
     <header className="page-header"><div><h1>Library</h1><p className="page-subtitle">Your uploads and imported sources.</p></div></header>
     {acct.data && !connected && <section className="glass-panel notice" role="status"><p>This tool will be available once you connect the crayZmundo Engine</p><details open><summary>Here’s how</summary><p>Deploy the crayZmundo Engine using the steps in the Engine tab of your build document, then open <Link to="/settings">Settings</Link>, enter the Engine’s web address and add its API key. Use “Test” on the Engine card to confirm it’s healthy.</p></details></section>}
     <StatusStrip account={acct.data?.account ?? null} />
-    <UploadCard disabled={!connected} onFiles={(files, sub) => files.forEach((f) => uploadOne(f, "UPLOAD", [], sub))} onImported={refresh} />
+    <UploadCard disabled={!connected} onFiles={(files, sub) => files.forEach((f) => uploadOne(f, "UPLOAD", [], sub))} onImported={async (id, sub) => { if (id && sub) { try { await uploadSubtitle(sub, id); } catch (e) { err(e); } } await refresh(); }} />
     {progress.length > 0 && <section className="glass-panel lib-progress">{progress.map((p) => <div key={p.name} className="lib-progress-row"><span>{p.name}</span><div className="lib-bar"><i style={{ width: `${p.pct}%` }} /></div><span>{p.error ? <>{p.error} <Button size="sm" variant="outline" onClick={p.retry}>Resume</Button></> : `${p.pct}%`}</span></div>)}</section>}
     <nav className="lib-tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>)}</nav>
     {lib.isLoading ? <p className="muted">Loading…</p> : lib.data && <TabBody tab={tab} data={lib.data} refresh={refresh} connected={!!connected} upload={uploadOne} />}
@@ -84,7 +84,7 @@ function StatusStrip({ account }: { account: { used: number; limit: number; pend
   </section>;
 }
 
-function UploadCard({ disabled, onFiles, onImported }: { disabled: boolean; onFiles: (f: File[], sub?: File) => void; onImported: () => void }) {
+function UploadCard({ disabled, onFiles, onImported }: { disabled: boolean; onFiles: (f: File[], sub?: File) => void; onImported: (id?: string, sub?: File) => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const [url, setUrl] = useState(""); const [rights, setRights] = useState(false); const [busy, setBusy] = useState(false);
@@ -92,7 +92,7 @@ function UploadCard({ disabled, onFiles, onImported }: { disabled: boolean; onFi
   const take = (list: FileList | null) => { const fs = Array.from(list ?? []); const s = fs.find((f) => kindOf(f.name) === "SUBTITLE"); onFiles(fs.filter((f) => f !== s), s ?? sub); };
   async function doImport() {
     setBusy(true);
-    try { const r = await engineImport({ data: { url: url.trim(), rightsConfirmed: rights } }); toast.success(r.ready ? "Imported and ready" : "Importing — this can take a few minutes"); setUrl(""); setRights(false); onImported(); }
+    try { const r = await engineImport({ data: { url: url.trim(), rightsConfirmed: rights } }); toast.success(r.ready ? "Imported and ready" : "Importing — this can take a few minutes"); setUrl(""); setRights(false); onImported(r.id, sub); }
     catch (e) { err(e); } finally { setBusy(false); }
   }
   return <section className={`glass-panel lib-upload${drag ? " drag" : ""}`} aria-disabled={disabled}
