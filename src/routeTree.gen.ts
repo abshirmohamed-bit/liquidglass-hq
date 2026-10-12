@@ -14,15 +14,17 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as CalendarRouteImport } from './routes/calendar'
-import { Route as IdeationRouteImport } from './routes/ideation'
 import { Route as LeadsRouteImport } from './routes/leads'
-import { Route as MoneyRouteImport } from './routes/money'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TeamRouteImport } from './routes/team'
 import { Route as ThumbnailsRouteImport } from './routes/thumbnails'
+import { Route as AuthenticatedMoneyRouteImport } from './routes/_authenticated.money'
+import { Route as ApiIdeationRouteImport } from './routes/api.ideation'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated.clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated.clients.$clientId'
+import { Route as AuthenticatedIdeationIndexRouteImport } from './routes/_authenticated.ideation.index'
+import { Route as AuthenticatedIdeationThreadIdRouteImport } from './routes/_authenticated.ideation.$threadId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -48,19 +50,9 @@ const CalendarRoute = CalendarRouteImport.update({
   path: '/calendar',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IdeationRoute = IdeationRouteImport.update({
-  id: '/ideation',
-  path: '/ideation',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const LeadsRoute = LeadsRouteImport.update({
   id: '/leads',
   path: '/leads',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MoneyRoute = MoneyRouteImport.update({
-  id: '/money',
-  path: '/money',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -83,6 +75,16 @@ const ThumbnailsRoute = ThumbnailsRouteImport.update({
   path: '/thumbnails',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedMoneyRoute = AuthenticatedMoneyRouteImport.update({
+  id: '/money',
+  path: '/money',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const ApiIdeationRoute = ApiIdeationRouteImport.update({
+  id: '/api/ideation',
+  path: '/api/ideation',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedClientsIndexRoute =
   AuthenticatedClientsIndexRouteImport.update({
     id: '/clients/',
@@ -95,36 +97,52 @@ const AuthenticatedClientsClientIdRoute =
     path: '/clients/$clientId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedIdeationIndexRoute =
+  AuthenticatedIdeationIndexRouteImport.update({
+    id: '/ideation/',
+    path: '/ideation/',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedIdeationThreadIdRoute =
+  AuthenticatedIdeationThreadIdRouteImport.update({
+    id: '/ideation/$threadId',
+    path: '/ideation/$threadId',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/auth': typeof AuthRoute
   '/calendar': typeof CalendarRoute
-  '/ideation': typeof IdeationRoute
   '/leads': typeof LeadsRoute
-  '/money': typeof MoneyRoute
   '/onboarding': typeof OnboardingRoute
   '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
   '/thumbnails': typeof ThumbnailsRoute
+  '/money': typeof AuthenticatedMoneyRoute
+  '/api/ideation': typeof ApiIdeationRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
+  '/ideation/': typeof AuthenticatedIdeationIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analytics': typeof AnalyticsRoute
   '/auth': typeof AuthRoute
   '/calendar': typeof CalendarRoute
-  '/ideation': typeof IdeationRoute
   '/leads': typeof LeadsRoute
-  '/money': typeof MoneyRoute
   '/onboarding': typeof OnboardingRoute
   '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
   '/thumbnails': typeof ThumbnailsRoute
+  '/money': typeof AuthenticatedMoneyRoute
+  '/api/ideation': typeof ApiIdeationRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
+  '/ideation': typeof AuthenticatedIdeationIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -133,15 +151,17 @@ export interface FileRoutesById {
   '/analytics': typeof AnalyticsRoute
   '/auth': typeof AuthRoute
   '/calendar': typeof CalendarRoute
-  '/ideation': typeof IdeationRoute
   '/leads': typeof LeadsRoute
-  '/money': typeof MoneyRoute
   '/onboarding': typeof OnboardingRoute
   '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
   '/thumbnails': typeof ThumbnailsRoute
+  '/_authenticated/money': typeof AuthenticatedMoneyRoute
+  '/api/ideation': typeof ApiIdeationRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
+  '/_authenticated/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
+  '/_authenticated/ideation/': typeof AuthenticatedIdeationIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -150,30 +170,34 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/auth'
     | '/calendar'
-    | '/ideation'
     | '/leads'
-    | '/money'
     | '/onboarding'
     | '/settings'
     | '/team'
     | '/thumbnails'
+    | '/money'
+    | '/api/ideation'
     | '/clients/$clientId'
+    | '/ideation/$threadId'
     | '/clients/'
+    | '/ideation/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/analytics'
     | '/auth'
     | '/calendar'
-    | '/ideation'
     | '/leads'
-    | '/money'
     | '/onboarding'
     | '/settings'
     | '/team'
     | '/thumbnails'
+    | '/money'
+    | '/api/ideation'
     | '/clients/$clientId'
+    | '/ideation/$threadId'
     | '/clients'
+    | '/ideation'
   id:
     | '__root__'
     | '/'
@@ -181,15 +205,17 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/auth'
     | '/calendar'
-    | '/ideation'
     | '/leads'
-    | '/money'
     | '/onboarding'
     | '/settings'
     | '/team'
     | '/thumbnails'
+    | '/_authenticated/money'
+    | '/api/ideation'
     | '/_authenticated/clients/$clientId'
+    | '/_authenticated/ideation/$threadId'
     | '/_authenticated/clients/'
+    | '/_authenticated/ideation/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -198,13 +224,12 @@ export interface RootRouteChildren {
   AnalyticsRoute: typeof AnalyticsRoute
   AuthRoute: typeof AuthRoute
   CalendarRoute: typeof CalendarRoute
-  IdeationRoute: typeof IdeationRoute
   LeadsRoute: typeof LeadsRoute
-  MoneyRoute: typeof MoneyRoute
   OnboardingRoute: typeof OnboardingRoute
   SettingsRoute: typeof SettingsRoute
   TeamRoute: typeof TeamRoute
   ThumbnailsRoute: typeof ThumbnailsRoute
+  ApiIdeationRoute: typeof ApiIdeationRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -244,25 +269,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/ideation': {
-      id: '/ideation'
-      path: '/ideation'
-      fullPath: '/ideation'
-      preLoaderRoute: typeof IdeationRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/leads': {
       id: '/leads'
       path: '/leads'
       fullPath: '/leads'
       preLoaderRoute: typeof LeadsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/money': {
-      id: '/money'
-      path: '/money'
-      fullPath: '/money'
-      preLoaderRoute: typeof MoneyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -293,6 +304,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ThumbnailsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/money': {
+      id: '/_authenticated/money'
+      path: '/money'
+      fullPath: '/money'
+      preLoaderRoute: typeof AuthenticatedMoneyRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/api/ideation': {
+      id: '/api/ideation'
+      path: '/api/ideation'
+      fullPath: '/api/ideation'
+      preLoaderRoute: typeof ApiIdeationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/clients/': {
       id: '/_authenticated/clients/'
       path: '/clients'
@@ -307,17 +332,37 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedClientsClientIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/ideation/': {
+      id: '/_authenticated/ideation/'
+      path: '/ideation'
+      fullPath: '/ideation/'
+      preLoaderRoute: typeof AuthenticatedIdeationIndexRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/ideation/$threadId': {
+      id: '/_authenticated/ideation/$threadId'
+      path: '/ideation/$threadId'
+      fullPath: '/ideation/$threadId'
+      preLoaderRoute: typeof AuthenticatedIdeationThreadIdRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
   }
 }
 
 interface AuthenticatedRouteChildren {
+  AuthenticatedMoneyRoute: typeof AuthenticatedMoneyRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
+  AuthenticatedIdeationThreadIdRoute: typeof AuthenticatedIdeationThreadIdRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
+  AuthenticatedIdeationIndexRoute: typeof AuthenticatedIdeationIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedMoneyRoute: AuthenticatedMoneyRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
+  AuthenticatedIdeationThreadIdRoute: AuthenticatedIdeationThreadIdRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
+  AuthenticatedIdeationIndexRoute: AuthenticatedIdeationIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -330,13 +375,12 @@ const rootRouteChildren: RootRouteChildren = {
   AnalyticsRoute: AnalyticsRoute,
   AuthRoute: AuthRoute,
   CalendarRoute: CalendarRoute,
-  IdeationRoute: IdeationRoute,
   LeadsRoute: LeadsRoute,
-  MoneyRoute: MoneyRoute,
   OnboardingRoute: OnboardingRoute,
   SettingsRoute: SettingsRoute,
   TeamRoute: TeamRoute,
   ThumbnailsRoute: ThumbnailsRoute,
+  ApiIdeationRoute: ApiIdeationRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

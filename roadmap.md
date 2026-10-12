@@ -1,14 +1,16 @@
 # Agency Admin first pass
+- [x] Confirmed prompt-only scope: no unrelated features; test each original prompt before the extension document.
 - [x] Match the supplied Base44 screenshot’s dashboard appearance; presentation-only shell, both themes and setup navigation verified. Live dashboard totals and objectives remain part of Prompt 9.
 - [x] Rechecked Prompt 1: exact color tokens, glass blur/saturation, modal radius, typography, both themes and 72px sidebar verified in browser.
 - [x] Prompt 1: themed shell, sidebar, empty agency tables; navigation/theme/schema tests passed.
-- [ ] Prompt 2: client pages implemented; rule tests and signed-out protection pass. Signed-in create/edit/read/delete verification awaits the first user signup. Live analysis awaits YouTube key.
-- [ ] Prompt 3: money and shared financial calculations.
-- [ ] Prompt 4: persistent ideation chat.
+- [x] Prompt 2: signed-in create/edit/read/delete, saved readback, disconnected YouTube state and six rule/schema tests passed. Live channel analysis remains blocked by the YouTube key.
+- [x] Prompt 3: Money records/payments, mark-paid saved readback, active-client MRR, margins and collection charts; nine calculation tests and signed-in workflow passed.
+- [x] Prompt 4: live streamed Ideation replies, separate persistent histories, follow-up memory, client tags/context, saved tool results, search, panel toggle, Enter/Shift+Enter, cancellation readback and deletion tested; both themes visually checked and 12 regression tests passed. Live YouTube inspection remains blocked by the missing YouTube key; its unavailable state was tested. Test records removed.
 - [ ] Prompt 5: thumbnail chat and image tools.
 - [ ] Prompt 6: global training and knowledge.
 - [ ] Prompt 7: persistent client titles/ideas and training.
 - [ ] Prompt 8: analytics and manual snapshots.
 - [ ] Prompt 9: calendar, dashboard, team, leads and onboarding.
 - [ ] Prompt 10: secure integrations, team access and Discord tracking.
+- [ ] After original prompts pass, read and implement the remaining prompts from https://docs.google.com/document/d/1spHExmCxvl-DDgI797gQYkjeZBQt-Jkk3dF3nTYWbK8/edit with a test after each; user approved continuing without further permission.
 - [ ] Verify account flow and test each prompt before proceeding. Signed-in session now available; paused later prompts for the requested Prompt 1 design review.
