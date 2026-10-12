@@ -133,7 +133,7 @@ export async function renderClip(workspace: string, job: RenderJob, onStatus: (s
       const list = await drawLayer(ff, job.finish, job.w, job.h);
       if (await ff.exec(["-i", final, "-f", "concat", "-safe", "0", "-i", "layer.txt", "-filter_complex", "[1:v]format=rgba[o];[0:v][o]overlay=0:0:eof_action=pass", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", "styled.mp4"]) !== 0) throw new Error("Could not burn in the captions.");
       for (const f of list) await ff.deleteFile(f).catch(() => {});
-      final = "styled.mp4";
+      parts.push(final); final = "styled.mp4";
     }
     await ff.exec(["-ss", "0.5", "-i", final, "-frames:v", "1", "-vf", "scale=360:-2", "thumb.jpg"]);
     const video = (await ff.readFile(final)) as Uint8Array;

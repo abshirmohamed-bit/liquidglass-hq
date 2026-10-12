@@ -63,13 +63,12 @@ export function Editor({ clipId }: { clipId: string }) {
     try {
       const { audioChunks } = await import("@/lib/media-render");
       setBusy("Loading video tools…");
-      const chunks = await audioChunks(src, start, end, 4000, (x) => { console.info("[transcribe]", x); setBusy(x); });
+      const chunks = await audioChunks(src, start, end, 4000, setBusy);
       const out: Cue[] = new Array(chunks.length);
       let done = 0;
-      const run = async (i: number) => { const ch = chunks[i]!; out[i] = { start_ms: ch.start_ms, end_ms: ch.end_ms, text: await transcribeChunk({ data: { audio: b64(ch.data), mime: "audio/mpeg" } }) }; console.info("[transcribe] chunk", i, ch.data.length, JSON.stringify(out[i]?.text).slice(0, 80)); setBusy(`Transcribing ${++done}/${chunks.length}`); };
+      const run = async (i: number) => { const ch = chunks[i]!; out[i] = { start_ms: ch.start_ms, end_ms: ch.end_ms, text: await transcribeChunk({ data: { audio: b64(ch.data), mime: "audio/mpeg" } }) }; setBusy(`Transcribing ${++done}/${chunks.length}`); };
       for (let i = 0; i < chunks.length; i += 3) await Promise.all([i, i + 1, i + 2].filter((x) => x < chunks.length).map(run));
       const next = cuesFromWords(wordsFromChunks(out.filter((x) => x.text)), style.maxWords);
-      console.info("[transcribe] done", next.length);
       if (!next.length) toast.error("No speech was found in this clip."); else { setCues(next); toast.success(`${next.length} caption lines ready — edit any word below`); }
     } catch (e) { err(e); } finally { setBusy(""); }
   }
