@@ -72,7 +72,8 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
         duration_ms: typeof c["duration_ms"] === "number" ? Math.round(c["duration_ms"]) : null,
         thumbnail_url: typeof c["thumbnail_url"] === "string" ? c["thumbnail_url"] : null,
         score: typeof c["score"] === "number" ? c["score"] : null,
-        score_breakdown: (c["score_breakdown"] ?? null) as never,
+        score_breakdown: (c["score_breakdown"] ?? c["grades"] ?? null) as never,
+        scene_analysis: typeof c["scene_analysis"] === "string" ? c["scene_analysis"] : null,
         reason: typeof c["reason"] === "string" ? c["reason"] : null,
         alternate_of: typeof c["alternate_of"] === "string" ? c["alternate_of"] : null,
         aspect: job.aspect, layout: firstLayout, status: "FOUND", last_event_id: ev.id,
@@ -90,6 +91,7 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
     if (!job) return "ignored";
     if (job.last_event_id === ev.id) return "duplicate";
     await db.from("clip_jobs").update({ status: "FAILED", error: String(data["error"] ?? "The clip job failed"), stage: null, last_event_id: ev.id }).eq("id", job.id);
+    await notify(db, job.created_by, "JOB_FAILED", "Clip job failed", String(data["error"] ?? "The clip job failed"), `/review?job=${job.id}`);
     await audit(db, job.owner_id, "engine.autoclip.failed", "clip_jobs", job.id, { error: data["error"] ?? null, event_id: ev.id });
     return "processed";
   }
