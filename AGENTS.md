@@ -19,3 +19,4 @@
 - The public dashboard is a presentation-only shell until operational dashboard work is implemented; show unavailable metrics rather than fabricated financial totals.
 - Derive finances in one shared pure module from client, payment and team records; historical charts must label collected recurring payments rather than invent historical contract values.
 - Persist chat UI message parts in owner-scoped records and derive the active conversation from its page URL; this preserves reasoning and prevents histories crossing threads.
+- Higgsfield image generation runs only in server code with key+secret from managed secrets; model/aspect/resolution constants live in src/lib/thumbnail-rules.ts so tests pin them.

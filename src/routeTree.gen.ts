@@ -18,8 +18,8 @@ import { Route as LeadsRouteImport } from './routes/leads'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TeamRouteImport } from './routes/team'
-import { Route as ThumbnailsRouteImport } from './routes/thumbnails'
 import { Route as AuthenticatedMoneyRouteImport } from './routes/_authenticated.money'
+import { Route as AuthenticatedThumbnailsRouteImport } from './routes/_authenticated.thumbnails'
 import { Route as ApiIdeationRouteImport } from './routes/api.ideation'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated.clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated.clients.$clientId'
@@ -70,14 +70,14 @@ const TeamRoute = TeamRouteImport.update({
   path: '/team',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ThumbnailsRoute = ThumbnailsRouteImport.update({
-  id: '/thumbnails',
-  path: '/thumbnails',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AuthenticatedMoneyRoute = AuthenticatedMoneyRouteImport.update({
   id: '/money',
   path: '/money',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedThumbnailsRoute = AuthenticatedThumbnailsRouteImport.update({
+  id: '/thumbnails',
+  path: '/thumbnails',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const ApiIdeationRoute = ApiIdeationRouteImport.update({
@@ -119,8 +119,8 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
-  '/thumbnails': typeof ThumbnailsRoute
   '/money': typeof AuthenticatedMoneyRoute
+  '/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
@@ -136,8 +136,8 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
-  '/thumbnails': typeof ThumbnailsRoute
   '/money': typeof AuthenticatedMoneyRoute
+  '/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
@@ -155,8 +155,8 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/settings': typeof SettingsRoute
   '/team': typeof TeamRoute
-  '/thumbnails': typeof ThumbnailsRoute
   '/_authenticated/money': typeof AuthenticatedMoneyRoute
+  '/_authenticated/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
@@ -174,8 +174,8 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/settings'
     | '/team'
-    | '/thumbnails'
     | '/money'
+    | '/thumbnails'
     | '/api/ideation'
     | '/clients/$clientId'
     | '/ideation/$threadId'
@@ -191,8 +191,8 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/settings'
     | '/team'
-    | '/thumbnails'
     | '/money'
+    | '/thumbnails'
     | '/api/ideation'
     | '/clients/$clientId'
     | '/ideation/$threadId'
@@ -209,8 +209,8 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/settings'
     | '/team'
-    | '/thumbnails'
     | '/_authenticated/money'
+    | '/_authenticated/thumbnails'
     | '/api/ideation'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/ideation/$threadId'
@@ -228,7 +228,6 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   SettingsRoute: typeof SettingsRoute
   TeamRoute: typeof TeamRoute
-  ThumbnailsRoute: typeof ThumbnailsRoute
   ApiIdeationRoute: typeof ApiIdeationRoute
 }
 
@@ -297,18 +296,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TeamRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/thumbnails': {
-      id: '/thumbnails'
-      path: '/thumbnails'
-      fullPath: '/thumbnails'
-      preLoaderRoute: typeof ThumbnailsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/_authenticated/money': {
       id: '/_authenticated/money'
       path: '/money'
       fullPath: '/money'
       preLoaderRoute: typeof AuthenticatedMoneyRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/thumbnails': {
+      id: '/_authenticated/thumbnails'
+      path: '/thumbnails'
+      fullPath: '/thumbnails'
+      preLoaderRoute: typeof AuthenticatedThumbnailsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/api/ideation': {
@@ -351,6 +350,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedMoneyRoute: typeof AuthenticatedMoneyRoute
+  AuthenticatedThumbnailsRoute: typeof AuthenticatedThumbnailsRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedIdeationThreadIdRoute: typeof AuthenticatedIdeationThreadIdRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
@@ -359,6 +359,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedMoneyRoute: AuthenticatedMoneyRoute,
+  AuthenticatedThumbnailsRoute: AuthenticatedThumbnailsRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedIdeationThreadIdRoute: AuthenticatedIdeationThreadIdRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
@@ -379,7 +380,6 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   SettingsRoute: SettingsRoute,
   TeamRoute: TeamRoute,
-  ThumbnailsRoute: ThumbnailsRoute,
   ApiIdeationRoute: ApiIdeationRoute,
 }
 export const routeTree = rootRouteImport
