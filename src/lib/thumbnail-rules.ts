@@ -17,7 +17,7 @@ export function groupMessages<T extends ThumbRow>(rows: T[]) {
   for (const r of rows) {
     const last = out[out.length - 1];
     const key = r.content?.startsWith("variation:") ? r.content : null;
-    if (key && Array.isArray(last) && last[0].content === key) last.push(r);
+    if (key && Array.isArray(last) && last[0]?.content === key) last.push(r);
     else out.push(key ? [r] : r);
   }
   return out;

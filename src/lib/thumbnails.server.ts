@@ -36,7 +36,7 @@ ${input.client ? `Client: ${input.client}` : ""}`;
   if (res.status === 402) throw new Error("AI credits have run out. Add credits in your workspace to continue.");
   if (!res.ok) throw new Error("The AI could not reply. Please try again.");
   const json = (await res.json()) as { choices: { message: { content: string } }[] };
-  return JSON.parse(json.choices[0].message.content) as { direction: string; image_prompt: string };
+  return JSON.parse(json.choices[0]?.message.content ?? "{}") as { direction: string; image_prompt: string };
 }
 
 export async function generateImages(prompt: string, count: number, credentials: string) {

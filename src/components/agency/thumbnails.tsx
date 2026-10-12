@@ -28,7 +28,7 @@ function ConnectKey() {
   );
 }
 
-export function Thumbnails({ sessionId }: { sessionId?: string }) {
+export function Thumbnails({ sessionId }: { sessionId?: string | undefined }) {
   const { data: agency } = useSuspenseQuery(agencyQuery);
   const { data: list } = useSuspenseQuery(thumbnailSessionsQuery);
   const session = list.sessions.find((s) => s.id === sessionId);
@@ -46,6 +46,7 @@ export function Thumbnails({ sessionId }: { sessionId?: string }) {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (session) setClientId(session.client_id);
+    return undefined;
   }, [session]);
   useEffect(() => {
     end.current?.scrollIntoView({ block: "end" });
@@ -66,7 +67,10 @@ export function Thumbnails({ sessionId }: { sessionId?: string }) {
   }
   async function send(text: string) {
     if (!text.trim() || phase !== "idle") return;
-    if (!clientId) return toast.error("Add a client first so generations can be tagged.");
+    if (!clientId) {
+      toast.error("Add a client first so generations can be tagged.");
+      return;
+    }
     setPending(text);
     setPhase("thinking");
     try {
@@ -139,7 +143,7 @@ export function Thumbnails({ sessionId }: { sessionId?: string }) {
               )}
               {groupMessages(rows).map((g) =>
                 Array.isArray(g) ? (
-                  <div className="thumb-carousel" key={g[0].id} aria-label="Variations">{g.map((m) => imageCard(m, true))}</div>
+                  <div className="thumb-carousel" key={g[0]?.id} aria-label="Variations">{g.map((m) => imageCard(m, true))}</div>
                 ) : g.image_url ? (
                   imageCard(g)
                 ) : (
@@ -152,7 +156,7 @@ export function Thumbnails({ sessionId }: { sessionId?: string }) {
               <div ref={end} />
             </div>
           </div>
-          <PromptInput onSubmit={({ text }) => send(text)} className="chat-composer">
+          <PromptInput onSubmit={({ text }) => { void send(text); }} className="chat-composer">
             <PromptInputTextarea aria-label="Message" placeholder="Describe a thumbnail or paste a video topic..." />
             <PromptInputFooter className="justify-end">
               <PromptInputSubmit aria-label="Send message" disabled={phase !== "idle"} status={phase === "idle" ? "ready" : "submitted"}><ArrowUp /></PromptInputSubmit>
