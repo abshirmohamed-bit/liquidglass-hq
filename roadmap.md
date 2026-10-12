@@ -5,7 +5,7 @@
 - [x] Prompt 1: themed shell, sidebar, empty agency tables; navigation/theme/schema tests passed.
 - [x] Prompt 2: signed-in create/edit/read/delete, saved readback, disconnected YouTube state and six rule/schema tests passed. Live channel analysis remains blocked by the YouTube key.
 - [x] Prompt 3: Money records/payments, mark-paid saved readback, active-client MRR, margins and collection charts; nine calculation tests and signed-in workflow passed.
-- [ ] Prompt 4: persistent ideation chat.
+- [x] Prompt 4: live streamed Ideation replies, separate persistent histories, follow-up memory, client tags/context, saved tool results, search, panel toggle, Enter/Shift+Enter, cancellation readback and deletion tested; both themes visually checked and 12 regression tests passed. Live YouTube inspection remains blocked by the missing YouTube key; its unavailable state was tested. Test records removed.
 - [ ] Prompt 5: thumbnail chat and image tools.
 - [ ] Prompt 6: global training and knowledge.
 - [ ] Prompt 7: persistent client titles/ideas and training.
