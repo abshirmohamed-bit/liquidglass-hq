@@ -22,7 +22,7 @@ export const setPaymentCollected = createServerFn({ method: "POST" }).middleware
     fail(r.error); return true;
   });
 
-const member = z.object({ id: z.string().uuid().optional(), client_id: z.string().uuid(), name: z.string().trim().min(1).max(120), role: z.string().trim().max(60), cost: z.number().min(0).max(1_000_000) });
+const member = z.object({ id: z.string().uuid().optional(), client_id: z.string().uuid(), name: z.string().trim().min(1).max(120), role: z.enum(["CHANNEL_MANAGER", "SHORT_FORM_EDITOR", "LONG_FORM_EDITOR", "THUMBNAIL_DESIGNER"]), cost: z.number().min(0).max(1_000_000) });
 export const saveTeamMember = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator(member).handler(async ({ context, data }) => {
   const { id: rowId, ...f } = data;
   const r = rowId ? await context.supabase.from("team_members").update(f).eq("id", rowId) : await context.supabase.from("team_members").insert(f);

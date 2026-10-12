@@ -54,7 +54,7 @@ export function Team() {
   const cap = capacity(data.team.map((m) => ({ name: m.name, role: m.role, client_id: m.client_id })));
   return <div className="page">
     <header className="page-header"><div><h1>Team</h1><p className="page-subtitle">Who is allocated to each client, and what it costs.</p></div>
-      <Button disabled={!data.clients.length} onClick={() => setEdit({ client_id: data.clients[0]?.id ?? "", name: "", role: "EDITOR", cost: 0 })}><Plus />Add team member</Button></header>
+      <Button disabled={!data.clients.length} onClick={() => setEdit({ client_id: data.clients[0]?.id ?? "", name: "", role: "LONG_FORM_EDITOR", cost: 0 })}><Plus />Add team member</Button></header>
     {!data.clients.length && <section className="glass-panel empty-section"><h2>Add a client first</h2></section>}
     <section className="glass-panel" style={{ padding: 20 }} aria-label="Capacity tracker"><h2>Capacity tracker</h2><p className="chart-caption">Flagged when someone handles more than {MAX_CLIENTS_PER_MEMBER} clients.</p>
       {cap.length ? cap.map((c) => <div className="comparison-row" key={c.name}><span>{c.name} <small>· {label(c.role || "Member")}</small></span><strong className={c.overloaded ? "text-destructive" : ""}>{c.overloaded && <AlertTriangle size={14} style={{ display: "inline", marginRight: 4 }} />}{c.count} client{c.count === 1 ? "" : "s"}{c.overloaded ? " · Overloaded" : ""}</strong></div>) : <p>No team members yet</p>}
@@ -62,7 +62,7 @@ export function Team() {
     <div className="team-lanes">{data.clients.map((c) => { const lane = data.team.filter((m) => m.client_id === c.id);
       return <section className="glass-panel team-lane" key={c.id} aria-label={`${c.name} lane`}><header><h2>{c.name}</h2><strong>{currency(lane.reduce((s, m) => s + (m.cost ?? 0), 0))}<small>/mo</small></strong></header>
         {lane.length ? lane.map((m) => <div className="comparison-row" key={m.id}><span>{m.name}<small> · {label(m.role || "Member")}</small></span><span>{currency(m.cost)}/mo
-          <Button size="icon" variant="ghost" aria-label={`Edit ${m.name}`} onClick={() => setEdit({ id: m.id, client_id: m.client_id, name: m.name, role: m.role || "EDITOR", cost: m.cost ?? 0 })}><Pencil /></Button>
+          <Button size="icon" variant="ghost" aria-label={`Edit ${m.name}`} onClick={() => setEdit({ id: m.id, client_id: m.client_id, name: m.name, role: m.role || "LONG_FORM_EDITOR", cost: m.cost ?? 0 })}><Pencil /></Button>
           <Button size="icon" variant="ghost" aria-label={`Remove ${m.name}`} onClick={async () => { try { await remove({ data: { id: m.id } }); await cache.invalidateQueries({ queryKey: ["agency"] }); } catch (e) { err(e); } }}><Trash2 /></Button></span></div>) : <p className="chart-caption">No one assigned</p>}
       </section>; })}</div>
     {edit && <MemberDialog value={edit} onClose={() => setEdit(null)} />}
@@ -76,7 +76,7 @@ function MemberDialog({ value, onClose }: { value: Member; onClose: () => void }
     <form className="agency-form" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { await save({ data: f }); await cache.invalidateQueries({ queryKey: ["agency"] }); onClose(); } catch (er) { err(er); } finally { setBusy(false); } }}>
       <label>Name<input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
       <label>Client<select value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })}>{data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-      <div className="form-grid"><label>Role<select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{["EDITOR", "MANAGER", "THUMBNAIL_DESIGNER", "SCRIPTWRITER", "OTHER"].map((r) => <option key={r} value={r}>{label(r)}</option>)}</select></label>
+      <div className="form-grid"><label>Role<select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{["CHANNEL_MANAGER", "SHORT_FORM_EDITOR", "LONG_FORM_EDITOR", "THUMBNAIL_DESIGNER"].map((r) => <option key={r} value={r}>{label(r)}</option>)}</select></label>
         <label>Monthly cost<input type="number" min="0" value={f.cost} onChange={(e) => setF({ ...f, cost: Number(e.target.value) })} /></label></div>
       <div className="actions"><Button type="button" variant="outline" onClick={onClose}>Close</Button><Button disabled={busy} type="submit">{busy ? "Saving…" : "Save"}</Button></div>
     </form></DialogContent></Dialog>;
