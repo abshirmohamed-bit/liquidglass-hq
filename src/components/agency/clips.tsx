@@ -138,7 +138,7 @@ function ClipJobForm({ sources, music, defaults, queue, initialSourceId, onDone 
     mode: f.mode, prompt: f.prompt, mustInclude: mustList.slice(0, MAX_MUST_INCLUDE),
     headlineTopN: f.headlineTopN, alternates: f.alternates, editLevel: f.editLevel, aspect: f.aspect,
     layouts: f.layouts as ("full_video" | "streamer" | "split" | "two_up" | "three_up" | "four_up" | "screenshare" | "black_box" | "title_subtitles")[],
-    framing: (f.framing === "auto" ? "AUTO" : f.framing === "centre" ? "CENTER" : "BOTH"), language: f.language, captionLanguage: f.captionLanguage,
+    framing: (f.framing === "auto" ? "AUTO" as const : f.framing === "centre" ? "CENTER" as const : "BOTH" as const), language: f.language, captionLanguage: f.captionLanguage,
     extras: { removeSilences: f.removeSilences, removeFillers: f.removeFillers, zoom: f.zoom, autoTransitions: f.autoTransitions, soundEffects: f.soundEffects, grade: f.grade, keywordHighlight: f.keywordHighlight, emojis: f.emojis, autoBroll: f.autoBroll },
     brollAssetId: null, musicAssetId: f.musicAssetId || null,
   });
