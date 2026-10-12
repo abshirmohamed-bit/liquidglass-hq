@@ -223,18 +223,16 @@ function IdeationChat({
           .filter((part) => part.type === "text")
           .map((part) => part.text)
           .join("\n");
-        const { error: saveError } = await supabase
-          .from("ideation_messages")
-          .upsert(
-            {
-              thread_id: threadId,
-              sdk_message_id: message.id,
-              role: "assistant",
-              content,
-              parts: parts as unknown as Json,
-            },
-            { onConflict: "thread_id,sdk_message_id" },
-          );
+        const { error: saveError } = await supabase.from("ideation_messages").upsert(
+          {
+            thread_id: threadId,
+            sdk_message_id: message.id,
+            role: "assistant",
+            content,
+            parts: parts as unknown as Json,
+          },
+          { onConflict: "thread_id,sdk_message_id" },
+        );
         if (saveError) toast.error(`Could not save stopped response: ${saveError.message}`);
       }
       textarea.current?.focus();

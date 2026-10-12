@@ -49,18 +49,16 @@ export async function handleIdeation(request: Request) {
       .filter((part) => part.type === "text")
       .map((part) => part.text)
       .join("\n");
-    const { error } = await supabase
-      .from("ideation_messages")
-      .upsert(
-        {
-          thread_id: thread.data.id,
-          sdk_message_id: message.id,
-          role: message.role,
-          content,
-          parts: message.parts as unknown as Json,
-        },
-        { onConflict: "thread_id,sdk_message_id" },
-      );
+    const { error } = await supabase.from("ideation_messages").upsert(
+      {
+        thread_id: thread.data.id,
+        sdk_message_id: message.id,
+        role: message.role,
+        content,
+        parts: message.parts as unknown as Json,
+      },
+      { onConflict: "thread_id,sdk_message_id" },
+    );
     if (error) throw new Error(`Could not save conversation: ${error.message}`);
   };
   await save(last);
