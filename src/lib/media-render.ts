@@ -6,7 +6,8 @@
 import { supabase } from "@/integrations/supabase/client";
 
 // ffmpeg.wasm loads from its CDN at runtime so the dev bundler never processes it.
-const FF_PKG = "https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/esm";
+// The ffmpeg.wasm wrapper (v0.12.15) is served from /ffmpeg so its worker is same-origin; the large core loads from the CDN.
+const FF_PKG = "/ffmpeg";
 const FF_CORE = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm";
 type FF = {
   load(o: Record<string, string>): Promise<unknown>;
@@ -23,10 +24,9 @@ const written = new Map<string, string>();
 
 async function ffmpeg(): Promise<FF> {
   if (!ffPromise) ffPromise = (async () => {
-    const { FFmpeg } = await import(/* @vite-ignore */ `${FF_PKG}/index.js`);
+    const { FFmpeg } = await import(/* @vite-ignore */ `${location.origin}${FF_PKG}/index.js`);
     const ff: FF = new FFmpeg();
-    const classWorkerURL = URL.createObjectURL(new Blob([`import "${FF_PKG}/worker.js";`], { type: "text/javascript" }));
-    await ff.load({ classWorkerURL, coreURL: await blobUrl(`${FF_CORE}/ffmpeg-core.js`, "text/javascript"), wasmURL: await blobUrl(`${FF_CORE}/ffmpeg-core.wasm`, "application/wasm") });
+    await ff.load({ classWorkerURL: `${location.origin}${FF_PKG}/worker.js`, coreURL: await blobUrl(`${FF_CORE}/ffmpeg-core.js`, "text/javascript"), wasmURL: await blobUrl(`${FF_CORE}/ffmpeg-core.wasm`, "application/wasm") });
     return ff;
   })();
   try { return await ffPromise; } catch (e) { ffPromise = null; throw e; }
