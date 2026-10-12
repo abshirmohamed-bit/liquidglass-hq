@@ -8,7 +8,8 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 import { AgencyShell } from "@/components/agency/shell";
 import appCss from "../styles.css?url";
@@ -118,11 +119,22 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setSignedIn(Boolean(data.user)));
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event !== 'SIGNED_IN' && event !== 'SIGNED_OUT' && event !== 'USER_UPDATED') return;
+      setSignedIn(Boolean(session?.user));
+      router.invalidate();
+      if (event !== 'SIGNED_OUT') queryClient.invalidateQueries();
+    });
+    return () => data.subscription.unsubscribe();
+  }, [router, queryClient]);
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <AgencyShell><Outlet /></AgencyShell> breaks all child routes. */}
-      <AgencyShell><Outlet /></AgencyShell>
+      <AgencyShell signedIn={signedIn}><Outlet /></AgencyShell>
     </QueryClientProvider>
   );
 }
