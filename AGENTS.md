@@ -8,3 +8,8 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Keep the shared agency shell and placeholder metadata in reusable agency components; each tab remains an independent route for later expansion.
+- Agency business records are private to their creator until explicit team membership is implemented; this prevents arbitrary signups accessing internal data.
+- Store private integration credentials in managed server secrets, not app_settings; the settings table is for non-secret configuration only.
+- Placeholder pages are public and contain no business records; enforce authenticated routes and owner policies when adding real data screens.
