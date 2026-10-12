@@ -28,6 +28,7 @@ import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.t
 import { Route as AuthenticatedThumbnailsRouteImport } from './routes/_authenticated.thumbnails'
 import { Route as AuthenticatedToolsRouteImport } from './routes/_authenticated.tools'
 import { Route as ApiIdeationRouteImport } from './routes/api.ideation'
+import { Route as ReviewTokenRouteImport } from './routes/review_.$token'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated.clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated.clients.$clientId'
 import { Route as AuthenticatedIdeationIndexRouteImport } from './routes/_authenticated.ideation.index'
@@ -130,6 +131,11 @@ const ApiIdeationRoute = ApiIdeationRouteImport.update({
   path: '/api/ideation',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ReviewTokenRoute = ReviewTokenRouteImport.update({
+  id: '/review_/$token',
+  path: '/review/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthenticatedClientsIndexRoute =
   AuthenticatedClientsIndexRouteImport.update({
     id: '/clients/',
@@ -191,6 +197,7 @@ export interface FileRoutesByFullPath {
   '/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/tools': typeof AuthenticatedToolsRoute
   '/api/ideation': typeof ApiIdeationRoute
+  '/review/$token': typeof ReviewTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
@@ -218,6 +225,7 @@ export interface FileRoutesByTo {
   '/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/tools': typeof AuthenticatedToolsRoute
   '/api/ideation': typeof ApiIdeationRoute
+  '/review/$token': typeof ReviewTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
@@ -247,6 +255,7 @@ export interface FileRoutesById {
   '/_authenticated/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/_authenticated/tools': typeof AuthenticatedToolsRoute
   '/api/ideation': typeof ApiIdeationRoute
+  '/review_/$token': typeof ReviewTokenRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
@@ -276,6 +285,7 @@ export interface FileRouteTypes {
     | '/thumbnails'
     | '/tools'
     | '/api/ideation'
+    | '/review/$token'
     | '/clients/$clientId'
     | '/ideation/$threadId'
     | '/clients/'
@@ -303,6 +313,7 @@ export interface FileRouteTypes {
     | '/thumbnails'
     | '/tools'
     | '/api/ideation'
+    | '/review/$token'
     | '/clients/$clientId'
     | '/ideation/$threadId'
     | '/clients'
@@ -331,6 +342,7 @@ export interface FileRouteTypes {
     | '/_authenticated/thumbnails'
     | '/_authenticated/tools'
     | '/api/ideation'
+    | '/review_/$token'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/ideation/$threadId'
     | '/_authenticated/clients/'
@@ -346,6 +358,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   OnboardingRoute: typeof OnboardingRoute
   ApiIdeationRoute: typeof ApiIdeationRoute
+  ReviewTokenRoute: typeof ReviewTokenRoute
   ApiPublicHooksDiscordSyncRoute: typeof ApiPublicHooksDiscordSyncRoute
   ApiPublicHooksEngineRoute: typeof ApiPublicHooksEngineRoute
   ApiPublicHooksLibraryPurgeRoute: typeof ApiPublicHooksLibraryPurgeRoute
@@ -486,6 +499,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIdeationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/review_/$token': {
+      id: '/review_/$token'
+      path: '/review/$token'
+      fullPath: '/review/$token'
+      preLoaderRoute: typeof ReviewTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_authenticated/clients/': {
       id: '/_authenticated/clients/'
       path: '/clients'
@@ -590,6 +610,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   OnboardingRoute: OnboardingRoute,
   ApiIdeationRoute: ApiIdeationRoute,
+  ReviewTokenRoute: ReviewTokenRoute,
   ApiPublicHooksDiscordSyncRoute: ApiPublicHooksDiscordSyncRoute,
   ApiPublicHooksEngineRoute: ApiPublicHooksEngineRoute,
   ApiPublicHooksLibraryPurgeRoute: ApiPublicHooksLibraryPurgeRoute,
