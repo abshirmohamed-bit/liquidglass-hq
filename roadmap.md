@@ -1,5 +1,12 @@
 # Agency Admin first pass
-- [ ] Build themed shell, collapsible sidebar and eleven coming-soon pages.
-- [ ] Create empty agency tables and profiles with private access policies.
-- [ ] Configure account sign-in and verify navigation and theme controls.
-- [ ] Read the shared Google document, implement its prompts in order, and test after each prompt.
+- [x] Prompt 1: themed shell, sidebar, empty agency tables; navigation/theme/schema tests passed.
+- [ ] Prompt 2: client pages implemented; rule tests and signed-out protection pass. Signed-in create/edit/read/delete verification awaits the first user signup. Live analysis awaits YouTube key.
+- [ ] Prompt 3: money and shared financial calculations.
+- [ ] Prompt 4: persistent ideation chat.
+- [ ] Prompt 5: thumbnail chat and image tools.
+- [ ] Prompt 6: global training and knowledge.
+- [ ] Prompt 7: persistent client titles/ideas and training.
+- [ ] Prompt 8: analytics and manual snapshots.
+- [ ] Prompt 9: calendar, dashboard, team, leads and onboarding.
+- [ ] Prompt 10: secure integrations, team access and Discord tracking.
+- [ ] Verify account flow and test each prompt before proceeding. Blocker: no auth users exist; session minting failed, so the user must sign in or create the first account in preview.

@@ -13,3 +13,6 @@
 - Agency business records are private to their creator until explicit team membership is implemented; this prevents arbitrary signups accessing internal data.
 - Store private integration credentials in managed server secrets, not app_settings; the settings table is for non-secret configuration only.
 - Placeholder pages are public and contain no business records; enforce authenticated routes and owner policies when adding real data screens.
+- Load agency records through authenticated server functions and one shared query; this keeps financial and client screens on the same source of truth.
+- Keep video classification and plan validation in a shared rules module; this prevents differing decisions across AI and forms.
+- Channel analysis fetches current uploads server-side before AI evaluation; this avoids stale or invented channel context.
