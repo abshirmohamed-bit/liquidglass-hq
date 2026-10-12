@@ -25,6 +25,7 @@ import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated.clients.$clientId'
 import { Route as AuthenticatedIdeationIndexRouteImport } from './routes/_authenticated.ideation.index'
 import { Route as AuthenticatedIdeationThreadIdRouteImport } from './routes/_authenticated.ideation.$threadId'
+import { Route as ApiPublicHooksDiscordSyncRouteImport } from './routes/api/public/hooks/discord-sync'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -109,6 +110,12 @@ const AuthenticatedIdeationThreadIdRoute =
     path: '/ideation/$threadId',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const ApiPublicHooksDiscordSyncRoute =
+  ApiPublicHooksDiscordSyncRouteImport.update({
+    id: '/api/public/hooks/discord-sync',
+    path: '/api/public/hooks/discord-sync',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/ideation/': typeof AuthenticatedIdeationIndexRoute
+  '/api/public/hooks/discord-sync': typeof ApiPublicHooksDiscordSyncRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -143,6 +151,7 @@ export interface FileRoutesByTo {
   '/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/ideation': typeof AuthenticatedIdeationIndexRoute
+  '/api/public/hooks/discord-sync': typeof ApiPublicHooksDiscordSyncRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -162,6 +171,7 @@ export interface FileRoutesById {
   '/_authenticated/ideation/$threadId': typeof AuthenticatedIdeationThreadIdRoute
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/ideation/': typeof AuthenticatedIdeationIndexRoute
+  '/api/public/hooks/discord-sync': typeof ApiPublicHooksDiscordSyncRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -181,6 +191,7 @@ export interface FileRouteTypes {
     | '/ideation/$threadId'
     | '/clients/'
     | '/ideation/'
+    | '/api/public/hooks/discord-sync'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -198,6 +209,7 @@ export interface FileRouteTypes {
     | '/ideation/$threadId'
     | '/clients'
     | '/ideation'
+    | '/api/public/hooks/discord-sync'
   id:
     | '__root__'
     | '/'
@@ -216,6 +228,7 @@ export interface FileRouteTypes {
     | '/_authenticated/ideation/$threadId'
     | '/_authenticated/clients/'
     | '/_authenticated/ideation/'
+    | '/api/public/hooks/discord-sync'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -224,6 +237,7 @@ export interface RootRouteChildren {
   AuthRoute: typeof AuthRoute
   OnboardingRoute: typeof OnboardingRoute
   ApiIdeationRoute: typeof ApiIdeationRoute
+  ApiPublicHooksDiscordSyncRoute: typeof ApiPublicHooksDiscordSyncRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -340,6 +354,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedIdeationThreadIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/api/public/hooks/discord-sync': {
+      id: '/api/public/hooks/discord-sync'
+      path: '/api/public/hooks/discord-sync'
+      fullPath: '/api/public/hooks/discord-sync'
+      preLoaderRoute: typeof ApiPublicHooksDiscordSyncRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -381,6 +402,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthRoute: AuthRoute,
   OnboardingRoute: OnboardingRoute,
   ApiIdeationRoute: ApiIdeationRoute,
+  ApiPublicHooksDiscordSyncRoute: ApiPublicHooksDiscordSyncRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
