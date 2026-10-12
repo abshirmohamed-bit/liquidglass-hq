@@ -304,3 +304,10 @@ h1 { font-size: 32px; font-weight: 600; margin: 0; line-height: 1.25; letter-spa
 .team-login-list li { display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:12px;font-size:14px; }
 .team-login-list li button { margin-left:auto; }
 .page-banner { padding:24px 32px 0; } .page-banner:empty { display:none; } .page-banner .integration-banner { margin-bottom:0; }
+
+.account-menu-trigger { display: inline-flex; align-items: center; gap: 8px; height: 32px; }
+.account-menu-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; }
+@media (max-width: 640px) { .account-menu-name { display: none; } }
+.engine-url { display: flex; gap: 8px; }
+.engine-url input { flex: 1; min-width: 0; }
+.team-login-form select, .team-login-list select, .engine-url input { padding:8px 10px;border-radius:10px;border:0.5px solid var(--border);background:transparent;font-size:14px;color:inherit; }

@@ -3,12 +3,18 @@ import { INTEGRATIONS, integrationStatus, matchClientByServerName, parseStage, S
 
 describe("integration rules", () => {
   it("lists integrations in the recommended order with AI required", () => {
-    expect(INTEGRATIONS.map((i) => i.id)).toEqual(["ai", "higgsfield", "youtube", "discord", "notion"]);
-    expect(INTEGRATIONS[0]?.required).toBe(true);
+    expect(INTEGRATIONS.map((i) => i.id)).toEqual(["engine", "ai", "anthropic", "higgsfield", "youtube", "instagram", "tiktok", "x", "discord", "notion"]);
+    expect(INTEGRATIONS.find((i) => i.id === "ai")?.required).toBe(true);
     expect(INTEGRATIONS.find((i) => i.id === "notion")!.optional).toBe(true);
   });
   it("uses the guide time estimates from the document", () => {
-    expect(Object.fromEntries(INTEGRATIONS.map((i) => [i.id, i.minutes]))).toEqual({ ai: 2, higgsfield: 3, youtube: 5, discord: 5, notion: 4 });
+    const m = Object.fromEntries(INTEGRATIONS.map((i) => [i.id, i.minutes]));
+    expect(["ai", "higgsfield", "youtube", "discord", "notion"].map((k) => m[k])).toEqual([2, 3, 5, 5, 4]);
+  });
+  it("uses the exact Build Pack secret names", () => {
+    const all = INTEGRATIONS.flatMap((i) => i.secrets);
+    for (const n of ["ENGINE_API_KEY", "ENGINE_WEBHOOK_SECRET", "HIGGSFIELD_API_KEY", "HIGGSFIELD_SECRET", "YOUTUBE_API_KEY", "INSTAGRAM_APP_SECRET", "TIKTOK_CLIENT_SECRET", "X_CLIENT_SECRET", "ANTHROPIC_API_KEY"]) expect(all).toContain(n);
+    expect(all.some((n) => /crayo/i.test(n))).toBe(false);
   });
   it("derives status badges", () => {
     expect(integrationStatus(false, false, null)).toBe("NOT_CONFIGURED");

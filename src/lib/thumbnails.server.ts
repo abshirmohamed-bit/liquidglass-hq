@@ -2,7 +2,7 @@ import { HIGGSFIELD_MODEL, higgsfieldBody } from "./thumbnail-rules";
 
 export function higgsfieldCredentials() {
   const key = process.env["HIGGSFIELD_API_KEY"];
-  const secret = process.env["HIGGSFIELD_API_SECRET"];
+  const secret = process.env["HIGGSFIELD_SECRET"];
   return key && secret ? `${key}:${secret}` : null;
 }
 

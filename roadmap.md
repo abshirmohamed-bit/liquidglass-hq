@@ -13,5 +13,7 @@
 - [x] Prompt 9: Calendar collect toggle, live Dashboard cards + stage pills + Daily Objectives, Team lanes + capacity, Leads pipeline, Onboarding guide + agreement download; 4 rule tests + signed-in flow passed.
 - [x] Prompt 10: integrations panel + setup guides + tests, welcome modal, feature banners, owner-created team logins sharing the workspace, read-only Discord stage agent; 5 rule tests + signed-in flow passed. Super Admin password skipped (unsafe); Discord schedule waits on bot token.
 - [x] Rename the app to crayZmundo.
-- [ ] crayZmundo Build Pack Prompts 1–12 (second doc), in order, testing after each; user approved continuing without further permission.
-- [ ] Verify account flow and test each prompt before proceeding. Signed-in session now available; paused later prompts for the requested Prompt 1 design review.
+- [ ] crayZmundo Build Pack Prompts 1–12 (second doc), in order, testing after each; user approved continuing without further permission. Copy saved at .lovable/docs/crayzmundo-build-pack.txt.
+  - [x] Build Pack Prompt 1: invite-only sign-in, roles (Admin/Client/Clipper), row + field security, engineClient, 16 new tables, account menu, CSP, 17-tab sidebar with role filtering, Engine/Anthropic/Instagram/TikTok/X cards; tested.
+  - [ ] Prompt 2 Library … Prompt 12 (next). Engine-dependent screens need ENGINE_URL + ENGINE_API_KEY.
+- [x] Verify account flow and test each prompt before proceeding.

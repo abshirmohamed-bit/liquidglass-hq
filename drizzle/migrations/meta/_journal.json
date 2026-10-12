@@ -43,6 +43,13 @@
       "when": 1791816972914,
       "tag": "0005_team_workspace_access",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791832294857,
+      "tag": "0006_crayzmundo_foundation_roles_entities",
+      "breakpoints": true
     }
   ]
 }
