@@ -128,7 +128,9 @@ export function shareTokenValid(token: string, now = Date.now()): boolean {
 /** A READY clip whose in/out changed since its export shows "Re-export". */
 export function needsReexport(c: { status: string; start_ms: number | null; end_ms: number | null; edits: unknown }): boolean {
   if (c.status !== "READY") return false;
-  const ex = (c.edits as { exported?: { start_ms: number; end_ms: number } } | null)?.exported;
+  const e = c.edits as { exported?: { start_ms: number; end_ms: number }; finish_dirty?: boolean } | null;
+  if (e?.finish_dirty) return true;
+  const ex = e?.exported;
   return !!ex && (ex.start_ms !== c.start_ms || ex.end_ms !== c.end_ms);
 }
 

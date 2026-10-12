@@ -163,3 +163,23 @@ export function uploadLink(platform: Platform, text: string): string {
     case "LINKEDIN": return "https://www.linkedin.com/feed/?shareActive=true";
   }
 }
+
+type ClipFinish = { caption_style_id: string | null; caption_style: unknown; captions: unknown; caption_options: unknown; title_text: string | null; title_style: string | null; overlays: unknown; watermark_text: string | null };
+/** True when the clip has anything to burn in (captions, title or watermark). */
+export function hasFinish(c: ClipFinish): boolean {
+  const cues = Array.isArray(c.captions) ? c.captions : [];
+  const on = (c.caption_options as { enabled?: boolean } | null)?.enabled !== false;
+  return (on && cues.length > 0) || !!c.title_text?.trim() || !!c.watermark_text?.trim();
+}
+/** The export's .ass file for a clip, or null when nothing is burned in. */
+export function assForClip(c: ClipFinish, w: number, h: number, segments: { start_ms: number; end_ms: number }[]): string | null {
+  if (!hasFinish(c)) return null;
+  const ov = (c.overlays ?? {}) as Overlays;
+  const style = styleFor(c.caption_style_id, c.caption_style as Partial<CaptionStyle> | null);
+  return toAss({
+    w, h, segments, durationMs: segments.reduce((n, x) => n + x.end_ms - x.start_ms, 0),
+    cues: (Array.isArray(c.captions) ? c.captions : []) as Cue[], style, captionsOn: (c.caption_options as { enabled?: boolean } | null)?.enabled !== false,
+    title: c.title_text?.trim() ? { text: c.title_text, style: (TITLE_STYLES as readonly string[]).includes(c.title_style ?? "") ? (c.title_style as TitleStyle) : "bold_band", y: ov.title?.y ?? 14, highlight_word: ov.title?.highlight_word, highlight: ov.title?.highlight } : null,
+    watermark: c.watermark_text?.trim() ? { text: c.watermark_text, pos: ov.watermark?.pos ?? "centre-below-captions", opacity: ov.watermark?.opacity ?? 0.5 } : null,
+  });
+}

@@ -95,7 +95,7 @@ export const startExport = createServerFn({ method: "POST" }).middleware([requir
       if (!src?.public_url) { await db.from("clips").update({ status: "FAILED", error: "The source video file isn't stored in the app, so it can't be rendered." }).eq("id", c.id); continue; }
       const exportId = `exp_${crypto.randomUUID()}`;
       const e = editsOf(c.edits);
-      await db.from("clips").update({ status: "EXPORTING", engine_export_id: exportId, resolution: data.resolution, error: null, edits: { ...e, export_started_at: new Date().toISOString() } as never }).eq("id", c.id);
+      await db.from("clips").update({ status: "EXPORTING", engine_export_id: exportId, resolution: data.resolution, error: null, edits: { ...e, finish_dirty: undefined, export_started_at: new Date().toISOString() } as never }).eq("id", c.id);
       out.push({ clipId: c.id, exportId, title: c.title ?? "clip", aspect: c.aspect, sourceUrl: await sign(db, src.public_url), segments: e.segments ?? [{ start_ms: c.start_ms ?? 0, end_ms: c.end_ms ?? 0 }], size: EXPORT_SIZES[data.resolution] });
     }
     return { workspace: (await db.rpc("workspace_of", { _uid: context.userId })).data as string, jobs: out };

@@ -45,6 +45,36 @@ async function input(ff: FF, url: string, onStatus?: (s: string) => void): Promi
   return name;
 }
 
+/** The caption font (Montserrat ExtraBold), shared by the editor preview and the burned-in export. */
+export const FONT_URL = "https://cdn.jsdelivr.net/fontsource/fonts/montserrat@latest/latin-800-normal.ttf";
+let fontBytes: Promise<Uint8Array> | null = null;
+export function captionFont(): Promise<Uint8Array> {
+  if (!fontBytes) fontBytes = fetch(FONT_URL).then(async (r) => { if (!r.ok) throw new Error("Could not load the caption font."); return new Uint8Array(await r.arrayBuffer()); });
+  return fontBytes;
+}
+let fontsReady = false;
+async function fonts(ff: FF) {
+  if (fontsReady) return;
+  await (ff as FF & { createDir(p: string): Promise<unknown> }).createDir("/fonts").catch(() => {});
+  await ff.writeFile("/fonts/Montserrat-ExtraBold.ttf", await captionFont());
+  fontsReady = true;
+}
+
+/** Cuts the clip's audio into short mp3 chunks for transcription (each ~chunkMs long). */
+export async function audioChunks(url: string, startMs: number, endMs: number, chunkMs: number, onStatus?: (s: string) => void): Promise<{ start_ms: number; end_ms: number; data: Uint8Array }[]> {
+  const ff = await ffmpeg();
+  const src = await input(ff, url, onStatus);
+  const out: { start_ms: number; end_ms: number; data: Uint8Array }[] = [];
+  for (let s = startMs; s < endMs; s += chunkMs) {
+    const e = Math.min(endMs, s + chunkMs);
+    onStatus?.(`Preparing audio ${Math.round(((s - startMs) / Math.max(1, endMs - startMs)) * 100)}%`);
+    if (await ff.exec(["-ss", (s / 1000).toFixed(3), "-i", src, "-t", ((e - s) / 1000).toFixed(3), "-vn", "-ac", "1", "-ar", "16000", "-c:a", "libmp3lame", "-b:a", "48k", "chunk.mp3"]) !== 0) throw new Error("Could not read the audio.");
+    out.push({ start_ms: s, end_ms: e, data: (await ff.readFile("chunk.mp3")) as Uint8Array });
+    await ff.deleteFile("chunk.mp3").catch(() => {});
+  }
+  return out;
+}
+
 const secs = (ms: number) => (ms / 1000).toFixed(3);
 
 /** Peaks (0..1) for the waveform strip between start and end. */
@@ -72,7 +102,7 @@ function probe(blob: Blob): Promise<{ w: number; h: number; sec: number }> {
   });
 }
 
-export type RenderJob = { clipId: string; exportId: string; aspect: string | null; sourceUrl: string | null; segments: { start_ms: number; end_ms: number }[]; w: number; h: number };
+export type RenderJob = { clipId: string; exportId: string; aspect: string | null; sourceUrl: string | null; segments: { start_ms: number; end_ms: number }[]; w: number; h: number; ass?: string | null };
 export type RenderResult = { path: string; thumbPath: string | null; width: number; height: number; size: number; lengthSec: number };
 
 /** Cuts the segments, crops/scales to the export size, joins them, uploads to storage. */
@@ -97,10 +127,17 @@ export async function renderClip(workspace: string, job: RenderJob, onStatus: (s
       if (await ff.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "-movflags", "+faststart", "merged.mp4"]) !== 0) throw new Error("Could not join the clips.");
       final = "merged.mp4";
     }
+    if (job.ass) {
+      onStatus("Burning in captions…");
+      await fonts(ff);
+      await ff.writeFile("subs.ass", new TextEncoder().encode(job.ass));
+      if (await ff.exec(["-i", final, "-vf", "subtitles=subs.ass:fontsdir=/fonts", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", "styled.mp4"]) !== 0) throw new Error("Could not burn in the captions.");
+      parts.push(final); final = "styled.mp4";
+    }
     await ff.exec(["-ss", "0.5", "-i", final, "-frames:v", "1", "-vf", "scale=360:-2", "thumb.jpg"]);
     const video = (await ff.readFile(final)) as Uint8Array;
     let thumb: Uint8Array | null = null; try { thumb = (await ff.readFile("thumb.jpg")) as Uint8Array; } catch { thumb = null; }
-    for (const f of [...parts, "merged.mp4", "list.txt", "thumb.jpg"]) await ff.deleteFile(f).catch(() => {});
+    for (const f of [...parts, "merged.mp4", "styled.mp4", "subs.ass", "list.txt", "thumb.jpg"]) await ff.deleteFile(f).catch(() => {});
     const blob = new Blob([video.slice().buffer], { type: "video/mp4" });
     const meta = await probe(blob);
     onStatus("Uploading…");
