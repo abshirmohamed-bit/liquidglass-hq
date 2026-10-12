@@ -24,7 +24,12 @@ export function createResponsesCall(
       if (config.chat && !response.ok) {
         const body = await response.clone().text();
         let message = body;
-        try { const parsed = JSON.parse(body); message = parsed.message || parsed.error?.message || body; } catch { /* Preserve upstream error text. */ }
+        try {
+          const parsed = JSON.parse(body);
+          message = parsed.message || parsed.error?.message || body;
+        } catch {
+          /* Preserve upstream error text. */
+        }
         failure = { status: response.status, message };
       }
       return response;
@@ -56,9 +61,18 @@ export function createResponsesCall(
   return {
     result,
     response: () =>
-      withLovableAiGatewayRunIdHeader(result.toUIMessageStreamResponse({ sendReasoning: true }), runIdFetch),
-    chatResponse: async (options: Parameters<typeof result.toUIMessageStreamResponse>[0], onDenied: (reason: string) => Promise<void>) => {
-      const response = await withLovableAiGatewayRunIdHeader(result.toUIMessageStreamResponse({ ...options, sendReasoning: true }), runIdFetch);
+      withLovableAiGatewayRunIdHeader(
+        result.toUIMessageStreamResponse({ sendReasoning: true }),
+        runIdFetch,
+      ),
+    chatResponse: async (
+      options: Parameters<typeof result.toUIMessageStreamResponse>[0],
+      onDenied: (reason: string) => Promise<void>,
+    ) => {
+      const response = await withLovableAiGatewayRunIdHeader(
+        result.toUIMessageStreamResponse({ ...options, sendReasoning: true }),
+        runIdFetch,
+      );
       if (failure) {
         if (failure.status === 403) await onDenied(failure.message);
         await response.body?.cancel();
