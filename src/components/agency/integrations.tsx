@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { queryOptions, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowRight, Bot, Check, Clock, Copy, Image, NotebookText, Plug, Sparkles, Trash2, Youtube } from "lucide-react";
+import { ArrowRight, AtSign, Bot, Brain, Check, Clock, Copy, Cpu, Image, Instagram, Music2, NotebookText, Plug, Sparkles, Trash2, Youtube } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -10,10 +10,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { INTEGRATIONS, integrationFor, type IntegrationId } from "@/lib/integration-rules";
-import { createTeamLogin, disconnectIntegration, getIntegrations, listTeamLogins, removeTeamLogin, runDiscordSync, testIntegration } from "@/lib/integrations.functions";
+import { createTeamLogin, disconnectIntegration, getEngineUrl, getIntegrations, listTeamLogins, removeTeamLogin, runDiscordSync, saveEngineUrl, setTeamRole, testIntegration } from "@/lib/integrations.functions";
+import { ROLES, roleLabel, type Role } from "@/lib/roles";
 
 export const integrationsQuery = queryOptions({ queryKey: ["integrations"], queryFn: () => getIntegrations(), staleTime: 15000 });
-const icons: Record<IntegrationId, typeof Bot> = { ai: Sparkles, higgsfield: Image, youtube: Youtube, discord: Bot, notion: NotebookText };
+const icons: Record<IntegrationId, typeof Bot> = { engine: Cpu, ai: Sparkles, anthropic: Brain, higgsfield: Image, youtube: Youtube, instagram: Instagram, tiktok: Music2, x: AtSign, discord: Bot, notion: NotebookText };
 const badge = { CONNECTED: ["Connected", "tone-green"], NOT_CONFIGURED: ["Not configured", "tone-gray"], ERROR: ["Error", "tone-red"] } as const;
 
 function useSignedIn() {
@@ -56,6 +57,7 @@ export function IntegrationsPanel({ initialGuide }: { initialGuide?: Integration
         <header><span className="integration-icon"><Icon size={18}/></span><h3>{i.name}</h3>{i.required && <span className="status-pill tone-blue">Required</span>}{i.optional && <span className="status-pill tone-gray">Optional</span>}</header>
         <span className={`status-pill ${tone}`}>{text}</span>
         <p className="caption">{s?.testedAt ? `Last tested ${new Date(s.testedAt).toLocaleString()}` : "Never tested"}{s?.message ? ` · ${s.message}` : ""}</p>
+        {i.id === "engine" && <EngineUrlField/>}
         {i.id === "discord" && <p className="caption">Read-only — the bot never sends messages. Runs about every 30 minutes.</p>}
         <div className="integration-actions">
           <Button size="sm" variant="outline" onClick={() => setGuide(i.id)}>Setup Guide</Button>
@@ -96,22 +98,39 @@ export function WelcomeModal() {
   </DialogContent></Dialog>;
 }
 
+function EngineUrlField() {
+  const get = useServerFn(getEngineUrl); const save = useServerFn(saveEngineUrl);
+  const q = useQuery({ queryKey: ["engine-url"], queryFn: () => get() });
+  const [v, setV] = useState<string | null>(null); const val = v ?? q.data ?? "";
+  return <form className="engine-url" onSubmit={async e => { e.preventDefault(); try { await save({ data: { url: val.trim() } }); toast.success("Engine URL saved"); setV(null); await q.refetch(); } catch (er) { toast.error(er instanceof Error ? er.message : "Could not save"); } }}>
+    <input aria-label="Engine URL" placeholder="https://engine.example.com" value={val} onChange={e => setV(e.target.value)}/><Button size="sm" type="submit" variant="outline">Save</Button></form>;
+}
+
 export function TeamAccess() {
-  const list = useServerFn(listTeamLogins); const create = useServerFn(createTeamLogin); const remove = useServerFn(removeTeamLogin);
+  const list = useServerFn(listTeamLogins); const create = useServerFn(createTeamLogin); const remove = useServerFn(removeTeamLogin); const setRole = useServerFn(setTeamRole);
   const q = useQuery({ queryKey: ["team-logins"], queryFn: () => list() }); const cache = useQueryClient();
-  const [f, setF] = useState({ name: "", email: "", password: "" }); const [busy, setBusy] = useState(false);
-  if (q.data && !q.data.isOwner) return null;
+  const clients = useQuery({ queryKey: ["client-names"], queryFn: async () => (await supabase.from("clients").select("id,name").order("name")).data ?? [] });
+  const empty = { name: "", email: "", password: "", role: "CLIPPER" as Role, clientId: "" };
+  const [f, setF] = useState(empty); const [busy, setBusy] = useState(false);
+  const refresh = () => cache.invalidateQueries({ queryKey: ["team-logins"] });
+  if (!q.data?.isAdmin) return null;
+  const clientSelect = (value: string, onChange: (v: string) => void, label: string) => <select aria-label={label} value={value} onChange={e => onChange(e.target.value)} required><option value="">Which client?</option>{(clients.data ?? []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>;
   return <section className="settings-section" aria-labelledby="team-access-heading">
     <h2 id="team-access-heading">Team logins</h2>
-    <p className="caption">Team members sign in at this app's address from any network and see the agency's records.</p>
-    <form className="glass-panel team-login-form" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await create({ data: f }); toast.success(`Login created for ${f.email}`); setF({ name: "", email: "", password: "" }); await cache.invalidateQueries({ queryKey: ["team-logins"] }); } catch (er) { toast.error(er instanceof Error ? er.message : "Could not create login"); } finally { setBusy(false); } }}>
+    <p className="caption">crayZmundo is invite-only. Create each login here; new logins are Clippers unless you pick another role. Only admins can grant Admin.</p>
+    <form className="glass-panel team-login-form" onSubmit={async e => { e.preventDefault(); setBusy(true); try { await create({ data: { name: f.name, email: f.email, password: f.password, role: f.role, clientId: f.role === "CLIENT" ? f.clientId : null } }); toast.success(`Login created for ${f.email}`); setF(empty); await refresh(); } catch (er) { toast.error(er instanceof Error ? er.message : "Could not create login"); } finally { setBusy(false); } }}>
       <input aria-label="Team member name" placeholder="Name" required value={f.name} onChange={e => setF({ ...f, name: e.target.value })}/>
       <input aria-label="Team member email" placeholder="Email" type="email" required value={f.email} onChange={e => setF({ ...f, email: e.target.value })}/>
       <input aria-label="Team member password" placeholder="Temporary password (8+)" type="password" minLength={8} required value={f.password} onChange={e => setF({ ...f, password: e.target.value })}/>
+      <select aria-label="Role" value={f.role} onChange={e => setF({ ...f, role: e.target.value as Role })}>{ROLES.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}</select>
+      {f.role === "CLIENT" && clientSelect(f.clientId, v => setF({ ...f, clientId: v }), "Client for this login")}
       <Button type="submit" disabled={busy}>{busy ? "Creating…" : "Create login"}</Button>
     </form>
-    <ul className="team-login-list">{(q.data?.logins ?? []).map(l => <li key={l.id} className="glass-panel"><strong>{l.name}</strong><span>{l.email}</span><span className="caption">Added {new Date(l.created_at).toLocaleDateString()}</span>
-      <Button size="icon" variant="ghost" aria-label={`Remove ${l.email}`} onClick={async () => { if (!confirm(`Remove ${l.email}'s login?`)) return; try { await remove({ data: { id: l.id } }); await cache.invalidateQueries({ queryKey: ["team-logins"] }); } catch (er) { toast.error(String(er)); } }}><Trash2/></Button></li>)}
-      {q.data && !q.data.logins.length && <li className="caption">No team logins yet.</li>}</ul>
+    <ul className="team-login-list">{q.data.logins.map(l => <li key={l.id} className="glass-panel"><strong>{l.name}</strong><span>{l.email}</span>
+      <select aria-label={`Role for ${l.email}`} value={l.role} onChange={async e => { const role = e.target.value as Role; if (role === "CLIENT") { toast.message("Pick the client below to finish."); } try { if (role !== "CLIENT") { await setRole({ data: { userId: l.user_id, role } }); toast.success("Role updated"); await refresh(); } else { await setRole({ data: { userId: l.user_id, role, clientId: clients.data?.[0]?.id ?? null } }); await refresh(); } } catch (er) { toast.error(er instanceof Error ? er.message : "Could not change role"); } }}>{ROLES.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}</select>
+      {l.role === "CLIENT" && clientSelect(l.client_id ?? "", async v => { try { await setRole({ data: { userId: l.user_id, role: "CLIENT", clientId: v } }); await refresh(); } catch (er) { toast.error(er instanceof Error ? er.message : "Could not save"); } }, `Client for ${l.email}`)}
+      <span className="caption">Added {new Date(l.created_at).toLocaleDateString()}</span>
+      <Button size="icon" variant="ghost" aria-label={`Remove ${l.email}`} onClick={async () => { if (!confirm(`Remove ${l.email}'s login?`)) return; try { await remove({ data: { id: l.id } }); await refresh(); } catch (er) { toast.error(String(er)); } }}><Trash2/></Button></li>)}
+      {!q.data.logins.length && <li className="caption">No team logins yet.</li>}</ul>
   </section>;
 }
