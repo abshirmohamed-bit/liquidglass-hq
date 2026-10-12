@@ -119,9 +119,10 @@ export function toAss(a: AssInput): string {
   if (a.title?.text.trim()) {
     const t = a.title, hw = (t.highlight_word ?? "").trim().toLowerCase();
     const col = assColor(HIGHLIGHTS[t.highlight ?? "yellow"]);
-    const words = t.text.trim().split(/\s+/).map((w) => (t.style === "headline" && hw && w.toLowerCase().replace(/[^\w']/g, "") === hw.replace(/[^\w']/g, "") ? `{\\c${col}}${esc(w)}{\\c&H00FFFFFF&}` : esc(w)));
-    const body = t.style === "headline" || t.style === "bold_band" ? words.join(" ").toUpperCase() : words.join(" ");
-    ev.push(`Dialogue: 1,${assTime(0)},${assTime(a.durationMs)},Title,,0,0,0,,{\\pos(${Math.round(a.w / 2)},${Math.round((t.y / 100) * a.h)})${t.style === "minimal" ? "\\bord2" : ""}}${body.replace(/\{\\C/g, "{\\c")}`);
+    const upper = t.style === "headline" || t.style === "bold_band";
+    const words = t.text.trim().split(/\s+/).map((w0) => { const w = upper ? w0.toUpperCase() : w0; return w; }).map((w) => (t.style === "headline" && hw && w.toLowerCase().replace(/[^\w']/g, "") === hw.replace(/[^\w']/g, "") ? `{\\c${col}}${esc(w)}{\\c&H00FFFFFF&}` : esc(w)));
+    const body = words.join(" ");
+    ev.push(`Dialogue: 1,${assTime(0)},${assTime(a.durationMs)},Title,,0,0,0,,{\\pos(${Math.round(a.w / 2)},${Math.round((t.y / 100) * a.h)})${t.style === "minimal" ? "\\bord2" : ""}}${body}`);
   }
   if (a.watermark?.text.trim()) {
     const m = 40 * k, pos = a.watermark.pos;
