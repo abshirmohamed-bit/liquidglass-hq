@@ -1,6 +1,6 @@
 # Agency Admin first pass
 - [x] Prompt 1: themed shell, sidebar, empty agency tables; navigation/theme/schema tests passed.
-- [ ] Prompt 2: clients and channel analysis.
+- [ ] Prompt 2: client pages implemented; rule tests and signed-out protection pass. Signed-in create/edit/read/delete verification awaits the first user signup. Live analysis awaits YouTube key.
 - [ ] Prompt 3: money and shared financial calculations.
 - [ ] Prompt 4: persistent ideation chat.
 - [ ] Prompt 5: thumbnail chat and image tools.
@@ -9,4 +9,4 @@
 - [ ] Prompt 8: analytics and manual snapshots.
 - [ ] Prompt 9: calendar, dashboard, team, leads and onboarding.
 - [ ] Prompt 10: secure integrations, team access and Discord tracking.
-- [ ] Verify account flow and test each prompt before proceeding.
+- [ ] Verify account flow and test each prompt before proceeding. Blocker: no auth users exist; session minting failed, so the user must sign in or create the first account in preview.
