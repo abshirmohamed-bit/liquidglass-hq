@@ -11,6 +11,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { supabase } from "@/integrations/supabase/client";
 import { INTEGRATIONS, integrationFor, type IntegrationId } from "@/lib/integration-rules";
 import { createTeamLogin, disconnectIntegration, getEngineUrl, getIntegrations, listTeamLogins, removeTeamLogin, runDiscordSync, saveEngineUrl, setTeamRole, testIntegration } from "@/lib/integrations.functions";
+import { sendEngineTest } from "@/lib/clip.functions";
 import { ROLES, roleLabel, type Role } from "@/lib/roles";
 
 export const integrationsQuery = queryOptions({ queryKey: ["integrations"], queryFn: () => getIntegrations(), staleTime: 15000 });
@@ -57,7 +58,7 @@ export function IntegrationsPanel({ initialGuide }: { initialGuide?: Integration
         <header><span className="integration-icon"><Icon size={18}/></span><h3>{i.name}</h3>{i.required && <span className="status-pill tone-blue">Required</span>}{i.optional && <span className="status-pill tone-gray">Optional</span>}</header>
         <span className={`status-pill ${tone}`}>{text}</span>
         <p className="caption">{s?.testedAt ? `Last tested ${new Date(s.testedAt).toLocaleString()}` : "Never tested"}{s?.message ? ` · ${s.message}` : ""}</p>
-        {i.id === "engine" && <EngineUrlField/>}
+        {i.id === "engine" && <><EngineUrlField/><EngineSendTest/></>}
         {i.id === "discord" && <p className="caption">Read-only — the bot never sends messages. Runs about every 30 minutes.</p>}
         <div className="integration-actions">
           <Button size="sm" variant="outline" onClick={() => setGuide(i.id)}>Setup Guide</Button>
@@ -104,6 +105,18 @@ function EngineUrlField() {
   const [v, setV] = useState<string | null>(null); const val = v ?? q.data ?? "";
   return <form className="engine-url" onSubmit={async e => { e.preventDefault(); try { await save({ data: { url: val.trim() } }); toast.success("Engine URL saved"); setV(null); await q.refetch(); } catch (er) { toast.error(er instanceof Error ? er.message : "Could not save"); } }}>
     <input aria-label="Engine URL" placeholder="https://engine.example.com" value={val} onChange={e => setV(e.target.value)}/><Button size="sm" type="submit" variant="outline">Save</Button></form>;
+}
+
+/** Prompt 3: fires a signed test event at the Engine webhook and reports delivery. */
+function EngineSendTest() {
+  const send = useServerFn(sendEngineTest);
+  const [busy, setBusy] = useState(false);
+  return <Button size="sm" variant="outline" className="engine-send-test" disabled={busy} onClick={async () => {
+    setBusy(true);
+    try { const r = await send(); r.ok ? toast.success("Test event sent and received by the Engine webhook") : toast.error(`Test failed (${r.status})`); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Test failed"); }
+    finally { setBusy(false); }
+  }}>{busy ? "Sending…" : "Send test"}</Button>;
 }
 
 export function TeamAccess() {
