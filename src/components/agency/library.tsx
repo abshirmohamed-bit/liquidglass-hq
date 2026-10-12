@@ -197,7 +197,7 @@ function AssetTab({ tab, rows, refresh, connected, upload }: { tab: Exclude<Tab,
         <RenameTrash id={a.id} name={a.name} table="assets" refresh={refresh} />
       </div>
     </article>)}</div> : <Empty text={`No ${tab.toLowerCase()} yet.`} />}
-    {false && <section className="glass-panel lib-catalog"><h2>Engine starter pack</h2>{catalog.data?.length ? <ul>{catalog.data.map((m) => <li key={m.id}><span>{m.name}</span>{m.url ? <audio src={m.url} controls /> : null}{m.licence ? <a href={m.licence} target="_blank" rel="noreferrer">Licence</a> : null}</li>)}</ul> : <p className="muted">No bundled tracks returned by the Engine.</p>}</section>}
+    
   </>;
 }
 
