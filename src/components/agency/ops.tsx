@@ -45,7 +45,8 @@ export function Calendar() {
 }
 
 /* ---------------- Team ---------------- */
-type Member = { id?: string; client_id: string; name: string; role: string; cost: number };
+type Role = "CHANNEL_MANAGER" | "SHORT_FORM_EDITOR" | "LONG_FORM_EDITOR" | "THUMBNAIL_DESIGNER";
+type Member = { id?: string; client_id: string; name: string; role: Role; cost: number };
 export function Team() {
   const { data } = useSuspenseQuery(agencyQuery);
   const cache = useQueryClient();
@@ -62,7 +63,7 @@ export function Team() {
     <div className="team-lanes">{data.clients.map((c) => { const lane = data.team.filter((m) => m.client_id === c.id);
       return <section className="glass-panel team-lane" key={c.id} aria-label={`${c.name} lane`}><header><h2>{c.name}</h2><strong>{currency(lane.reduce((s, m) => s + (m.cost ?? 0), 0))}<small>/mo</small></strong></header>
         {lane.length ? lane.map((m) => <div className="comparison-row" key={m.id}><span>{m.name}<small> · {label(m.role || "Member")}</small></span><span>{currency(m.cost)}/mo
-          <Button size="icon" variant="ghost" aria-label={`Edit ${m.name}`} onClick={() => setEdit({ id: m.id, client_id: m.client_id, name: m.name, role: m.role || "LONG_FORM_EDITOR", cost: m.cost ?? 0 })}><Pencil /></Button>
+          <Button size="icon" variant="ghost" aria-label={`Edit ${m.name}`} onClick={() => setEdit({ id: m.id, client_id: m.client_id, name: m.name, role: (m.role as Role) || "LONG_FORM_EDITOR", cost: m.cost ?? 0 })}><Pencil /></Button>
           <Button size="icon" variant="ghost" aria-label={`Remove ${m.name}`} onClick={async () => { try { await remove({ data: { id: m.id } }); await cache.invalidateQueries({ queryKey: ["agency"] }); } catch (e) { err(e); } }}><Trash2 /></Button></span></div>) : <p className="chart-caption">No one assigned</p>}
       </section>; })}</div>
     {edit && <MemberDialog value={edit} onClose={() => setEdit(null)} />}
@@ -76,7 +77,7 @@ function MemberDialog({ value, onClose }: { value: Member; onClose: () => void }
     <form className="agency-form" onSubmit={async (e) => { e.preventDefault(); setBusy(true); try { await save({ data: f }); await cache.invalidateQueries({ queryKey: ["agency"] }); onClose(); } catch (er) { err(er); } finally { setBusy(false); } }}>
       <label>Name<input required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></label>
       <label>Client<select value={f.client_id} onChange={(e) => setF({ ...f, client_id: e.target.value })}>{data.clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-      <div className="form-grid"><label>Role<select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })}>{["CHANNEL_MANAGER", "SHORT_FORM_EDITOR", "LONG_FORM_EDITOR", "THUMBNAIL_DESIGNER"].map((r) => <option key={r} value={r}>{label(r)}</option>)}</select></label>
+      <div className="form-grid"><label>Role<select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value as Role })}>{["CHANNEL_MANAGER", "SHORT_FORM_EDITOR", "LONG_FORM_EDITOR", "THUMBNAIL_DESIGNER"].map((r) => <option key={r} value={r}>{label(r)}</option>)}</select></label>
         <label>Monthly cost<input type="number" min="0" value={f.cost} onChange={(e) => setF({ ...f, cost: Number(e.target.value) })} /></label></div>
       <div className="actions"><Button type="button" variant="outline" onClick={onClose}>Close</Button><Button disabled={busy} type="submit">{busy ? "Saving…" : "Save"}</Button></div>
     </form></DialogContent></Dialog>;
