@@ -1,3 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { AgencyPage, pageHead } from "@/components/agency/pages";
-export const Route = createFileRoute("/")({ head: () => pageHead("Dashboard"), component: () => <AgencyPage title="Dashboard"/> });
+import { pageHead } from "@/components/agency/pages";
+import { Dashboard } from "@/components/agency/dashboard";
+export const Route = createFileRoute("/")({ head: () => pageHead("Dashboard"), component: Dashboard });

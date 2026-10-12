@@ -1,4 +1,5 @@
 # Agency Admin first pass
+- [ ] Match the supplied Base44 screenshot’s dashboard appearance; keep this change presentation-only and verify both themes.
 - [x] Rechecked Prompt 1: exact color tokens, glass blur/saturation, modal radius, typography, both themes and 72px sidebar verified in browser.
 - [x] Prompt 1: themed shell, sidebar, empty agency tables; navigation/theme/schema tests passed.
 - [ ] Prompt 2: client pages implemented; rule tests and signed-out protection pass. Signed-in create/edit/read/delete verification awaits the first user signup. Live analysis awaits YouTube key.
