@@ -98,7 +98,7 @@ export const createClipJob = createServerFn({ method: "POST" }).middleware([requ
     const ins = await context.supabase.from("clip_jobs").insert({
       owner_id: context.userId,
       created_by: context.userId,
-      engine: "internal",
+      engine: "NATIVE",
       engine_job_id: `cz_${crypto.randomUUID()}`,
       status: "QUEUED",
       source_asset_id: data.sourceId,
