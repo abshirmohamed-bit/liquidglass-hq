@@ -82,10 +82,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Agency Admin" },
+      { title: "crayZmundo" },
       { name: "description", content: "Internal workspace for your content agency" },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Agency Admin" },
+      { property: "og:title", content: "crayZmundo" },
       { property: "og:description", content: "Internal workspace for your content agency" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },

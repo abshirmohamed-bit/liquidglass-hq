@@ -12,5 +12,6 @@
 - [x] Prompt 8: Analytics with channel connect (URL or ID), all-clients comparison, per-client metrics, views/watch-time charts, top videos, manual snapshots; 2 rule tests + signed-in flow passed. Live pulls wait on YouTube key.
 - [x] Prompt 9: Calendar collect toggle, live Dashboard cards + stage pills + Daily Objectives, Team lanes + capacity, Leads pipeline, Onboarding guide + agreement download; 4 rule tests + signed-in flow passed.
 - [x] Prompt 10: integrations panel + setup guides + tests, welcome modal, feature banners, owner-created team logins sharing the workspace, read-only Discord stage agent; 5 rule tests + signed-in flow passed. Super Admin password skipped (unsafe); Discord schedule waits on bot token.
-- [ ] After original prompts pass, read and implement the remaining prompts from https://docs.google.com/document/d/1spHExmCxvl-DDgI797gQYkjeZBQt-Jkk3dF3nTYWbK8/edit with a test after each; user approved continuing without further permission.
+- [x] Rename the app to crayZmundo.
+- [ ] crayZmundo Build Pack Prompts 1–12 (second doc), in order, testing after each; user approved continuing without further permission.
 - [ ] Verify account flow and test each prompt before proceeding. Signed-in session now available; paused later prompts for the requested Prompt 1 design review.

@@ -88,7 +88,7 @@ export function WelcomeModal() {
   }, [q.data]);
   const close = () => { localStorage.setItem("agency-welcome-done", "1"); setOpen(false); };
   return <Dialog open={open} onOpenChange={o => !o && close()}><DialogContent className="welcome-modal sm:max-w-xl">
-    <DialogHeader><DialogTitle>Welcome to Agency Admin</DialogTitle><DialogDescription>Connect these in order to unlock every tool.</DialogDescription></DialogHeader>
+    <DialogHeader><DialogTitle>Welcome to crayZmundo</DialogTitle><DialogDescription>Connect these in order to unlock every tool.</DialogDescription></DialogHeader>
     <ol className="welcome-list">{INTEGRATIONS.map(i => { const Icon = icons[i.id]; const s = q.data?.find(x => x.id === i.id);
       return <li key={i.id} className="glass-panel"><Icon size={16}/><span>{i.name}</span>{i.required ? <span className="status-pill tone-blue">Required</span> : i.optional ? <span className="status-pill tone-gray">Optional</span> : null}{s?.status === "CONNECTED" && <Check size={14} className="ml-auto"/>}</li>; })}</ol>
     <Button onClick={() => { close(); navigate({ to: "/settings", search: { guide: "ai" } }); }}>Get Started</Button>
