@@ -7,7 +7,7 @@
 - [x] Prompt 3: Money records/payments, mark-paid saved readback, active-client MRR, margins and collection charts; nine calculation tests and signed-in workflow passed.
 - [x] Prompt 4: live streamed Ideation replies, separate persistent histories, follow-up memory, client tags/context, saved tool results, search, panel toggle, Enter/Shift+Enter, cancellation readback and deletion tested; both themes visually checked and 12 regression tests passed. Live YouTube inspection remains blocked by the missing YouTube key; its unavailable state was tested. Test records removed.
 - [x] Prompt 5: Thumbnails chat with creative direction, client tag, grouped searchable sessions, ratings, variations carousel, overlay editor, connect-key state; 5 rule tests + signed-in flow passed. Live image generation waits on Higgsfield key + secret.
-- [ ] Prompt 6: global training and knowledge.
+- [x] Prompt 6: Settings AI Training (thumbnail + video trainers, global or per-client, add/edit/delete, summary, reset, 1.16M-char paste stored); knowledge injected into Ideation and Thumbnails; 5 rule tests + signed-in flow passed.
 - [ ] Prompt 7: persistent client titles/ideas and training.
 - [ ] Prompt 8: analytics and manual snapshots.
 - [ ] Prompt 9: calendar, dashboard, team, leads and onboarding.
