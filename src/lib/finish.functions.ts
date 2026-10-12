@@ -68,7 +68,7 @@ export const transcribeChunk = createServerFn({ method: "POST" }).middleware([re
     for (;;) {
       const { value, done: end } = await reader.read();
       if (end) break;
-      buf += dec.decode(value, { stream: true });
+      buf += dec.decode(value, { stream: true }).replace(/\r/g, "");
       let i: number;
       while ((i = buf.indexOf("\n\n")) >= 0) {
         const frame = buf.slice(0, i); buf = buf.slice(i + 2);
@@ -79,6 +79,6 @@ export const transcribeChunk = createServerFn({ method: "POST" }).middleware([re
         }
       }
     }
-    if (!(done || deltas).trim()) console.warn("transcribe empty", bytes.length, res.headers.get("content-type"), buf.slice(0, 200));
+    for (const line of buf.split("\n")) { if (!line.startsWith("data:")) continue; try { const ev = JSON.parse(line.slice(5).trim()) as { type?: string; text?: string; delta?: string }; if (ev.type === "transcript.text.done" && ev.text != null) done = ev.text; else if (ev.delta) deltas += ev.delta; } catch { /* not JSON */ } }
     return (done || deltas).trim();
   });
