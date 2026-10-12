@@ -22,7 +22,7 @@ export async function engineClient<T = unknown>(method: Method, path: string, bo
   const send = () => f(`${base}${path.startsWith("/") ? path : `/${path}`}`, {
     method,
     headers: { Authorization: `Bearer ${key}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body !== undefined ? JSON.stringify(body) : null,
   });
   try {
     let res = await send();

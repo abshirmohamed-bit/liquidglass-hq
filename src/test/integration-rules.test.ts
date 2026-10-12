@@ -9,7 +9,7 @@ describe("integration rules", () => {
   });
   it("uses the guide time estimates from the document", () => {
     const m = Object.fromEntries(INTEGRATIONS.map((i) => [i.id, i.minutes]));
-    expect([m.ai, m.higgsfield, m.youtube, m.discord, m.notion]).toEqual([2, 3, 5, 5, 4]);
+    expect(["ai", "higgsfield", "youtube", "discord", "notion"].map((k) => m[k])).toEqual([2, 3, 5, 5, 4]);
   });
   it("uses the exact Build Pack secret names", () => {
     const all = INTEGRATIONS.flatMap((i) => i.secrets);
