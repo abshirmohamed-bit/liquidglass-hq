@@ -86,8 +86,8 @@ export function Library() {
 
   return <div className="page library-page">
     <header className="page-header"><div><h1>Library</h1><p className="page-subtitle">Your uploads and imported sources.</p></div></header>
-    {acct.data && !connected && <section className="glass-panel notice" role="status"><p>Video uploads are stored in the app. Link imports, subtitles and the starter packs will be available once you connect the crayZmundo Engine</p><details open><summary>Here’s how</summary><p>Deploy the crayZmundo Engine using the steps in the Engine tab of your build document, then open <Link to="/settings">Settings</Link>, enter the Engine’s web address and add its API key. Use “Test” on the Engine card to confirm it’s healthy.</p></details></section>}
-    <StatusStrip account={acct.data?.account ?? null} />
+
+
     <UploadCard disabled={false} linkDisabled={!connected} onFiles={(files, sub) => files.forEach((f) => uploadOne(f, "UPLOAD", [], sub))} onImported={async (id, sub) => { if (id && sub) { try { await uploadSubtitle(sub, id); } catch (e) { err(e); } } await refresh(); }} />
     {progress.length > 0 && <section className="glass-panel lib-progress">{progress.map((p) => <div key={p.name} className="lib-progress-row"><span>{p.name}</span><div className="lib-bar"><i style={{ width: `${p.pct}%` }} /></div><span>{p.error ? <>{p.error} <Button size="sm" variant="outline" onClick={p.retry}>Resume</Button></> : `${p.pct}%`}</span></div>)}</section>}
     <nav className="lib-tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>)}</nav>
@@ -119,10 +119,6 @@ function UploadCard({ disabled, linkDisabled, onFiles, onImported }: { disabled:
     onDrop={(e) => { e.preventDefault(); setDrag(false); if (!disabled) take(e.dataTransfer.files); }}>
     <button type="button" className="lib-drop" disabled={disabled} onClick={() => input.current?.click()}><Upload /><span>Drag and drop files, or click to browse</span></button>
     <input ref={input} type="file" multiple hidden aria-label="Upload files" onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
-    <div className="lib-link">
-      <input aria-label="Paste a link" placeholder="Paste a link (YouTube, Rumble, Vimeo, Twitch, Facebook, X, TikTok, Instagram, Drive, Dropbox, Zoom)" value={url} onChange={(e) => setUrl(e.target.value)} disabled={linkDisabled} />
-      <Button disabled={linkDisabled || busy || !url.trim()} onClick={doImport}><Link2 />Import</Button>
-    </div>
     <label className="lib-check"><input type="checkbox" checked={rights} onChange={(e) => setRights(e.target.checked)} disabled={disabled} />I own this footage or have the rights to clip it</label>
     <label className="lib-check">Subtitles (optional .srt or .vtt): <input type="file" accept=".srt,.vtt" disabled={disabled} onChange={(e) => setSub(e.target.files?.[0])} /></label>
     <p className="caption muted">{LIMITS_TEXT}</p>
@@ -201,7 +197,7 @@ function AssetTab({ tab, rows, refresh, connected, upload }: { tab: Exclude<Tab,
         <RenameTrash id={a.id} name={a.name} table="assets" refresh={refresh} />
       </div>
     </article>)}</div> : <Empty text={`No ${tab.toLowerCase()} yet.`} />}
-    {(source === "MUSIC" || source === "SFX") && connected && <section className="glass-panel lib-catalog"><h2>Engine starter pack</h2>{catalog.data?.length ? <ul>{catalog.data.map((m) => <li key={m.id}><span>{m.name}</span>{m.url ? <audio src={m.url} controls /> : null}{m.licence ? <a href={m.licence} target="_blank" rel="noreferrer">Licence</a> : null}</li>)}</ul> : <p className="muted">No bundled tracks returned by the Engine.</p>}</section>}
+    {false && <section className="glass-panel lib-catalog"><h2>Engine starter pack</h2>{catalog.data?.length ? <ul>{catalog.data.map((m) => <li key={m.id}><span>{m.name}</span>{m.url ? <audio src={m.url} controls /> : null}{m.licence ? <a href={m.licence} target="_blank" rel="noreferrer">Licence</a> : null}</li>)}</ul> : <p className="muted">No bundled tracks returned by the Engine.</p>}</section>}
   </>;
 }
 
