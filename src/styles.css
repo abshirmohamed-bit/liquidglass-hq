@@ -277,8 +277,8 @@ h1 { font-size: 32px; font-weight: 600; margin: 0; line-height: 1.25; letter-spa
 .onboarding-guide { display:flex;flex-direction:column;gap:14px;padding-left:20px;list-style:decimal; } .onboarding-guide h3 { font-size:17px;font-weight:600; }
 
 /* Integrations, setup guides, team logins */
-.tone-gray { color:var(--muted-foreground);background:color-mix(in oklab,var(--muted-foreground) 14%,transparent); }
-.tone-red { color:var(--destructive);background:color-mix(in oklab,var(--destructive) 14%,transparent); }
+.status-pill.tone-gray { color:var(--muted-foreground);background:color-mix(in oklab,var(--muted-foreground) 14%,transparent); }
+.status-pill.tone-red { color:var(--destructive);background:color-mix(in oklab,var(--destructive) 14%,transparent); }
 .settings-section { margin-top:40px;display:flex;flex-direction:column;gap:14px; }
 .settings-section h2 { font-size:21px;font-weight:600;letter-spacing:-0.02em; }
 .caption { font-size:13px;color:var(--muted-foreground); }
@@ -303,3 +303,4 @@ h1 { font-size: 32px; font-weight: 600; margin: 0; line-height: 1.25; letter-spa
 .team-login-list { display:flex;flex-direction:column;gap:8px;list-style:none;padding:0; }
 .team-login-list li { display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:12px;font-size:14px; }
 .team-login-list li button { margin-left:auto; }
+.page-banner { padding:24px 32px 0; } .page-banner:empty { display:none; } .page-banner .integration-banner { margin-bottom:0; }
