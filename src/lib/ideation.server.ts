@@ -43,7 +43,7 @@ export async function handleIdeation(request: Request) {
     channel: tool({ description: 'Fetch current YouTube channel uploads, retaining only videos at least four minutes long.', inputSchema: z.object({ url: z.string() }).strict(), strict: true, execute: async ({ url }) => fetchIdeationChannel(url) }),
   };
   const call = createResponsesCall(request, { baseURL: 'https://ai.gateway.lovable.dev/v1', apiKey: key, model: 'openai/gpt-6-astra', chat: true, tools }, await convertToModelMessages(messages), system);
-  return call.chatResponse({ originalMessages: messages, generateMessageId: generateId, onFinish: async ({ responseMessage }) => { await save(responseMessage); }, onError: error => error instanceof Error ? error.message : 'The response could not finish.' }, async (reason) => {
+  return call.chatResponse({ originalMessages: messages, generateMessageId: generateId, onFinish: async ({ responseMessage, isAborted }) => { if (!isAborted) await save(responseMessage); }, onError: error => error instanceof Error ? error.message : 'The response could not finish.' }, async (reason) => {
     const result = await supabase.from('ideation_threads').update({ ai_block_reason: reason }).eq('id', thread.data.id);
     if (result.error) console.error('Could not persist AI access restriction:', result.error.message);
   });

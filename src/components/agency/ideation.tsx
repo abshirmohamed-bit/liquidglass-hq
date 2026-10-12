@@ -15,6 +15,7 @@ import { ideationQuery } from '@/lib/ideation-query';
 import { agencyQuery } from '@/lib/agency-query';
 import { createIdeationThread, deleteIdeationThread } from '@/lib/ideation.functions';
 import { supabase } from '@/integrations/supabase/client';
+import type { Json } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
 
 export function Ideation({ threadId, initialMessages = [] }: { threadId?: string; initialMessages?: UIMessage[] }) {
@@ -58,8 +59,19 @@ function IdeationChat({ threadId, initialMessages }: { threadId: string; initial
     const { data } = await supabase.auth.getSession();
     return data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {};
   } }), [threadId]);
-  const { messages, sendMessage, status, stop, error } = useChat({ id: threadId, messages: initialMessages, transport, onError: error => toast.error(error.message), onFinish: () => textarea.current?.focus() });
+  const cancelSaved = useRef(false);
+  const { messages, sendMessage, status, stop, error } = useChat({ id: threadId, messages: initialMessages, transport, onError: error => toast.error(error.message), onFinish: async ({ message, isAbort }) => {
+    if (isAbort && message?.id && !cancelSaved.current) {
+      cancelSaved.current = true;
+      const parts = [...message.parts, { type: 'text' as const, text: '_Stopped._' }];
+      const content = parts.filter(part => part.type === 'text').map(part => part.text).join('\n');
+      const { error: saveError } = await supabase.from('ideation_messages').upsert({ thread_id: threadId, sdk_message_id: message.id, role: 'assistant', content, parts: parts as unknown as Json }, { onConflict: 'thread_id,sdk_message_id' });
+      if (saveError) toast.error(`Could not save stopped response: ${saveError.message}`);
+    }
+    textarea.current?.focus();
+  } });
   const busy = status === 'submitted' || status === 'streaming';
+  useEffect(() => { if (busy) cancelSaved.current = false; }, [busy]);
   useEffect(() => {
     textarea.current?.focus();
     const key = `ideation-draft-${threadId}`;
