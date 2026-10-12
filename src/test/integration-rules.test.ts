@@ -4,7 +4,7 @@ import { INTEGRATIONS, integrationStatus, matchClientByServerName, parseStage, S
 describe("integration rules", () => {
   it("lists integrations in the recommended order with AI required", () => {
     expect(INTEGRATIONS.map((i) => i.id)).toEqual(["ai", "higgsfield", "youtube", "discord", "notion"]);
-    expect(INTEGRATIONS[0].required).toBe(true);
+    expect(INTEGRATIONS[0]?.required).toBe(true);
     expect(INTEGRATIONS.find((i) => i.id === "notion")!.optional).toBe(true);
   });
   it("uses the guide time estimates from the document", () => {

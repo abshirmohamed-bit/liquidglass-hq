@@ -41,7 +41,7 @@ export function SetupGuide({ id, open, onOpenChange }: { id: IntegrationId | nul
   </SheetContent></Sheet>;
 }
 
-export function IntegrationsPanel({ initialGuide }: { initialGuide?: IntegrationId }) {
+export function IntegrationsPanel({ initialGuide }: { initialGuide?: IntegrationId | undefined }) {
   const q = useQuery(integrationsQuery); const cache = useQueryClient();
   const test = useServerFn(testIntegration); const disconnect = useServerFn(disconnectIntegration); const sync = useServerFn(runDiscordSync);
   const [guide, setGuide] = useState<IntegrationId | null>(initialGuide ?? null);
