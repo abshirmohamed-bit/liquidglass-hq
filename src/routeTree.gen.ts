@@ -33,6 +33,7 @@ import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_auth
 import { Route as AuthenticatedIdeationIndexRouteImport } from './routes/_authenticated.ideation.index'
 import { Route as AuthenticatedIdeationThreadIdRouteImport } from './routes/_authenticated.ideation.$threadId'
 import { Route as ApiPublicHooksDiscordSyncRouteImport } from './routes/api/public/hooks/discord-sync'
+import { Route as ApiPublicHooksEngineRouteImport } from './routes/api/public/hooks/engine'
 import { Route as ApiPublicHooksLibraryPurgeRouteImport } from './routes/api/public/hooks/library-purge'
 
 const IndexRoute = IndexRouteImport.update({
@@ -159,6 +160,11 @@ const ApiPublicHooksDiscordSyncRoute =
     path: '/api/public/hooks/discord-sync',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksEngineRoute = ApiPublicHooksEngineRouteImport.update({
+  id: '/api/public/hooks/engine',
+  path: '/api/public/hooks/engine',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicHooksLibraryPurgeRoute =
   ApiPublicHooksLibraryPurgeRouteImport.update({
     id: '/api/public/hooks/library-purge',
@@ -190,6 +196,7 @@ export interface FileRoutesByFullPath {
   '/clients/': typeof AuthenticatedClientsIndexRoute
   '/ideation/': typeof AuthenticatedIdeationIndexRoute
   '/api/public/hooks/discord-sync': typeof ApiPublicHooksDiscordSyncRoute
+  '/api/public/hooks/engine': typeof ApiPublicHooksEngineRoute
   '/api/public/hooks/library-purge': typeof ApiPublicHooksLibraryPurgeRoute
 }
 export interface FileRoutesByTo {
@@ -216,6 +223,7 @@ export interface FileRoutesByTo {
   '/clients': typeof AuthenticatedClientsIndexRoute
   '/ideation': typeof AuthenticatedIdeationIndexRoute
   '/api/public/hooks/discord-sync': typeof ApiPublicHooksDiscordSyncRoute
+  '/api/public/hooks/engine': typeof ApiPublicHooksEngineRoute
   '/api/public/hooks/library-purge': typeof ApiPublicHooksLibraryPurgeRoute
 }
 export interface FileRoutesById {
@@ -244,6 +252,7 @@ export interface FileRoutesById {
   '/_authenticated/clients/': typeof AuthenticatedClientsIndexRoute
   '/_authenticated/ideation/': typeof AuthenticatedIdeationIndexRoute
   '/api/public/hooks/discord-sync': typeof ApiPublicHooksDiscordSyncRoute
+  '/api/public/hooks/engine': typeof ApiPublicHooksEngineRoute
   '/api/public/hooks/library-purge': typeof ApiPublicHooksLibraryPurgeRoute
 }
 export interface FileRouteTypes {
@@ -272,6 +281,7 @@ export interface FileRouteTypes {
     | '/clients/'
     | '/ideation/'
     | '/api/public/hooks/discord-sync'
+    | '/api/public/hooks/engine'
     | '/api/public/hooks/library-purge'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -298,6 +308,7 @@ export interface FileRouteTypes {
     | '/clients'
     | '/ideation'
     | '/api/public/hooks/discord-sync'
+    | '/api/public/hooks/engine'
     | '/api/public/hooks/library-purge'
   id:
     | '__root__'
@@ -325,6 +336,7 @@ export interface FileRouteTypes {
     | '/_authenticated/clients/'
     | '/_authenticated/ideation/'
     | '/api/public/hooks/discord-sync'
+    | '/api/public/hooks/engine'
     | '/api/public/hooks/library-purge'
   fileRoutesById: FileRoutesById
 }
@@ -335,6 +347,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   ApiIdeationRoute: typeof ApiIdeationRoute
   ApiPublicHooksDiscordSyncRoute: typeof ApiPublicHooksDiscordSyncRoute
+  ApiPublicHooksEngineRoute: typeof ApiPublicHooksEngineRoute
   ApiPublicHooksLibraryPurgeRoute: typeof ApiPublicHooksLibraryPurgeRoute
 }
 
@@ -508,6 +521,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksDiscordSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/engine': {
+      id: '/api/public/hooks/engine'
+      path: '/api/public/hooks/engine'
+      fullPath: '/api/public/hooks/engine'
+      preLoaderRoute: typeof ApiPublicHooksEngineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/hooks/library-purge': {
       id: '/api/public/hooks/library-purge'
       path: '/api/public/hooks/library-purge'
@@ -571,6 +591,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   ApiIdeationRoute: ApiIdeationRoute,
   ApiPublicHooksDiscordSyncRoute: ApiPublicHooksDiscordSyncRoute,
+  ApiPublicHooksEngineRoute: ApiPublicHooksEngineRoute,
   ApiPublicHooksLibraryPurgeRoute: ApiPublicHooksLibraryPurgeRoute,
 }
 export const routeTree = rootRouteImport
