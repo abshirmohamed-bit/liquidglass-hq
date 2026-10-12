@@ -1,5 +1,5 @@
 # Agency Admin first pass
-- [ ] Recheck Prompt 1 against the exact palette, glass treatments, typography and both themes before Prompt 2 testing.
+- [x] Rechecked Prompt 1: exact color tokens, glass blur/saturation, modal radius, typography, both themes and 72px sidebar verified in browser.
 - [x] Prompt 1: themed shell, sidebar, empty agency tables; navigation/theme/schema tests passed.
 - [ ] Prompt 2: client pages implemented; rule tests and signed-out protection pass. Signed-in create/edit/read/delete verification awaits the first user signup. Live analysis awaits YouTube key.
 - [ ] Prompt 3: money and shared financial calculations.
@@ -10,4 +10,4 @@
 - [ ] Prompt 8: analytics and manual snapshots.
 - [ ] Prompt 9: calendar, dashboard, team, leads and onboarding.
 - [ ] Prompt 10: secure integrations, team access and Discord tracking.
-- [ ] Verify account flow and test each prompt before proceeding. Blocker: no auth users exist; session minting failed, so the user must sign in or create the first account in preview.
+- [ ] Verify account flow and test each prompt before proceeding. Signed-in session now available; paused later prompts for the requested Prompt 1 design review.
