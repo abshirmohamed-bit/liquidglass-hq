@@ -35,7 +35,7 @@ export const INTEGRATIONS: Integration[] = [
       { title: "Enable MESSAGE CONTENT INTENT", body: "Bot tab → Privileged Gateway Intents → turn on MESSAGE CONTENT INTENT → Save." },
       { title: "Copy the bot token", body: "Bot tab → Reset Token → copy it." },
       { title: "Invite with read-only permissions", body: "OAuth2 → URL Generator → scope 'bot' → permissions View Channels and Read Message History only. Open the link and add the bot to each client's server.", code: "permissions=66560" },
-      { title: "Name servers after clients", body: "Each Discord server name must match the client's name in Agency Admin — that's how messages are matched." },
+      { title: "Name servers after clients", body: "Each Discord server name must match the client's name in crayZmundo — that's how messages are matched." },
       addKey("DISCORD_BOT_TOKEN"),
       { title: "Test", body: "Click Test Connection to list the servers the bot can read." },
     ] },
