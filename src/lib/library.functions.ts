@@ -171,3 +171,15 @@ export const engineCatalog = createServerFn({ method: "GET" }).middleware([requi
     const d = r.data as { items?: M[]; data?: M[] } | M[];
     return (Array.isArray(d) ? d : d.items ?? d.data ?? []).slice(0, 200).map((m, i) => ({ id: String(m.id ?? i), name: m.name ?? m.title ?? "Track", url: m.url ?? null, licence: m.license_url ?? m.licence_url ?? null }));
   });
+
+/** Internal engine upload: the file is already in app storage; record it as a READY source. */
+export const nativeSource = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ name: z.string().min(1).max(300), path: z.string().min(1).max(400), thumbPath: z.string().max(400).nullable(), sizeBytes: z.number().int().positive(), durationMs: z.number().int().positive(), width: z.number().int().min(0), height: z.number().int().min(0) }))
+  .handler(async ({ context, data }) => {
+    const bad = validateUpload(data.name, data.sizeBytes); if (bad) throw new Error(bad);
+    const ws = (await context.supabase.rpc("workspace_of", { _uid: context.userId })).data as string;
+    if (!data.path.startsWith(`${ws}/`) || (data.thumbPath && !data.thumbPath.startsWith(`${ws}/`))) throw new Error("Invalid file location.");
+    const r = await context.supabase.from("source_assets").insert({ name: data.name, kind: "UPLOAD", public_url: `storage://media/${data.path}`, thumbnail_url: data.thumbPath ? `storage://media/${data.thumbPath}` : null, size_bytes: data.sizeBytes, duration_ms: data.durationMs, width: data.width, height: data.height, source_height: data.height, quality_warning: data.height > 0 && data.height < 720, status: "READY" }).select("id").single();
+    if (r.error) throw new Error(r.error.message);
+    return r.data.id;
+  });
