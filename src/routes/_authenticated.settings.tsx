@@ -15,7 +15,7 @@ export const Route = createFileRoute("/_authenticated/settings")({
         <header className="page-header"><div><h1>Settings</h1><p className="page-subtitle">Connect your tools, manage team logins, and teach the AI what good looks like.</p></div></header>
         <IntegrationsPanel initialGuide={guide} />
         <TeamAccess />
-        <section className="settings-section"><h2>AI Training</h2><AiTraining /></section>
+        <section className="settings-section"><AiTraining /></section>
       </div>
     );
   },
