@@ -21,3 +21,4 @@
 - Persist chat UI message parts in owner-scoped records and derive the active conversation from its page URL; this preserves reasoning and prevents histories crossing threads.
 - Higgsfield image generation runs only in server code with key+secret from managed secrets; model/aspect/resolution constants live in src/lib/thumbnail-rules.ts so tests pin them.
 - Client title/idea results persist one row per client+kind in client_suggestions, replaced only on explicit regenerate; avoids re-generating on every visit.
+- Operational rules (capacity limit, lead pipeline totals, month grid, revenue this month) live in src/lib/ops-rules.ts; the dashboard reads shared agency + ops queries client-side because / is a public route.
