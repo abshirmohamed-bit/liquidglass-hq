@@ -12,4 +12,6 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // Pre-bundle zod at startup; discovering it lazily wedged the dev dependency optimizer.
+  vite: { optimizeDeps: { include: ["zod"] } },
 });
