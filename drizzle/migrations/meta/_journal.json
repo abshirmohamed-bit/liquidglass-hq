@@ -36,6 +36,13 @@
       "when": 1791812558975,
       "tag": "0004_daily_objectives",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791816972914,
+      "tag": "0005_team_workspace_access",
+      "breakpoints": true
     }
   ]
 }
