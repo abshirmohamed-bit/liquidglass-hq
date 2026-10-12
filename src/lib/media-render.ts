@@ -1,0 +1,119 @@
+/**
+ * Browser-side media work for the internal crayZmundo engine: ffmpeg.wasm is
+ * lazy-loaded only on demand (never during SSR). Files are cached per URL for
+ * the session so trimming and exporting the same source download it once.
+ */
+import { supabase } from "@/integrations/supabase/client";
+
+type FF = import("@ffmpeg/ffmpeg").FFmpeg;
+let ffPromise: Promise<FF> | null = null;
+const written = new Map<string, string>();
+
+async function ffmpeg(): Promise<FF> {
+  if (!ffPromise) ffPromise = (async () => {
+    const [{ FFmpeg }, { toBlobURL }] = await Promise.all([import("@ffmpeg/ffmpeg"), import("@ffmpeg/util")]);
+    const ff = new FFmpeg();
+    const base = "https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm";
+    await ff.load({ coreURL: await toBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"), wasmURL: await toBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm") });
+    return ff;
+  })();
+  try { return await ffPromise; } catch (e) { ffPromise = null; throw e; }
+}
+
+async function input(ff: FF, url: string, onStatus?: (s: string) => void): Promise<string> {
+  const have = written.get(url);
+  if (have) return have;
+  onStatus?.("Downloading source…");
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Could not download the source video.");
+  const buf = new Uint8Array(await res.arrayBuffer());
+  const name = `src${written.size}.mp4`;
+  await ff.writeFile(name, buf);
+  written.set(url, name);
+  return name;
+}
+
+const secs = (ms: number) => (ms / 1000).toFixed(3);
+
+/** Peaks (0..1) for the waveform strip between start and end. */
+export async function waveform(url: string, startMs: number, endMs: number, bars = 160, onStatus?: (s: string) => void): Promise<number[]> {
+  const ff = await ffmpeg();
+  const src = await input(ff, url, onStatus);
+  onStatus?.("Reading audio…");
+  await ff.exec(["-ss", secs(startMs), "-i", src, "-t", secs(endMs - startMs), "-vn", "-ac", "1", "-ar", "4000", "-f", "s16le", "wave.raw"]);
+  const raw = (await ff.readFile("wave.raw")) as Uint8Array;
+  await ff.deleteFile("wave.raw").catch(() => {});
+  const pcm = new Int16Array(raw.buffer, raw.byteOffset, Math.floor(raw.byteLength / 2));
+  const per = Math.max(1, Math.floor(pcm.length / bars));
+  const out: number[] = [];
+  for (let b = 0; b < bars; b++) { let m = 0; for (let i = b * per; i < Math.min(pcm.length, (b + 1) * per); i++) m = Math.max(m, Math.abs(pcm[i]!)); out.push(m / 32768); }
+  return out;
+}
+
+function probe(blob: Blob): Promise<{ w: number; h: number; sec: number }> {
+  return new Promise((resolve) => {
+    const v = document.createElement("video"); v.preload = "metadata"; v.muted = true;
+    const u = URL.createObjectURL(blob);
+    v.onloadedmetadata = () => { resolve({ w: v.videoWidth, h: v.videoHeight, sec: v.duration }); URL.revokeObjectURL(u); };
+    v.onerror = () => { resolve({ w: 0, h: 0, sec: 0 }); URL.revokeObjectURL(u); };
+    v.src = u;
+  });
+}
+
+export type RenderJob = { clipId: string; exportId: string; aspect: string | null; sourceUrl: string | null; segments: { start_ms: number; end_ms: number }[]; w: number; h: number };
+export type RenderResult = { path: string; thumbPath: string | null; width: number; height: number; size: number; lengthSec: number };
+
+/** Cuts the segments, crops/scales to the export size, joins them, uploads to storage. */
+export async function renderClip(workspace: string, job: RenderJob, onStatus: (s: string) => void): Promise<RenderResult> {
+  if (!job.sourceUrl) throw new Error("The source video isn't available.");
+  const ff = await ffmpeg();
+  const src = await input(ff, job.sourceUrl, onStatus);
+  const onProg = ({ progress }: { progress: number }) => onStatus(`Rendering ${Math.max(0, Math.min(100, Math.round(progress * 100)))}%`);
+  ff.on("progress", onProg);
+  try {
+    const parts: string[] = [];
+    const vf = `scale=${job.w}:${job.h}:force_original_aspect_ratio=increase,crop=${job.w}:${job.h},setsar=1`;
+    for (const [i, s] of job.segments.entries()) {
+      const out = `part${i}.mp4`;
+      const code = await ff.exec(["-ss", secs(s.start_ms), "-i", src, "-t", secs(s.end_ms - s.start_ms), "-vf", vf, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-ac", "2", "-movflags", "+faststart", out]);
+      if (code !== 0) throw new Error("The render failed.");
+      parts.push(out);
+    }
+    let final = parts[0]!;
+    if (parts.length > 1) {
+      await ff.writeFile("list.txt", new TextEncoder().encode(parts.map((p) => `file '${p}'`).join("\n")));
+      if (await ff.exec(["-f", "concat", "-safe", "0", "-i", "list.txt", "-c", "copy", "-movflags", "+faststart", "merged.mp4"]) !== 0) throw new Error("Could not join the clips.");
+      final = "merged.mp4";
+    }
+    await ff.exec(["-ss", "0.5", "-i", final, "-frames:v", "1", "-vf", "scale=360:-2", "thumb.jpg"]);
+    const video = (await ff.readFile(final)) as Uint8Array;
+    let thumb: Uint8Array | null = null; try { thumb = (await ff.readFile("thumb.jpg")) as Uint8Array; } catch { thumb = null; }
+    for (const f of [...parts, "merged.mp4", "list.txt", "thumb.jpg"]) await ff.deleteFile(f).catch(() => {});
+    const blob = new Blob([video.slice().buffer], { type: "video/mp4" });
+    const meta = await probe(blob);
+    onStatus("Uploading…");
+    const path = `${workspace}/exports/${job.clipId}-${job.exportId}.mp4`;
+    const up = await supabase.storage.from("media").upload(path, blob, { contentType: "video/mp4", upsert: true });
+    if (up.error) throw new Error(up.error.message);
+    let thumbPath: string | null = null;
+    if (thumb) { const tp = `${workspace}/exports/${job.clipId}-${job.exportId}.jpg`; const t = await supabase.storage.from("media").upload(tp, new Blob([thumb.slice().buffer], { type: "image/jpeg" }), { contentType: "image/jpeg", upsert: true }); if (!t.error) thumbPath = tp; }
+    return { path, thumbPath, width: meta.w || job.w, height: meta.h || job.h, size: blob.size, lengthSec: meta.sec || job.segments.reduce((n, s) => n + (s.end_ms - s.start_ms), 0) / 1000 };
+  } finally { ff.off("progress", onProg); }
+}
+
+/** Reads duration/size and a thumbnail from a local video file before upload. */
+export function inspectVideo(file: File): Promise<{ durationMs: number; width: number; height: number; thumb: Blob | null }> {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement("video"); v.preload = "auto"; v.muted = true; v.playsInline = true;
+    const u = URL.createObjectURL(file);
+    v.onloadedmetadata = () => { v.currentTime = Math.min(1, v.duration / 2); };
+    v.onseeked = () => {
+      const c = document.createElement("canvas"); const scale = 360 / Math.max(1, v.videoWidth);
+      c.width = 360; c.height = Math.round(v.videoHeight * scale);
+      c.getContext("2d")?.drawImage(v, 0, 0, c.width, c.height);
+      c.toBlob((b) => { resolve({ durationMs: Math.round(v.duration * 1000), width: v.videoWidth, height: v.videoHeight, thumb: b }); URL.revokeObjectURL(u); }, "image/jpeg", 0.8);
+    };
+    v.onerror = () => { URL.revokeObjectURL(u); reject(new Error("This video can't be read in the browser.")); };
+    v.src = u;
+  });
+}

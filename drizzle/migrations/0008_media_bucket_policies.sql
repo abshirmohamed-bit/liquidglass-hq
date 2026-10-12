@@ -1,0 +1,4 @@
+CREATE POLICY "media_ws_read" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'media' AND (storage.foldername(name))[1] = public.workspace_of(auth.uid())::text);
+CREATE POLICY "media_ws_insert" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'media' AND (storage.foldername(name))[1] = public.workspace_of(auth.uid())::text);
+CREATE POLICY "media_ws_update" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'media' AND (storage.foldername(name))[1] = public.workspace_of(auth.uid())::text);
+CREATE POLICY "media_ws_delete" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'media' AND (storage.foldername(name))[1] = public.workspace_of(auth.uid())::text);

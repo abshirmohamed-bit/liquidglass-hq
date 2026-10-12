@@ -72,7 +72,8 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
         duration_ms: typeof c["duration_ms"] === "number" ? Math.round(c["duration_ms"]) : null,
         thumbnail_url: typeof c["thumbnail_url"] === "string" ? c["thumbnail_url"] : null,
         score: typeof c["score"] === "number" ? c["score"] : null,
-        score_breakdown: (c["score_breakdown"] ?? null) as never,
+        score_breakdown: (c["score_breakdown"] ?? c["grades"] ?? null) as never,
+        scene_analysis: typeof c["scene_analysis"] === "string" ? c["scene_analysis"] : null,
         reason: typeof c["reason"] === "string" ? c["reason"] : null,
         alternate_of: typeof c["alternate_of"] === "string" ? c["alternate_of"] : null,
         aspect: job.aspect, layout: firstLayout, status: "FOUND", last_event_id: ev.id,
@@ -90,6 +91,7 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
     if (!job) return "ignored";
     if (job.last_event_id === ev.id) return "duplicate";
     await db.from("clip_jobs").update({ status: "FAILED", error: String(data["error"] ?? "The clip job failed"), stage: null, last_event_id: ev.id }).eq("id", job.id);
+    await notify(db, job.created_by, "JOB_FAILED", "Clip job failed", String(data["error"] ?? "The clip job failed"), `/review?job=${job.id}`);
     await audit(db, job.owner_id, "engine.autoclip.failed", "clip_jobs", job.id, { error: data["error"] ?? null, event_id: ev.id });
     return "processed";
   }
@@ -109,6 +111,32 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
       }).eq("id", row.id);
     }
     await audit(db, row.owner_id, `engine.${ev.type}`, "source_assets", row.id, { event_id: ev.id });
+    return "processed";
+  }
+
+  if (ev.type === "export.completed" || ev.type === "export.failed") {
+    const clip = (await db.from("clips").select("*").eq("engine_export_id", String(data["export_id"] ?? "")).maybeSingle()).data;
+    if (!clip) return "ignored";
+    if (clip.last_event_id === ev.id) return "duplicate";
+    const link = clip.job_id ? `/review?job=${clip.job_id}` : "/review";
+    const people = [...new Set([clip.created_by, clip.assignee].filter(Boolean) as string[])];
+    if (ev.type === "export.failed") {
+      await db.from("clips").update({ status: "FAILED", error: String(data["error"] ?? "Export failed"), last_event_id: ev.id }).eq("id", clip.id);
+      for (const u of people) await db.from("notifications").insert({ owner_id: clip.owner_id, user_id: u, type: "EXPORT_FAILED", title: "Export failed", body: `${clip.title ?? "A clip"}: ${String(data["error"] ?? "Export failed")}`, link, read: false });
+    } else {
+      const a = (data["asset"] ?? {}) as Record<string, unknown>;
+      const num = (k: string) => (typeof a[k] === "number" ? Math.round(a[k] as number) : null);
+      const url = typeof a["url"] === "string" ? a["url"] : null;
+      const edits = { ...((clip.edits as object | null) ?? {}), exported: { start_ms: clip.start_ms, end_ms: clip.end_ms } };
+      await db.from("clips").update({
+        status: "READY", video_url: url, width: num("width"), height: num("height"), size_bytes: num("size"),
+        duration_ms: typeof a["length"] === "number" ? Math.round((a["length"] as number) * 1000) : clip.duration_ms,
+        thumbnail_url: typeof a["thumbnail_url"] === "string" ? a["thumbnail_url"] : clip.thumbnail_url, error: null, edits: edits as never, last_event_id: ev.id,
+      }).eq("id", clip.id);
+      await db.from("assets").insert({ owner_id: clip.owner_id, created_by: clip.created_by, type: "VIDEO", source: "EXPORT", name: clip.title ?? "Clip", url, size_bytes: num("size"), duration_ms: typeof a["length"] === "number" ? Math.round((a["length"] as number) * 1000) : null, status: "READY", tags: [] as never });
+      for (const u of people) await db.from("notifications").insert({ owner_id: clip.owner_id, user_id: u, type: "EXPORT_READY", title: "Clip exported", body: `${clip.title ?? "A clip"} is ready to download.`, link, read: false });
+    }
+    await audit(db, clip.owner_id, `engine.${ev.type}`, "clips", clip.id, { event_id: ev.id });
     return "processed";
   }
 

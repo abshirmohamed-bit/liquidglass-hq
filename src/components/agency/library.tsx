@@ -4,7 +4,9 @@ import { Link } from "@tanstack/react-router";
 import { Upload, Link2, Trash2, RotateCcw, Pencil, Scissors, Film, FileText, Send, Wand2, Star } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { engineAccount, listLibrary, uploadStart, uploadComplete, engineImport, pollImports, renameItem, trashItem, restoreItem, deleteForever, setBrollMeta, engineCatalog, attachSubtitles } from "@/lib/library.functions";
+import { engineAccount, listLibrary, uploadStart, uploadComplete, engineImport, pollImports, renameItem, trashItem, restoreItem, deleteForever, setBrollMeta, engineCatalog, attachSubtitles, nativeSource } from "@/lib/library.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { inspectVideo } from "@/lib/media-render";
 import { LIMITS_TEXT, validateUpload, kindOf, formatBytes, formatDuration, resolutionBadge, upscaleNote, BROLL_TAGS, ASSET_TAB_SOURCE } from "@/lib/library-rules";
 
 const TABS = ["Sources", "Finished clips", "Projects", "B-roll", "Music", "Sound effects", "Images", "Fonts", "Trash"] as const;
@@ -40,6 +42,23 @@ export function Library() {
     const bad = validateUpload(file.name, file.size); if (bad) { toast.error(`${file.name}: ${bad}`); return; }
     const set = (p: Partial<Progress>) => setProgress((all) => all.map((x) => (x.name === file.name ? { ...x, ...p } : x)));
     setProgress((all) => [...all.filter((x) => x.name !== file.name), { name: file.name, pct: 0 }]);
+    if (!connected && source === "UPLOAD" && kindOf(file.name) === "VIDEO") {
+      // Internal engine: store the file in the app's own storage and record it READY.
+      try {
+        const meta = await inspectVideo(file);
+        const ws = (await supabase.rpc("workspace_of", { _uid: (await supabase.auth.getUser()).data.user!.id })).data as string;
+        const id = crypto.randomUUID(); const ext = file.name.split(".").pop() ?? "mp4";
+        const path = `${ws}/sources/${id}.${ext}`;
+        set({ pct: 5 });
+        const up = await supabase.storage.from("media").upload(path, file, { contentType: file.type || "video/mp4" });
+        if (up.error) throw new Error(up.error.message);
+        let thumbPath: string | null = null;
+        if (meta.thumb) { const tp = `${ws}/sources/${id}.jpg`; if (!(await supabase.storage.from("media").upload(tp, meta.thumb, { contentType: "image/jpeg" })).error) thumbPath = tp; }
+        await nativeSource({ data: { name: file.name, path, thumbPath, sizeBytes: file.size, durationMs: meta.durationMs, width: meta.width, height: meta.height } });
+        setProgress((all) => all.filter((x) => x.name !== file.name)); toast.success(`${file.name} is ready`);
+      } catch (e) { setProgress((all) => all.filter((x) => x.name !== file.name)); err(e); }
+      await refresh(); return;
+    }
     try {
       const s = await uploadStart({ data: { filename: file.name, contentType: file.type || "application/octet-stream", sizeBytes: file.size, source, tags } });
       await refresh();
@@ -67,9 +86,9 @@ export function Library() {
 
   return <div className="page library-page">
     <header className="page-header"><div><h1>Library</h1><p className="page-subtitle">Your uploads and imported sources.</p></div></header>
-    {acct.data && !connected && <section className="glass-panel notice" role="status"><p>This tool will be available once you connect the crayZmundo Engine</p><details open><summary>Here’s how</summary><p>Deploy the crayZmundo Engine using the steps in the Engine tab of your build document, then open <Link to="/settings">Settings</Link>, enter the Engine’s web address and add its API key. Use “Test” on the Engine card to confirm it’s healthy.</p></details></section>}
+    {acct.data && !connected && <section className="glass-panel notice" role="status"><p>Video uploads are stored in the app. Link imports, subtitles and the starter packs will be available once you connect the crayZmundo Engine</p><details open><summary>Here’s how</summary><p>Deploy the crayZmundo Engine using the steps in the Engine tab of your build document, then open <Link to="/settings">Settings</Link>, enter the Engine’s web address and add its API key. Use “Test” on the Engine card to confirm it’s healthy.</p></details></section>}
     <StatusStrip account={acct.data?.account ?? null} />
-    <UploadCard disabled={!connected} onFiles={(files, sub) => files.forEach((f) => uploadOne(f, "UPLOAD", [], sub))} onImported={async (id, sub) => { if (id && sub) { try { await uploadSubtitle(sub, id); } catch (e) { err(e); } } await refresh(); }} />
+    <UploadCard disabled={false} linkDisabled={!connected} onFiles={(files, sub) => files.forEach((f) => uploadOne(f, "UPLOAD", [], sub))} onImported={async (id, sub) => { if (id && sub) { try { await uploadSubtitle(sub, id); } catch (e) { err(e); } } await refresh(); }} />
     {progress.length > 0 && <section className="glass-panel lib-progress">{progress.map((p) => <div key={p.name} className="lib-progress-row"><span>{p.name}</span><div className="lib-bar"><i style={{ width: `${p.pct}%` }} /></div><span>{p.error ? <>{p.error} <Button size="sm" variant="outline" onClick={p.retry}>Resume</Button></> : `${p.pct}%`}</span></div>)}</section>}
     <nav className="lib-tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>)}</nav>
     {lib.isLoading ? <p className="muted">Loading…</p> : lib.data && <TabBody tab={tab} data={lib.data} refresh={refresh} connected={!!connected} upload={uploadOne} />}
@@ -84,7 +103,7 @@ function StatusStrip({ account }: { account: { used: number; limit: number; pend
   </section>;
 }
 
-function UploadCard({ disabled, onFiles, onImported }: { disabled: boolean; onFiles: (f: File[], sub?: File) => void; onImported: (id?: string, sub?: File) => void }) {
+function UploadCard({ disabled, linkDisabled, onFiles, onImported }: { disabled: boolean; linkDisabled: boolean; onFiles: (f: File[], sub?: File) => void; onImported: (id?: string, sub?: File) => void }) {
   const input = useRef<HTMLInputElement>(null);
   const [drag, setDrag] = useState(false);
   const [url, setUrl] = useState(""); const [rights, setRights] = useState(false); const [busy, setBusy] = useState(false);
@@ -101,8 +120,8 @@ function UploadCard({ disabled, onFiles, onImported }: { disabled: boolean; onFi
     <button type="button" className="lib-drop" disabled={disabled} onClick={() => input.current?.click()}><Upload /><span>Drag and drop files, or click to browse</span></button>
     <input ref={input} type="file" multiple hidden aria-label="Upload files" onChange={(e) => { take(e.target.files); e.target.value = ""; }} />
     <div className="lib-link">
-      <input aria-label="Paste a link" placeholder="Paste a link (YouTube, Rumble, Vimeo, Twitch, Facebook, X, TikTok, Instagram, Drive, Dropbox, Zoom)" value={url} onChange={(e) => setUrl(e.target.value)} disabled={disabled} />
-      <Button disabled={disabled || busy || !url.trim()} onClick={doImport}><Link2 />Import</Button>
+      <input aria-label="Paste a link" placeholder="Paste a link (YouTube, Rumble, Vimeo, Twitch, Facebook, X, TikTok, Instagram, Drive, Dropbox, Zoom)" value={url} onChange={(e) => setUrl(e.target.value)} disabled={linkDisabled} />
+      <Button disabled={linkDisabled || busy || !url.trim()} onClick={doImport}><Link2 />Import</Button>
     </div>
     <label className="lib-check"><input type="checkbox" checked={rights} onChange={(e) => setRights(e.target.checked)} disabled={disabled} />I own this footage or have the rights to clip it</label>
     <label className="lib-check">Subtitles (optional .srt or .vtt): <input type="file" accept=".srt,.vtt" disabled={disabled} onChange={(e) => setSub(e.target.files?.[0])} /></label>
