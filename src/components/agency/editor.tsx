@@ -92,7 +92,7 @@ export function Editor({ clipId }: { clipId: string }) {
 
   return <div className="page editor-page">
     <header className="page-header">
-      <div><Link to="/review" search={{}} className="caption muted"><ArrowLeft size={14} /> Review</Link><h1>{c.title ?? "Clip"}</h1><p className="page-subtitle">{Math.round((end - start) / 1000)}s · {c.status.toLowerCase()} {busy && <span className="status-pill tone-orange">{busy}</span>}</p></div>
+      <div><Link to="/review" search={{ job: undefined }} className="caption muted"><ArrowLeft size={14} /> Review</Link><h1>{c.title ?? "Clip"}</h1><p className="page-subtitle">{Math.round((end - start) / 1000)}s · {c.status.toLowerCase()} {busy && <span className="status-pill tone-orange">{busy}</span>}</p></div>
       <div className="review-actions">
         <Button variant="outline" onClick={() => save()}><Save />Save</Button>
         <Button variant="outline" onClick={() => save([clipId], true)}>Save as my defaults</Button>
