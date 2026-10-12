@@ -92,7 +92,7 @@ export function Editor({ clipId }: { clipId: string }) {
 
   return <div className="page editor-page">
     <header className="page-header">
-      <div><Link to="/review" className="caption muted"><ArrowLeft size={14} /> Review</Link><h1>{c.title ?? "Clip"}</h1><p className="page-subtitle">{Math.round((end - start) / 1000)}s · {c.status.toLowerCase()} {busy && <span className="status-pill tone-orange">{busy}</span>}</p></div>
+      <div><Link to="/review" search={{}} className="caption muted"><ArrowLeft size={14} /> Review</Link><h1>{c.title ?? "Clip"}</h1><p className="page-subtitle">{Math.round((end - start) / 1000)}s · {c.status.toLowerCase()} {busy && <span className="status-pill tone-orange">{busy}</span>}</p></div>
       <div className="review-actions">
         <Button variant="outline" onClick={() => save()}><Save />Save</Button>
         <Button variant="outline" onClick={() => save([clipId], true)}>Save as my defaults</Button>
@@ -107,7 +107,7 @@ export function Editor({ clipId }: { clipId: string }) {
           <div className="review-actions"><Button size="sm" onClick={transcribe} disabled={!!busy}><Captions />{cues.length ? "Re-transcribe" : "Transcribe & add captions"}</Button>
             <label className="lib-check"><input type="checkbox" checked={captionsOn} onChange={(e) => setCaptionsOn(e.target.checked)} />Captions on</label></div>
           <h3>Style</h3>
-          <div className="preset-grid">{CAPTION_PRESETS.map((p) => { const s = styleFor(p.id); return <button key={p.id} aria-pressed={presetId === p.id} className={`preset ${presetId === p.id ? "on" : ""}`} onClick={() => { setPresetId(p.id); setCustom((x) => ({ x: x.x, y: x.y })); }}>
+          <div className="preset-grid">{CAPTION_PRESETS.map((p) => { const s = styleFor(p.id); return <button key={p.id} aria-pressed={presetId === p.id} className={`preset ${presetId === p.id ? "on" : ""}`} onClick={() => { setPresetId(p.id); setCustom((x) => ({ ...(x.x != null ? { x: x.x } : {}), ...(x.y != null ? { y: x.y } : {}) })); }}>
             <span style={{ color: s.fill, WebkitTextStroke: s.box ? undefined : `${Math.min(2, s.outlineW / 3)}px ${s.outline}`, background: s.box ? s.boxColor : undefined, textTransform: s.uppercase ? "uppercase" : undefined }}>Aa {s.active && <em style={{ color: s.active }}>word</em>}</span><small>{p.name}</small></button>; })}</div>
           <details><summary>Customise</summary><div className="editor-fields">
             <label>Size<input type="range" min={28} max={120} value={style.size} onChange={(e) => setS("size", +e.target.value)} /></label>
