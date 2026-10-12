@@ -13,6 +13,7 @@ import { revenueThisMonth } from '@/lib/ops-rules';
 import { label } from '@/lib/agency-rules';
 import { clientStats } from '@/lib/analytics-rules';
 import { addObjective, deleteObjective, toggleObjective } from '@/lib/ops.functions';
+import { IntegrationBanner } from './integrations';
 
 const stageTone: Record<string, string> = { WAITING_FOR_FOOTAGE: 'tone-orange', FILMING: 'tone-purple', EDITING_SHORT_FORM: 'tone-blue', EDITING_LONG_FORM: 'tone-blue', DESIGNING_THUMBNAIL: 'tone-teal', IN_REVIEW: 'tone-orange', UPLOADING: 'tone-teal', PUBLISHED: 'tone-green' };
 
@@ -38,7 +39,7 @@ export function Dashboard() {
   return { name: c.name, change: first && last && first !== last ? (last.views ?? 0) - (first.views ?? 0) : null }; }) : [];
  const refresh = () => cache.invalidateQueries({ queryKey: ['ops'] });
  return <div className="page dashboard-page">
-  <div className="glass-panel integration-banner"><span><Bot size={15}/>Discord bot is not configured.</span><Link to="/settings">Set it up now <ArrowRight size={14}/></Link></div>
+  <IntegrationBanner id="discord"/>
   <header className="page-header"><div><h1>Dashboard</h1><p className="page-subtitle">Where the agency stands today — revenue, clients in production, and the objectives that keep them.</p></div></header>
   {signedIn === false && <p className="notice"><Link to="/auth">Sign in</Link> to see your agency’s numbers.</p>}
   <div className="dashboard-metrics">{metrics.map(metric => <article className="glass-panel metric-card" key={metric.label}><strong>{metric.value}</strong><h2>{metric.label}</h2><p>{metric.detail}</p></article>)}</div>

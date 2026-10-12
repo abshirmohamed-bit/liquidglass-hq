@@ -275,3 +275,32 @@ h1 { font-size: 32px; font-weight: 600; margin: 0; line-height: 1.25; letter-spa
 .lead-card { padding:10px;border-radius:12px;border:.5px solid var(--border);display:flex;flex-direction:column;gap:4px; }
 .objective-item { display:flex;align-items:center;gap:8px; }
 .onboarding-guide { display:flex;flex-direction:column;gap:14px;padding-left:20px;list-style:decimal; } .onboarding-guide h3 { font-size:17px;font-weight:600; }
+
+/* Integrations, setup guides, team logins */
+.status-pill.tone-gray { color:var(--muted-foreground);background:color-mix(in oklab,var(--muted-foreground) 14%,transparent); }
+.status-pill.tone-red { color:var(--destructive);background:color-mix(in oklab,var(--destructive) 14%,transparent); }
+.settings-section { margin-top:40px;display:flex;flex-direction:column;gap:14px; }
+.settings-section h2 { font-size:21px;font-weight:600;letter-spacing:-0.02em; }
+.caption { font-size:13px;color:var(--muted-foreground); }
+.integration-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px; }
+.integration-card { display:flex;flex-direction:column;gap:10px;padding:18px;border-radius:16px; }
+.integration-card header { display:flex;align-items:center;gap:10px; }
+.integration-card h3 { font-size:17px;font-weight:600;letter-spacing:-0.02em; }
+.integration-card .status-pill { width:fit-content; }
+.integration-icon { display:grid;place-items:center;width:32px;height:32px;border-radius:10px;background:color-mix(in oklab,var(--primary) 14%,transparent);color:var(--primary); }
+.integration-actions { display:flex;flex-wrap:wrap;gap:8px;margin-top:auto; }
+.guide-steps { display:flex;flex-direction:column;gap:10px;padding:0 16px;list-style:none; }
+.guide-step { padding:14px;border-radius:12px;display:flex;flex-direction:column;gap:8px;font-size:14px; }
+.guide-check { display:flex;gap:10px;align-items:center; }
+.code-copy { display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:var(--secondary);font-size:12px;text-align:left;word-break:break-all; }
+.guide-progress { padding:0 16px;font-size:13px;color:var(--muted-foreground); }
+.setup-guide > button:last-child { margin:0 16px 16px; }
+.welcome-list { display:flex;flex-direction:column;gap:8px;list-style:none;padding:0; }
+.welcome-list li { display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;font-size:14px; }
+.link-button { font-size:13px;color:var(--muted-foreground);text-decoration:underline; }
+.team-login-form { display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;padding:14px;border-radius:16px; }
+.team-login-form input { padding:8px 10px;border-radius:10px;border:0.5px solid var(--border);background:transparent;font-size:14px; }
+.team-login-list { display:flex;flex-direction:column;gap:8px;list-style:none;padding:0; }
+.team-login-list li { display:flex;align-items:center;gap:14px;padding:10px 14px;border-radius:12px;font-size:14px; }
+.team-login-list li button { margin-left:auto; }
+.page-banner { padding:24px 32px 0; } .page-banner:empty { display:none; } .page-banner .integration-banner { margin-bottom:0; }
