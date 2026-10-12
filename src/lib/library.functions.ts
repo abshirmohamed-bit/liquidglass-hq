@@ -11,9 +11,11 @@ const fail = (e: { code: string; message: string }) => { throw new Error(e.messa
 export const engineAccount = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async () => {
   const ec = await engine();
   const h = await ec("GET", "/v1/health");
-  if (!h.ok) return { connected: false as const, reason: h.error.message };
-  const a = await ec<Record<string, unknown>>("GET", "/v1/account");
-  return { connected: true as const, account: a.ok ? a.data : null };
+  if (!h.ok) return { connected: false, reason: h.error.message, account: null };
+  const a = await ec<{ storage?: { used?: number; limit?: number }; storage_used?: number; storage_limit?: number; queue?: { pending?: number; jobs_waiting?: number; estimated_wait_minutes?: number; estimated_wait?: number } }>("GET", "/v1/account");
+  if (!a.ok) return { connected: true, reason: "", account: null };
+  const d = a.data; const q = d.queue ?? {};
+  return { connected: true, reason: "", account: { used: d.storage?.used ?? d.storage_used ?? 0, limit: d.storage?.limit ?? d.storage_limit ?? 0, pending: q.pending ?? q.jobs_waiting ?? 0, wait: q.estimated_wait_minutes ?? q.estimated_wait ?? 0 } };
 });
 
 export const listLibrary = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
@@ -130,8 +132,8 @@ export const trashItem = createServerFn({ method: "POST" }).middleware([requireS
 
 export const restoreItem = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator(idInput)
   .handler(async ({ context, data }) => {
-    const cur = await context.supabase.from(data.table).select("url:" + (data.table === "assets" ? "url" : "public_url")).eq("id", data.id).single();
-    const r = await context.supabase.from(data.table).update({ status: cur.data && (cur.data as { url: string | null }).url ? "READY" : "FAILED", trashed_at: null }).eq("id", data.id);
+    const cur = data.table === "assets" ? (await context.supabase.from("assets").select("url").eq("id", data.id).single()).data?.url : (await context.supabase.from("source_assets").select("public_url").eq("id", data.id).single()).data?.public_url;
+    const r = await context.supabase.from(data.table).update({ status: cur ? "READY" : "FAILED", trashed_at: null }).eq("id", data.id);
     if (r.error) throw new Error(r.error.message); return true;
   });
 
@@ -158,7 +160,8 @@ export const setBrollMeta = createServerFn({ method: "POST" }).middleware([requi
 export const engineCatalog = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).inputValidator(z.object({ kind: z.enum(["music", "sfx"]) }))
   .handler(async ({ data }) => {
     const r = await (await engine())<unknown>("GET", `/v1/${data.kind}`);
-    if (!r.ok) return [] as Array<Record<string, unknown>>;
-    const d = r.data as { items?: unknown[]; data?: unknown[] } | unknown[];
-    return ((Array.isArray(d) ? d : d.items ?? d.data ?? []) as Array<Record<string, unknown>>).slice(0, 200);
+    if (!r.ok) return [] as { id: string; name: string; url: string | null; licence: string | null }[];
+    type M = { id?: string | number; name?: string; title?: string; url?: string; license_url?: string; licence_url?: string };
+    const d = r.data as { items?: M[]; data?: M[] } | M[];
+    return (Array.isArray(d) ? d : d.items ?? d.data ?? []).slice(0, 200).map((m, i) => ({ id: String(m.id ?? i), name: m.name ?? m.title ?? "Track", url: m.url ?? null, licence: m.license_url ?? m.licence_url ?? null }));
   });

@@ -10,7 +10,7 @@ import { LIMITS_TEXT, validateUpload, kindOf, formatBytes, formatDuration, resol
 const TABS = ["Sources", "Finished clips", "Projects", "B-roll", "Music", "Sound effects", "Images", "Fonts", "Trash"] as const;
 type Tab = (typeof TABS)[number];
 const err = (e: unknown) => toast.error(e instanceof Error ? e.message : "Something went wrong");
-type Progress = { name: string; pct: number; error?: string; retry?: () => void };
+type Progress = { name: string; pct: number; error?: string | undefined; retry?: (() => void) | undefined };
 
 function putFile(url: string, method: string, headers: Record<string, string>, file: File, onPct: (n: number) => void) {
   return new Promise<void>((resolve, reject) => {
@@ -37,7 +37,7 @@ export function Library() {
     queryFn: async () => { const r = await pollImports(); if (r.changed) await refresh(); return r; } });
 
   async function uploadOne(file: File, source: "UPLOAD" | "BROLL" | "MUSIC" | "SFX" | "IMAGE" | "FONT", tags: string[] = [], subtitle?: File) {
-    const bad = validateUpload(file.name, file.size); if (bad) return toast.error(`${file.name}: ${bad}`);
+    const bad = validateUpload(file.name, file.size); if (bad) { toast.error(`${file.name}: ${bad}`); return; }
     const set = (p: Partial<Progress>) => setProgress((all) => all.map((x) => (x.name === file.name ? { ...x, ...p } : x)));
     setProgress((all) => [...all.filter((x) => x.name !== file.name), { name: file.name, pct: 0 }]);
     try {
@@ -68,7 +68,7 @@ export function Library() {
   return <div className="page library-page">
     <header className="page-header"><div><h1>Library</h1><p className="page-subtitle">Your uploads and imported sources.</p></div></header>
     {acct.data && !connected && <section className="glass-panel notice" role="status"><p>This tool will be available once you connect the crayZmundo Engine</p><details open><summary>Here’s how</summary><p>Deploy the crayZmundo Engine using the steps in the Engine tab of your build document, then open <Link to="/settings">Settings</Link>, enter the Engine’s web address and add its API key. Use “Test” on the Engine card to confirm it’s healthy.</p></details></section>}
-    <StatusStrip account={connected ? (acct.data as { account: Record<string, unknown> | null }).account : null} />
+    <StatusStrip account={acct.data?.account ?? null} />
     <UploadCard disabled={!connected} onFiles={(files, sub) => files.forEach((f) => uploadOne(f, "UPLOAD", [], sub))} onImported={refresh} />
     {progress.length > 0 && <section className="glass-panel lib-progress">{progress.map((p) => <div key={p.name} className="lib-progress-row"><span>{p.name}</span><div className="lib-bar"><i style={{ width: `${p.pct}%` }} /></div><span>{p.error ? <>{p.error} <Button size="sm" variant="outline" onClick={p.retry}>Resume</Button></> : `${p.pct}%`}</span></div>)}</section>}
     <nav className="lib-tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>)}</nav>
@@ -76,14 +76,11 @@ export function Library() {
   </div>;
 }
 
-function StatusStrip({ account }: { account: Record<string, unknown> | null }) {
-  const a = (account ?? {}) as { storage?: { used?: number; limit?: number }; storage_used?: number; storage_limit?: number; queue?: { pending?: number; jobs_waiting?: number; estimated_wait_minutes?: number; estimated_wait?: number } };
-  const used = a.storage?.used ?? a.storage_used; const limit = a.storage?.limit ?? a.storage_limit;
-  const q = a.queue ?? {};
+function StatusStrip({ account }: { account: { used: number; limit: number; pending: number; wait: number } | null }) {
   return <section className="glass-panel lib-strip" aria-label="Engine status">
-    <div><span className="panel-label">Storage</span><strong>{account ? `${formatBytes(used)} of ${formatBytes(limit)}` : "—"}</strong>{account && limit ? <div className="lib-bar"><i style={{ width: `${Math.min(100, ((used ?? 0) / limit) * 100)}%` }} /></div> : null}</div>
-    <div><span className="panel-label">Jobs in queue</span><strong>{account ? (q.pending ?? q.jobs_waiting ?? 0) : "—"}</strong></div>
-    <div><span className="panel-label">Estimated wait</span><strong>{account ? `${q.estimated_wait_minutes ?? q.estimated_wait ?? 0} min` : "—"}</strong></div>
+    <div><span className="panel-label">Storage</span><strong>{account ? `${formatBytes(account.used)} of ${formatBytes(account.limit)}` : "—"}</strong>{account && account.limit ? <div className="lib-bar"><i style={{ width: `${Math.min(100, (account.used / account.limit) * 100)}%` }} /></div> : null}</div>
+    <div><span className="panel-label">Jobs in queue</span><strong>{account ? account.pending : "—"}</strong></div>
+    <div><span className="panel-label">Estimated wait</span><strong>{account ? `${account.wait} min` : "—"}</strong></div>
   </section>;
 }
 
@@ -163,7 +160,7 @@ function RenameTrash({ id, name, table, refresh }: { id: string; name: string; t
 }
 
 function AssetTab({ tab, rows, refresh, connected, upload }: { tab: Exclude<Tab, "Sources" | "Finished clips" | "Projects" | "Trash">; rows: Lib["assets"]; refresh: () => Promise<void>; connected: boolean; upload: Upload }) {
-  const input = useRef<HTMLInputElement>(null); const [tag, setTag] = useState(BROLL_TAGS[0]!);
+  const input = useRef<HTMLInputElement>(null); const [tag, setTag] = useState<string>(BROLL_TAGS[0] ?? "gameplay");
   const source = ASSET_TAB_SOURCE[tab];
   const accept = { BROLL: "video/*", MUSIC: ".mp3,.m4a,.wav,.aac,.ogg,.flac", SFX: ".mp3,.m4a,.wav,.aac,.ogg,.flac", IMAGE: ".jpg,.jpeg,.png,.webp,.gif", FONT: ".ttf,.otf,.woff2" }[source];
   const catalog = useQuery({ queryKey: ["engine-catalog", source], enabled: connected && (source === "MUSIC" || source === "SFX"), queryFn: () => engineCatalog({ data: { kind: source === "MUSIC" ? "music" : "sfx" } }) });
@@ -185,7 +182,7 @@ function AssetTab({ tab, rows, refresh, connected, upload }: { tab: Exclude<Tab,
         <RenameTrash id={a.id} name={a.name} table="assets" refresh={refresh} />
       </div>
     </article>)}</div> : <Empty text={`No ${tab.toLowerCase()} yet.`} />}
-    {(source === "MUSIC" || source === "SFX") && connected && <section className="glass-panel lib-catalog"><h2>Engine starter pack</h2>{catalog.data?.length ? <ul>{catalog.data.map((m, i) => <li key={String(m.id ?? i)}><span>{String(m.name ?? m.title ?? "Track")}</span>{m.url ? <audio src={String(m.url)} controls /> : null}{m.license_url || m.licence_url ? <a href={String(m.license_url ?? m.licence_url)} target="_blank" rel="noreferrer">Licence</a> : null}</li>)}</ul> : <p className="muted">No bundled tracks returned by the Engine.</p>}</section>}
+    {(source === "MUSIC" || source === "SFX") && connected && <section className="glass-panel lib-catalog"><h2>Engine starter pack</h2>{catalog.data?.length ? <ul>{catalog.data.map((m) => <li key={m.id}><span>{m.name}</span>{m.url ? <audio src={m.url} controls /> : null}{m.licence ? <a href={m.licence} target="_blank" rel="noreferrer">Licence</a> : null}</li>)}</ul> : <p className="muted">No bundled tracks returned by the Engine.</p>}</section>}
   </>;
 }
 
