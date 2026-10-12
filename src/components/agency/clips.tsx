@@ -152,7 +152,7 @@ function ClipJobForm({ sources, music, defaults, queue, initialSourceId, onDone 
     try {
       await save({ data: {
         aspect: f.aspect, layout: f.layouts[0] as "streamer",
-        aiToggles: { coverage: f.coverage, mode: f.mode, editLevel: f.editLevel, lengthPreset: f.lengthPreset, framing: f.framing, removeSilences: f.removeSilences, removeFillers: f.removeFillers, zoom: f.zoom, autoTransitions: f.autoTransitions, soundEffects: f.soundEffects, grade: f.grade, keywordHighlight: f.keywordHighlight, emojis: f.emojis, headlineTopN: f.headlineTopN },
+        aiToggles: { coverage: f.coverage, mode: f.mode, editLevel: f.editLevel, lengthPreset: f.lengthPreset, framing: (f.framing === "auto" ? "AUTO" : f.framing === "centre" ? "CENTER" : "BOTH"), removeSilences: f.removeSilences, removeFillers: f.removeFillers, zoom: f.zoom, autoTransitions: f.autoTransitions, soundEffects: f.soundEffects, grade: f.grade, keywordHighlight: f.keywordHighlight, emojis: f.emojis, headlineTopN: f.headlineTopN },
       } });
       toast.success("Saved as your defaults");
     } catch (e) { err(e); }
