@@ -16,3 +16,4 @@
 - Load agency records through authenticated server functions and one shared query; this keeps financial and client screens on the same source of truth.
 - Keep video classification and plan validation in a shared rules module; this prevents differing decisions across AI and forms.
 - Channel analysis fetches current uploads server-side before AI evaluation; this avoids stale or invented channel context.
+- The public dashboard is a presentation-only shell until operational dashboard work is implemented; show unavailable metrics rather than fabricated financial totals.
