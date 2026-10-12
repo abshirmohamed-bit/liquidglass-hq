@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 import { sign, must } from "./review-helpers";
 import { COPY_LIMITS, copyIssue, type Platform } from "./finish-rules";
 
@@ -48,8 +50,8 @@ export const queuePosts = createServerFn({ method: "POST" }).middleware([require
     return rows.length;
   });
 
-async function ownPost(db: Parameters<Parameters<ReturnType<typeof createServerFn>["handler"]>[0]>[0] extends never ? never : any, id: string) {
-  return must(await db.from("posts").select("id,status,mode").eq("id", id).single()) as { id: string; status: string; mode: string };
+async function ownPost(db: SupabaseClient<Database>, id: string) {
+  return must(await db.from("posts").select("id,status,mode").eq("id", id).single());
 }
 
 /** Manual flow: the person posted it themselves and pastes the link. Status changes go through the service client after RLS confirmed the row is theirs. */
