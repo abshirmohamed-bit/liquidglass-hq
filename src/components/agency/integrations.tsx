@@ -53,7 +53,7 @@ export function IntegrationsPanel({ initialGuide }: { initialGuide?: Integration
   useEffect(() => { if (initialGuide) setGuide(initialGuide); }, [initialGuide]);
   return <section className="settings-section" aria-labelledby="integrations-heading">
     <h2 id="integrations-heading">Integrations</h2>
-    <div className="integration-grid">{INTEGRATIONS.map(i => { const s = q.data?.find(x => x.id === i.id); const Icon = icons[i.id]; const [text, tone] = badge[s?.status ?? "NOT_CONFIGURED"];
+    <div className="integration-grid">{INTEGRATIONS.filter(i => i.id !== "engine").map(i => { const s = q.data?.find(x => x.id === i.id); const Icon = icons[i.id]; const [text, tone] = badge[s?.status ?? "NOT_CONFIGURED"];
       return <article key={i.id} className="glass-panel integration-card">
         <header><span className="integration-icon"><Icon size={18}/></span><h3>{i.name}</h3>{i.required && <span className="status-pill tone-blue">Required</span>}{i.optional && <span className="status-pill tone-gray">Optional</span>}</header>
         <span className={`status-pill ${tone}`}>{text}</span>
@@ -92,7 +92,7 @@ export function WelcomeModal() {
   const close = () => { localStorage.setItem("agency-welcome-done", "1"); setOpen(false); };
   return <Dialog open={open} onOpenChange={o => !o && close()}><DialogContent className="welcome-modal sm:max-w-xl">
     <DialogHeader><DialogTitle>Welcome to crayZmundo</DialogTitle><DialogDescription>Connect these in order to unlock every tool.</DialogDescription></DialogHeader>
-    <ol className="welcome-list">{INTEGRATIONS.map(i => { const Icon = icons[i.id]; const s = q.data?.find(x => x.id === i.id);
+    <ol className="welcome-list">{INTEGRATIONS.filter(i => i.id !== "engine").map(i => { const Icon = icons[i.id]; const s = q.data?.find(x => x.id === i.id);
       return <li key={i.id} className="glass-panel"><Icon size={16}/><span>{i.name}</span>{i.required ? <span className="status-pill tone-blue">Required</span> : i.optional ? <span className="status-pill tone-gray">Optional</span> : null}{s?.status === "CONNECTED" && <Check size={14} className="ml-auto"/>}</li>; })}</ol>
     <Button onClick={() => { close(); navigate({ to: "/settings", search: { guide: "ai" } }); }}>Get Started</Button>
     <button type="button" className="link-button" onClick={close}>Skip for now</button>
