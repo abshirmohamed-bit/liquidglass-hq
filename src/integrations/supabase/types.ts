@@ -191,21 +191,27 @@ export type Database = {
         Row: {
           content: string | null
           id: string
+          parts: Json | null
           role: string | null
+          sdk_message_id: string | null
           thread_id: string
           timestamp: string | null
         }
         Insert: {
           content?: string | null
           id?: string
+          parts?: Json | null
           role?: string | null
+          sdk_message_id?: string | null
           thread_id: string
           timestamp?: string | null
         }
         Update: {
           content?: string | null
           id?: string
+          parts?: Json | null
           role?: string | null
+          sdk_message_id?: string | null
           thread_id?: string
           timestamp?: string | null
         }
@@ -221,6 +227,7 @@ export type Database = {
       }
       ideation_threads: {
         Row: {
+          ai_block_reason: string | null
           client_id: string | null
           created_at: string | null
           id: string
@@ -228,6 +235,7 @@ export type Database = {
           title: string
         }
         Insert: {
+          ai_block_reason?: string | null
           client_id?: string | null
           created_at?: string | null
           id?: string
@@ -235,6 +243,7 @@ export type Database = {
           title: string
         }
         Update: {
+          ai_block_reason?: string | null
           client_id?: string | null
           created_at?: string | null
           id?: string
