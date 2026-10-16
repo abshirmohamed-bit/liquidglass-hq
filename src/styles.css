@@ -74,6 +74,7 @@
 }
 
 /* ---------- base ---------- */
+@layer base {
 * { border-color: var(--border); box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -151,6 +152,8 @@ input[type=range] { appearance: none; background: transparent; min-height: 0; pa
 input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--surface-high); }
 input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; margin-top: -6px; box-shadow: 0 1px 3px rgb(0 0 0 / .4); }
 
+}
+
 /* ---------- shell ---------- */
 .app-shell { min-height: 100dvh; background: var(--background); }
 .topbar {
@@ -175,11 +178,11 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
  position: sticky; top: 48px; height: calc(100dvh - 48px); z-index: 20;
 }
 .agency-sidebar.collapsed { width: 72px; }
-.sidebar-collapse { justify-content: flex-start; height: 32px; margin-bottom: var(--s3); padding-inline: 7px; font-size: 12px; gap: 10px; color: var(--muted-foreground); }
+.agency-sidebar .sidebar-collapse { justify-content: flex-start; height: 32px; margin-bottom: var(--s3); padding-inline: 7px; font-size: 12px; gap: 10px; color: var(--muted-foreground); flex: none; }
 .sidebar-collapse svg { width: 16px; height: 16px; }
-.collapsed .sidebar-collapse { justify-content: center; padding-inline: 0; }
+.agency-sidebar.collapsed .sidebar-collapse { justify-content: center; padding-inline: 0; }
 .sidebar-label { padding: 0 10px; margin: 0 0 var(--s3); font-size: 11px; font-weight: 500; color: var(--muted-foreground); }
-.nav-list { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; min-height: 0; }
+.nav-list { display: flex; flex-direction: column; gap: 1px; overflow-y: auto; overflow-x: hidden; min-height: 0; flex: 1 1 auto; padding-bottom: var(--s2); }
 .nav-link {
  height: 34px; display: flex; align-items: center; gap: 10px; padding: 0 9px;
  border-radius: var(--r-sm); color: var(--muted-foreground); font-weight: 400; font-size: 14px;
@@ -190,7 +193,7 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .nav-link[data-status="active"] { background: color-mix(in oklab, var(--primary) 14%, transparent); color: var(--foreground); font-weight: 500; }
 .nav-link[data-status="active"] svg { stroke-width: 2.1; color: var(--primary); }
 .collapsed .nav-link { justify-content: center; padding: 0; }
-.sidebar-bottom { margin-top: auto; padding-top: var(--s5); }
+.sidebar-bottom { margin-top: auto; padding-top: var(--s3); border-top: var(--hairline) solid var(--border); flex: none; }
 .sidebar-divider { height: var(--hairline); background: var(--border); margin: var(--s4) 8px; }
 .account-link { display: flex; align-items: center; gap: 10px; color: var(--foreground); text-decoration: none; padding: 7px 8px; border-radius: var(--r-sm); }
 .account-link:hover { background: var(--accent); text-decoration: none; }
@@ -226,8 +229,10 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 /* Content rests on a quiet plane; only chrome and overlays are glass. */
 .glass-panel, .surface {
  background: var(--surface); border: var(--hairline) solid var(--border);
- border-radius: var(--r-lg); box-shadow: var(--glass-shadow);
+ border-radius: var(--r-lg); box-shadow: var(--glass-shadow); padding: var(--s5);
 }
+/* A panel whose only job is to hold an empty state lets the empty state own the space. */
+.glass-panel:has(> .empty:only-child) { padding: var(--s4) 0; }
 .glass {
  background: var(--glass); backdrop-filter: var(--glass-blur);
  border: var(--hairline) solid var(--border-strong); border-radius: var(--r-lg);
@@ -266,7 +271,7 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 /* ---------- kit: empty + notice ---------- */
 .empty {
  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
- gap: var(--s2); padding: var(--s9) var(--s6); color: var(--muted-foreground);
+ gap: var(--s2); padding: var(--s7) var(--s5); color: var(--muted-foreground);
 }
 .empty-icon {
  width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
@@ -568,9 +573,11 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .engine-send-test { width: fit-content; }
 
 /* ---------- library ---------- */
-.library-page .lib-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s4); padding: var(--s4) var(--s5); margin-bottom: var(--s4); }
-.library-page .lib-strip > div { display: grid; gap: 2px; }
-.library-page .lib-strip strong { display: block; font-size: 20px; font-weight: 600; letter-spacing: -.018em; margin-top: 2px; }
+/* Status strip: same three-up readout on Library and Clips. */
+.lib-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); padding: var(--s4) var(--s5); margin-bottom: var(--s4); }
+.lib-strip > div { display: grid; gap: 2px; align-content: start; }
+.lib-strip .panel-label { margin: 0; font-size: 12px; color: var(--muted-foreground); }
+.lib-strip strong { display: block; font-size: 20px; font-weight: 600; letter-spacing: -.018em; }
 .lib-bar { height: 5px; border-radius: var(--r-pill); background: var(--surface-high); overflow: hidden; margin-top: 6px; }
 .lib-bar i { display: block; height: 100%; background: var(--primary); transition: width .3s; }
 .lib-upload { padding: var(--s5); display: grid; gap: var(--s3); margin-bottom: var(--s4); transition: border-color .2s, background .2s; }
@@ -607,7 +614,6 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .lib-catalog li { display: flex; gap: var(--s3); align-items: center; font-size: 13px; }
 
 /* ---------- clips ---------- */
-.clips-page .lib-strip { grid-template-columns: repeat(3, 1fr); }
 .clip-form { display: grid; gap: var(--s5); margin-bottom: var(--s5); padding: var(--s5); }
 .clip-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s5); }
 .range-inputs { display: flex; gap: var(--s2); align-items: center; }
@@ -697,6 +703,7 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
  .ideation-layout.with-threads { grid-template-columns: minmax(0, 1fr) 210px; }
 }
 @media (max-width: 860px) {
+ .lib-strip { grid-template-columns: 1fr; gap: var(--s3); }
  .agency-sidebar { width: 72px; }
  .agency-sidebar .nav-link { justify-content: center; padding: 0; }
  .nav-text, .sidebar-label, .account-copy { display: none; }
@@ -704,7 +711,6 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
  .page { padding-top: var(--s6); }
  .section-tag, .workspace-pill { display: none; }
  .form-grid, .detail-grid, .clip-form-row, .extras-grid { grid-template-columns: 1fr; }
- .library-page .lib-strip { grid-template-columns: 1fr; }
  .thumb-overlay-controls { grid-template-columns: 1fr 1fr; }
  .ideation-layout.with-threads { grid-template-columns: minmax(0, 1fr); }
  .thread-panel { position: absolute; inset: 85px 16px 20px auto; width: 230px; z-index: 20; background: var(--surface); border: var(--hairline) solid var(--border); border-radius: var(--r-md); padding: var(--s4); }
@@ -721,3 +727,17 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
  .objectives-panel header { align-items: flex-start; flex-direction: column; gap: var(--s1); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- inline controls ----------
+   Base inputs are full width (forms); inside a toolbar they size to content. */
+.filter-bar input, .filter-bar select,
+.review-actions input, .review-actions select,
+.lib-filters input, .lib-filters select,
+.actions input, .actions select,
+.row input, .row select,
+.section-head input, .section-head select,
+.page-header input, .page-header select,
+.clip-job-actions input, .clip-job-actions select,
+.thumb-actions input, .thumb-actions select { width: auto; }
+.filter-bar input[type=search], .filter-bar .grow, #review-search { flex: 1 1 240px; width: auto; }
+.lib-link input, .engine-url input, .objective-entry input, .post-manual .filter-bar input { flex: 1 1 auto; width: auto; min-width: 0; }
