@@ -1,0 +1,167 @@
+"""The whole job: a real video in, real rendered clips out.
+
+Nothing here is stubbed except speech recognition and the language model, which
+are swapped for deterministic providers so the test needs no weights or keys.
+"""
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+from app import worker
+from app.config import settings
+
+
+def probe(path: Path) -> dict:
+    import json
+
+    out = subprocess.run(["ffprobe", "-v", "quiet", "-print_format", "json",
+                          "-show_streams", "-show_format", str(path)],
+                         capture_output=True, text=True, check=True).stdout
+    data = json.loads(out)
+    v = next(s for s in data["streams"] if s["codec_type"] == "video")
+    return {"w": v["width"], "h": v["height"], "dur": float(data["format"]["duration"]),
+            "vcodec": v["codec_name"],
+            "has_audio": any(s["codec_type"] == "audio" for s in data["streams"])}
+
+
+def test_upload_probes_the_real_file(api, uploaded_asset):
+    asset = api.get(f"/v1/assets/{uploaded_asset}").json()
+    assert asset["status"] == "ready"
+    assert (asset["width"], asset["height"]) == (1280, 720)
+    assert 19 < asset["length"] < 21
+    assert asset["thumbnail_url"].endswith(".jpg")
+    # a 720p source cannot fill a 1080x1920 crop, and the app is told so
+    assert asset["quality_warning"] is True
+
+
+def test_transcript_has_word_level_timings(api, uploaded_asset):
+    t = api.post("/v1/transcripts", json={"asset_id": uploaded_asset}).json()
+    assert t["status"] == "ready"
+    words = t["words"]
+    assert len(words) > 20
+    assert all(w["start_ms"] < w["end_ms"] for w in words)
+    assert all(words[i]["start_ms"] <= words[i + 1]["start_ms"] for i in range(len(words) - 1))
+    assert len(t["sentences"]) >= 3
+
+
+def test_job_runs_through_its_stages_and_finds_clips(api, uploaded_asset):
+    job_id = api.post("/v1/autoclip", json={
+        "asset_id": uploaded_asset, "clip_count": 3, "clip_length": 6,
+        "aspect": "9:16", "formats": ["full-video"], "caption_style_id": "karaoke_highlight",
+    }).json()["id"]
+
+    seen = []
+    for _ in range(40):
+        worker.tick()
+        job = api.get(f"/v1/autoclip/{job_id}").json()
+        if job["stage"]:
+            seen.append(job["stage"])
+        if job["status"] in {"completed", "failed"}:
+            break
+    assert job["status"] == "completed", job.get("error")
+    assert "transcribing" in seen and "finding" in seen and "cutting" in seen
+
+    clips = job["clips"]
+    assert len(clips) == 3
+    for c in clips:
+        assert c["end_ms"] > c["start_ms"]
+        assert c["title"]
+        assert 0 <= c["score"] <= 100
+        assert set(c["grades"]) == {"hook", "flow", "value", "trend"}
+        assert c["thumbnail_url"]
+    # clips never overlap
+    ordered = sorted(clips, key=lambda c: c["start_ms"])
+    assert all(a["end_ms"] <= b["start_ms"] for a, b in zip(ordered, ordered[1:]))
+
+
+def test_clip_carries_the_words_that_were_spoken_in_it(api, uploaded_asset):
+    job = api.get("/v1/autoclip").json()["autoclips"][0]
+    project_id = job["clips"][0]["project_id"]
+    p = api.get(f"/v1/projects/{project_id}").json()
+    assert p["captions"], "a clip should arrive with its own words"
+    assert p["captions"][0]["start_ms"] < p["duration_ms"]
+    # captions are re-based to the clip, not the source
+    assert max(w["end_ms"] for w in p["captions"]) <= p["duration_ms"] + 1500
+
+
+def test_export_produces_a_real_vertical_mp4(api, uploaded_asset):
+    job = api.get("/v1/autoclip").json()["autoclips"][0]
+    project_id = job["clips"][0]["project_id"]
+    api.patch(f"/v1/projects/{project_id}", json={
+        "title": {"text": "The honest answer", "style": "bold_band"},
+        "watermark": {"text": "@crayzmundo", "position": "bottom-right", "opacity": 0.5},
+    })
+    export_id = api.post(f"/v1/projects/{project_id}/export", json={}).json()["id"]
+
+    for _ in range(30):
+        worker.tick()
+        got = api.get(f"/v1/exports/{export_id}").json()
+        if got["status"] in {"completed", "failed"}:
+            break
+    assert got["status"] == "completed", got.get("error")
+
+    key = f"exports/{export_id}.mp4"
+    path = settings().media_root / key
+    assert path.exists(), "the rendered file is on disk"
+    info = probe(path)
+    assert (info["w"], info["h"]) == (1080, 1920), "a real vertical render"
+    assert info["vcodec"] == "h264" and info["has_audio"]
+    assert info["dur"] > 1
+    assert got["asset"]["url"].endswith(".mp4")
+
+
+def test_trim_moves_the_captions_with_the_clip(api):
+    job = api.get("/v1/autoclip").json()["autoclips"][0]
+    project_id = job["clips"][-1]["project_id"]
+    before = api.get(f"/v1/projects/{project_id}").json()
+    moved = api.patch(f"/v1/projects/{project_id}", json={
+        "in_ms": before["in_ms"] + 1000, "out_ms": before["out_ms"]}).json()
+    assert moved["duration_ms"] == before["duration_ms"] - 1000
+    assert moved["captions"] != before["captions"], "words follow the new in point"
+
+
+def test_captions_download_as_srt(api):
+    job = api.get("/v1/autoclip").json()["autoclips"][0]
+    project_id = job["clips"][0]["project_id"]
+    body = api.get(f"/v1/projects/{project_id}/captions", params={"format": "srt"}).json()["body"]
+    assert "-->" in body and body.strip().startswith("1")
+
+
+def test_whole_video_coverage_leaves_nothing_out(api, uploaded_asset):
+    job_id = api.post("/v1/autoclip", json={
+        "asset_id": uploaded_asset, "coverage": "whole", "clip_length": 5, "clip_count": "auto",
+    }).json()["id"]
+    for _ in range(40):
+        worker.tick()
+        job = api.get(f"/v1/autoclip/{job_id}").json()
+        if job["status"] in {"completed", "failed"}:
+            break
+    assert job["status"] == "completed", job.get("error")
+    clips = sorted(job["clips"], key=lambda c: c["start_ms"])
+    assert len(clips) >= 2
+    covered = sum(c["duration_ms"] for c in clips)
+    assert covered > 12_000, "most of a 20s source should be covered"
+    assert all(a["end_ms"] <= b["start_ms"] for a, b in zip(clips, clips[1:]))
+
+
+def test_auto_count_can_pause_for_confirmation(api, uploaded_asset):
+    job_id = api.post("/v1/autoclip", json={
+        "asset_id": uploaded_asset, "clip_count": "auto", "confirm_count": True, "clip_length": 6,
+    }).json()["id"]
+    for _ in range(20):
+        worker.tick()
+        job = api.get(f"/v1/autoclip/{job_id}").json()
+        if job["status"] == "awaiting_confirmation":
+            break
+    assert job["status"] == "awaiting_confirmation"
+    assert job["suggested_count"] and job["suggested_count"] > 0
+
+    api.patch(f"/v1/autoclip/{job_id}", json={"clip_count": 2})
+    for _ in range(40):
+        worker.tick()
+        job = api.get(f"/v1/autoclip/{job_id}").json()
+        if job["status"] in {"completed", "failed"}:
+            break
+    assert job["status"] == "completed", job.get("error")
+    assert len(job["clips"]) == 2

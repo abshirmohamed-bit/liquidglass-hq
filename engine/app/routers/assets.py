@@ -1,0 +1,155 @@
+"""Uploads, imports and the asset list."""
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import APIRouter, Request
+from pydantic import BaseModel
+from sqlmodel import select
+
+from .. import storage
+from ..config import settings
+from ..db import session
+from ..errors import EngineError
+from ..responses import ok
+from ..ids import new_id
+from ..models import Asset, Upload, utcnow
+from ..pipeline import ingest
+
+router = APIRouter()
+
+
+class UploadStart(BaseModel):
+    filename: str
+    content_type: str
+    size_bytes: int
+
+
+@router.post("/v1/uploads")
+def start_upload(body: UploadStart, request: Request) -> dict:
+    kind = ingest.kind_for(body.content_type)
+    limit = ingest.limit_for(kind)
+    if body.size_bytes > limit:
+        raise EngineError("FILE_TOO_LARGE", f"{kind.title()} files are limited to {limit // 1024**2} MB.")
+    upload = Upload(id=new_id("upl"), filename=body.filename, content_type=body.content_type,
+                    size_bytes=body.size_bytes, storage_key=f"incoming/{new_id('raw')}")
+    with session() as s:
+        s.add(upload)
+        s.commit()
+    base = str(request.base_url).rstrip("/")
+    return ok(
+        id=upload.id,
+        url=f"{base}/v1/uploads/{upload.id}/bytes",
+        method="PUT",
+        headers={"content-type": body.content_type},
+        expires_at=utcnow().isoformat(),
+    )
+
+
+@router.put("/v1/uploads/{upload_id}/bytes")
+async def put_bytes(upload_id: str, request: Request) -> dict:
+    with session() as s:
+        upload = s.get(Upload, upload_id)
+        if not upload:
+            raise EngineError("NOT_FOUND", "That upload does not exist.")
+        dest = storage.open_write(upload.storage_key)
+        written = 0
+        limit = ingest.limit_for(ingest.kind_for(upload.content_type))
+        with dest.open("wb") as f:
+            async for chunk in request.stream():
+                written += len(chunk)
+                if written > limit:
+                    f.close()
+                    dest.unlink(missing_ok=True)
+                    raise EngineError("FILE_TOO_LARGE", "That file is over the limit for its type.")
+                f.write(chunk)
+        upload.size_bytes = written
+        s.add(upload)
+        s.commit()
+    return ok(bytes=written)
+
+
+@router.post("/v1/uploads/{upload_id}/complete")
+def complete_upload(upload_id: str) -> dict:
+    with session() as s:
+        upload = s.get(Upload, upload_id)
+        if not upload:
+            raise EngineError("NOT_FOUND", "That upload does not exist.")
+        path = storage.open_write(upload.storage_key)
+        if not path.exists() or path.stat().st_size == 0:
+            raise EngineError("VALIDATION_ERROR", "No bytes were received for that upload.")
+        kind = ingest.kind_for(upload.content_type)
+        asset = Asset(id=new_id("ast"), name=upload.filename, type=kind,
+                      storage_key=upload.storage_key, size_bytes=path.stat().st_size)
+        s.add(asset)
+        s.commit()
+        if kind == "video":
+            try:
+                ingest.ingest_video(s, asset, path)
+            except Exception as e:
+                ingest.mark_failed(s, asset, e)
+                raise
+        else:
+            storage.put_file(path, upload.storage_key, upload.content_type)
+            asset.status = "ready"
+            s.add(asset)
+            s.commit()
+        upload.status = "completed"
+        s.add(upload)
+        s.commit()
+        s.refresh(asset)
+        return ok(ingest.asset_payload(asset))
+
+
+class ImportBody(BaseModel):
+    url: str
+    name: str = ""
+    rights_confirmed: bool = False
+
+
+@router.post("/v1/assets")
+def import_asset(body: ImportBody) -> dict:
+    with session() as s:
+        asset = Asset(id=new_id("ast"), name=body.name or body.url.rsplit("/", 1)[-1][:120],
+                      type="video", status="importing", rights_confirmed=body.rights_confirmed,
+                      source_url=body.url)
+        s.add(asset)
+        s.commit()
+        ingest.import_url(s, asset, body.url)
+        s.refresh(asset)
+        return ok(ingest.asset_payload(asset))
+
+
+@router.get("/v1/assets")
+def list_assets(type: str | None = None, category: str | None = None, page: int = 1) -> dict:
+    with session() as s:
+        q = select(Asset).where(Asset.deleted_at == None)  # noqa: E711
+        if type:
+            q = q.where(Asset.type == type)
+        if category:
+            q = q.where(Asset.category == category)
+        rows = s.exec(q.order_by(Asset.created_at.desc()).offset((page - 1) * 25).limit(25)).all()  # type: ignore[attr-defined]
+        return ok(assets=[ingest.asset_payload(a) for a in rows])
+
+
+@router.get("/v1/assets/{asset_id}")
+def get_asset(asset_id: str) -> dict:
+    with session() as s:
+        asset = s.get(Asset, asset_id)
+        if not asset or asset.deleted_at:
+            raise EngineError("NOT_FOUND", "No asset with that id.")
+        return ok(ingest.asset_payload(asset))
+
+
+@router.delete("/v1/assets/{asset_id}")
+def delete_asset(asset_id: str) -> dict:
+    with session() as s:
+        asset = s.get(Asset, asset_id)
+        if not asset:
+            raise EngineError("NOT_FOUND", "No asset with that id.")
+        for key in filter(None, [asset.storage_key, asset.mezzanine_key, asset.thumb_key]):
+            storage.delete(key)
+        asset.deleted_at = utcnow()
+        s.add(asset)
+        s.commit()
+    return ok()

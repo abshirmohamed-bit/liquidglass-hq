@@ -1,0 +1,372 @@
+"""Turning a project into a finished vertical video.
+
+One ffmpeg pass builds the whole frame: cut, reframe, layout, burn captions,
+draw the title and handle, normalise the audio, encode. Every feature is a
+function that adds to the filter graph, so the app's Finish panel maps onto
+these fields one-to-one.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+from pathlib import Path
+
+from .. import media
+from . import frame as framing
+from .caption import BY_ID, Style, build_ass
+
+ASPECTS = {"9:16": (1080, 1920), "1:1": (1080, 1080), "4:5": (1080, 1350), "16:9": (1920, 1080)}
+LAYOUTS = {"full-video", "streamer", "black-box", "title-subtitles", "split"}
+
+
+@dataclass
+class Segment:
+    """One cut taken from one source. A clip is an ordered list of these."""
+    source: Path
+    in_ms: int
+    out_ms: int
+
+    @property
+    def length_ms(self) -> int:
+        return max(0, self.out_ms - self.in_ms)
+
+
+@dataclass
+class Render:
+    out: Path
+    # A single cut, the common case. Leave these unset and pass `segments`
+    # to stitch several cuts — from one video or from many — into one clip.
+    source: Path | None = None
+    in_ms: int = 0
+    out_ms: int = 0
+    segments: list[Segment] | None = None
+    aspect: str = "9:16"
+    layout: str = "full-video"
+    framing_mode: str = "auto"              # auto | center | manual
+    words: list[dict] | None = None
+    caption_style_id: str = "bold_white"
+    captions_enabled: bool = True
+    censored: list[str] | None = None
+    title: dict | None = None               # {text, style, position}
+    watermark: dict | None = None           # {text, position, opacity}
+    broll: Path | None = None
+    resolution: str = "1080p"
+    loudnorm: bool = True
+    preview: bool = False
+
+    def __post_init__(self) -> None:
+        """`segments` is the only truth inside; a lone source becomes one segment."""
+        if not self.segments:
+            if self.source is None:
+                raise ValueError("a render needs either a source or segments")
+            self.segments = [Segment(self.source, self.in_ms, self.out_ms)]
+        self.segments = [s for s in self.segments if s.length_ms > 0]
+        if not self.segments:
+            raise ValueError("a clip needs at least one segment with a length")
+
+    @property
+    def total_ms(self) -> int:
+        """How long the finished clip runs, with every segment laid end to end."""
+        return sum(s.length_ms for s in (self.segments or []))
+
+    @property
+    def size(self) -> tuple[int, int]:
+        w, h = ASPECTS.get(self.aspect, ASPECTS["9:16"])
+        if self.preview:
+            return (w // 2 - (w // 2) % 2, h // 2 - (h // 2) % 2)
+        if self.resolution == "2160p":
+            return w * 2, h * 2
+        return w, h
+
+
+def _font_for(style: Style) -> str:
+    return style.font
+
+
+def _escape_drawtext(text: str) -> str:
+    return (text.replace("\\", r"\\").replace(":", r"\:")
+            .replace("'", r"'").replace("%", r"\%"))
+
+
+def wrap_title(text: str, max_chars: int, max_lines: int = 2) -> list[str]:
+    """Break a headline into at most `max_lines`, never mid-word."""
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if len(candidate) <= max_chars or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+            if len(lines) == max_lines:
+                break
+    if current and len(lines) < max_lines:
+        lines.append(current)
+    if not lines:
+        return []
+    # anything that did not fit is trimmed onto the last line with an ellipsis
+    used = sum(len(l.split()) for l in lines)
+    if used < len(words):
+        lines[-1] = lines[-1][: max(0, max_chars - 1)].rstrip() + "\u2026"
+    return lines
+
+
+def _title_filter(title: dict, w: int, h: int) -> str:
+    """A headline that always fits: wrapped to two lines, then shrunk to the width.
+
+    ffmpeg cannot measure text for us, so the size is derived from the longest
+    line. 0.52em is a safe average advance for a heavy sans.
+    """
+    text = (title.get("text") or "").strip()
+    if not text:
+        return ""
+    kind = title.get("style", "bold_band")
+    upper = kind in {"bold_band", "headline"}
+    if upper:
+        text = text.upper()
+
+    base = max(20, int(h * 0.034))
+    usable = w * 0.84
+    # start from the base size, wrap to what fits, then shrink if a line is still long
+    max_chars = max(10, int(usable / (0.52 * base)))
+    lines = wrap_title(text, max_chars)
+    if not lines:
+        return ""
+    longest = max(len(l) for l in lines)
+    size = int(min(base, usable / (0.52 * max(1, longest))))
+    size = max(16, size)
+
+    gap = int(size * 1.18)
+    top = int(h * 0.06)
+    parts: list[str] = []
+    for i, line in enumerate(lines):
+        y = top + i * gap
+        common = (f"text='{_escape_drawtext(line)}':fontcolor=white:fontsize={size}"
+                  f":x=(w-text_w)/2:y={y}")
+        if kind == "bold_band":
+            parts.append(f"drawtext={common}:box=1:boxcolor=black@0.78:boxborderw={int(size * 0.42)}")
+        elif kind == "boxed":
+            parts.append(f"drawtext={common}:box=1:boxcolor=black@0.6:boxborderw={int(size * 0.32)}")
+        elif kind == "headline":
+            parts.append(f"drawtext={common}:borderw={max(2, int(size * 0.07))}:bordercolor=black")
+        else:
+            parts.append(f"drawtext={common}:shadowcolor=black@0.7:shadowx=2:shadowy=2")
+    return ",".join(parts)
+
+
+def _watermark_filter(mark: dict, w: int, h: int) -> str:
+    text = (mark.get("text") or "").strip()
+    if not text:
+        return ""
+    size = max(14, int(h * 0.018))
+    opacity = float(mark.get("opacity", 0.5))
+    pos = mark.get("position", "bottom-right")
+    x = {"top-left": f"{int(w * 0.05)}", "bottom-left": f"{int(w * 0.05)}",
+         "top-right": f"w-text_w-{int(w * 0.05)}", "bottom-right": f"w-text_w-{int(w * 0.05)}",
+         "centre-below-captions": "(w-text_w)/2"}.get(pos, f"w-text_w-{int(w * 0.05)}")
+    y = {"top-left": f"{int(h * 0.05)}", "top-right": f"{int(h * 0.05)}",
+         "bottom-left": f"h-text_h-{int(h * 0.05)}", "bottom-right": f"h-text_h-{int(h * 0.05)}",
+         "centre-below-captions": f"{int(h * 0.62)}"}.get(pos, f"h-text_h-{int(h * 0.05)}")
+    return f"drawtext=text='{_escape_drawtext(text)}':fontcolor=white@{opacity}:fontsize={size}:x={x}:y={y}"
+
+
+def stitch(render: Render, workdir: Path) -> tuple[Path, int, int]:
+    """Lay the segments end to end and return (file, in_ms, out_ms) to render from.
+
+    One segment is the common case and is handed straight back, so nothing is
+    re-encoded needlessly. Several segments — from one video or from many — are
+    each normalised to a shared frame, frame rate and audio layout first,
+    because the concat demuxer can only join streams that already match.
+    """
+    segments = render.segments or []
+    if len(segments) == 1:
+        s = segments[0]
+        return s.source, s.in_ms, s.out_ms
+
+    probes = [media.probe(s.source) for s in segments]
+    # cover-and-crop to a shared frame: no black bars, no squashing
+    cw = max(2, max(p.width for p in probes))
+    ch = max(2, max(p.height for p in probes))
+    cw, ch = cw - cw % 2, ch - ch % 2
+    fps = max(24.0, max(p.fps for p in probes))
+
+    parts: list[Path] = []
+    for i, seg in enumerate(segments):
+        part = workdir / f"seg{i:03d}.mp4"
+        media.ffmpeg([
+            "-ss", f"{seg.in_ms / 1000:.3f}", "-t", f"{seg.length_ms / 1000:.3f}",
+            "-i", str(seg.source),
+            "-vf", (f"scale={cw}:{ch}:flags=lanczos:force_original_aspect_ratio=increase,"
+                    f"crop={cw}:{ch},fps={fps:.3f},setsar=1"),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p",
+            # every part needs audio, or concat drops the stream partway through
+            "-af", "aresample=async=1:first_pts=0",
+            "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+            "-shortest", "-y", str(part),
+        ])
+        parts.append(part)
+
+    listing = workdir / "segments.txt"
+    listing.write_text(
+        "".join(f"file '{p.as_posix()}'\n" for p in parts), encoding="utf-8")
+    joined = workdir / "stitched.mp4"
+    media.ffmpeg(["-f", "concat", "-safe", "0", "-i", str(listing),
+                  "-c", "copy", "-y", str(joined)])
+    return joined, 0, render.total_ms
+
+
+def remap_words(words: list[dict], segments: list[Segment]) -> list[dict]:
+    """Move word timings from their source timelines onto the stitched one.
+
+    A word belongs to a segment when it falls inside that segment's span; its
+    timing shifts by however much footage precedes that segment in the output.
+    Words in the gaps were cut away, so they are dropped.
+    """
+    out: list[dict] = []
+    offset = 0
+    for seg in segments:
+        src = str(seg.source)
+        for w in words:
+            # words carry `source` only on multi-source clips; one source needs no tag
+            if w.get("source") not in (None, "", src):
+                continue
+            start, end = int(w.get("start_ms", 0)), int(w.get("end_ms", 0))
+            if end <= seg.in_ms or start >= seg.out_ms:
+                continue
+            start, end = max(start, seg.in_ms), min(end, seg.out_ms)
+            out.append({**w,
+                        "start_ms": start - seg.in_ms + offset,
+                        "end_ms": end - seg.in_ms + offset})
+        offset += seg.length_ms
+    out.sort(key=lambda w: w["start_ms"])
+    return out
+
+
+def flatten(render: Render, workdir: Path) -> Render:
+    """Collapse the segments into one real file so the rest of the graph is unchanged.
+
+    Face tracking, captions, title and watermark all work on a single
+    continuous timeline; stitching first means they need to know nothing about
+    how many pieces the clip was cut from.
+    """
+    segments = render.segments or []
+    if len(segments) == 1:
+        s = segments[0]
+        return replace(render, source=s.source, in_ms=s.in_ms, out_ms=s.out_ms)
+    workdir.mkdir(parents=True, exist_ok=True)
+    joined, in_ms, out_ms = stitch(render, workdir)
+    return replace(
+        render, source=joined, in_ms=in_ms, out_ms=out_ms,
+        segments=[Segment(joined, in_ms, out_ms)],
+        words=remap_words(render.words or [], segments) if render.words else render.words,
+    )
+
+
+def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
+    """Assemble the ffmpeg arguments. Returns (args, path of the sendcmd file or /dev/null)."""
+    workdir.mkdir(parents=True, exist_ok=True)
+    render = flatten(render, workdir)
+    w, h = render.size
+    dur_s = max(0.1, (render.out_ms - render.in_ms) / 1000)
+
+    inputs: list[str] = ["-ss", f"{render.in_ms / 1000:.3f}", "-t", f"{dur_s:.3f}", "-i", str(render.source)]
+    chain: list[str] = []
+
+    track = framing.track(render.source, mode=render.framing_mode) if render.framing_mode != "center" else None
+    sendcmd_path = workdir / "pan.cmd"
+
+    if render.layout in {"full-video", "title-subtitles"}:
+        crop, commands = framing.crop_filter(
+            track or framing.Track("center", 0, 0, [], []), w, h, render.out_ms - render.in_ms)
+        if commands:
+            # sendcmd times are relative to the trimmed clip
+            shifted = []
+            for line in commands.splitlines():
+                t, rest = line.split(" ", 1)
+                shifted.append(f"{max(0.0, float(t) - render.in_ms / 1000):.2f} {rest}")
+            sendcmd_path.write_text("\n".join(shifted), encoding="utf-8")
+            chain.append(f"sendcmd=f={sendcmd_path.as_posix()}")
+        chain.append(crop)
+        chain.append(f"scale={w}:{h}:flags=lanczos")
+    elif render.layout == "streamer":
+        # the clip over a blurred, filled copy of itself
+        return _two_layer(render, workdir, blur=True)
+    elif render.layout == "black-box":
+        chain.append(f"scale={w}:-2:flags=lanczos")
+        chain.append(f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black")
+    else:
+        chain.append(f"scale={w}:{h}:flags=lanczos:force_original_aspect_ratio=increase")
+        chain.append(f"crop={w}:{h}")
+
+    chain.append("setsar=1")
+
+    if render.captions_enabled and render.words:
+        style = BY_ID.get(render.caption_style_id, BY_ID["bold_white"])
+        ass = workdir / "captions.ass"
+        ass.write_text(build_ass(render.words, style, w, h, censored=render.censored), encoding="utf-8")
+        chain.append(f"subtitles={ass.as_posix()}")
+
+    if render.title:
+        f = _title_filter(render.title, w, h)
+        if f:
+            chain.append(f)
+    if render.watermark:
+        f = _watermark_filter(render.watermark, w, h)
+        if f:
+            chain.append(f)
+
+    vf = ",".join(c for c in chain if c)
+    args = [*inputs, "-vf", vf]
+    if render.loudnorm:
+        args += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
+    args += _encode_args(render)
+    args.append(str(render.out))
+    return args, sendcmd_path
+
+
+def _two_layer(render: Render, workdir: Path, blur: bool) -> tuple[list[str], Path]:
+    """Streamer layout: the clip sits over a blurred fill of itself."""
+    w, h = render.size
+    dur_s = max(0.1, (render.out_ms - render.in_ms) / 1000)
+    sendcmd_path = workdir / "pan.cmd"
+    chain = [
+        f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},boxblur=24:2[bg]",
+        f"[0:v]scale={w}:-2:flags=lanczos[fg]",
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base]",
+    ]
+    last = "base"
+    if render.captions_enabled and render.words:
+        style = BY_ID.get(render.caption_style_id, BY_ID["bold_white"])
+        ass = workdir / "captions.ass"
+        ass.write_text(build_ass(render.words, style, w, h, censored=render.censored), encoding="utf-8")
+        chain.append(f"[{last}]subtitles={ass.as_posix()}[cap]")
+        last = "cap"
+    for name, f in (("title", _title_filter(render.title or {}, w, h)),
+                    ("mark", _watermark_filter(render.watermark or {}, w, h))):
+        if f:
+            chain.append(f"[{last}]{f}[{name}]")
+            last = name
+    args = ["-ss", f"{render.in_ms / 1000:.3f}", "-t", f"{dur_s:.3f}", "-i", str(render.source),
+            "-filter_complex", ";".join(chain), "-map", f"[{last}]", "-map", "0:a?"]
+    if render.loudnorm:
+        args += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
+    args += _encode_args(render)
+    args.append(str(render.out))
+    return args, sendcmd_path
+
+
+def _encode_args(render: Render) -> list[str]:
+    if render.preview:
+        return ["-c:v", "libx264", "-crf", "28", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"]
+    crf = "18" if render.resolution == "2160p" else "20"
+    return ["-c:v", "libx264", "-crf", crf, "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            "-r", "30", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"]
+
+
+def run(render: Render, workdir: Path) -> Path:
+    args, _ = build(render, workdir)
+    render.out.parent.mkdir(parents=True, exist_ok=True)
+    media.ffmpeg(args)
+    return render.out
