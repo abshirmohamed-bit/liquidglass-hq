@@ -51,3 +51,22 @@ export const toggleObjective = createServerFn({ method: "POST" }).middleware([re
 export const deleteObjective = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator(id).handler(async ({ context, data }) => {
   fail((await context.supabase.from("daily_objectives").delete().eq("id", data.id)).error); return true;
 });
+
+/**
+ * Counts for the dashboard pipeline strip: where work is sitting right now,
+ * from sources waiting to clips already posted. Read-only; RLS scopes the rows.
+ */
+export const pipelineCounts = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
+  const db = context.supabase;
+  const n = (r: { error: unknown; count: number | null }) => (r.error ? 0 : (r.count ?? 0));
+  const head = { count: "exact", head: true } as const;
+  const [sources, clipping, review, ready, scheduled, posted] = await Promise.all([
+    db.from("source_assets").select("id", head).eq("status", "READY").is("trashed_at", null).then(n),
+    db.from("clip_jobs").select("id", head).in("status", ["QUEUED", "PROCESSING", "AWAITING_CONFIRMATION"]).then(n),
+    db.from("clips").select("id", head).eq("status", "FOUND").then(n),
+    db.from("clips").select("id", head).eq("status", "READY").then(n),
+    db.from("posts").select("id", head).in("status", ["QUEUED", "AWAITING_MANUAL"]).then(n),
+    db.from("posts").select("id", head).eq("status", "POSTED").then(n),
+  ]);
+  return { sources, clipping, review, ready, scheduled, posted };
+});

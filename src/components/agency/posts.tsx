@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Trash2, X, ExternalLink, Download, Copy, Sparkles } from "lucide-react";
+import { Plus, Trash2, X, ExternalLink, Download, Copy, Sparkles, Send } from "lucide-react";
+import { EmptyState, SectionHead } from "./kit";
 import { Button } from "@/components/ui/button";
 import { postsData, addManualChannel, removeChannel, queuePosts, resolveManualPost, cancelPost, writeCopy } from "@/lib/posts.functions";
 import { COPY_LIMITS, copyIssue, postColumn, uploadLink, type Platform } from "@/lib/finish-rules";
@@ -10,6 +11,14 @@ const err = (e: unknown) => toast.error(e instanceof Error ? e.message : "Someth
 const PLATFORMS = Object.keys(COPY_LIMITS) as Platform[];
 const pname = (p: string) => ({ INSTAGRAM: "Instagram", YOUTUBE: "YouTube", TIKTOK: "TikTok", X: "X", FACEBOOK: "Facebook", LINKEDIN: "LinkedIn" } as Record<string, string>)[p] ?? p;
 const COLS = ["Scheduled", "Due now", "Posting", "Posted", "Failed"] as const;
+/** What belongs in each column, so an empty one still explains itself. */
+const COL_EMPTY: Record<(typeof COLS)[number], string> = {
+  "Scheduled": "Posts waiting for their slot.",
+  "Due now": "Manual posts ready to upload.",
+  "Posting": "Uploads in progress.",
+  "Posted": "Posts that went live.",
+  "Failed": "Nothing has failed.",
+};
 /** Rules box per platform (Prompt 7). */
 const RULES: Record<Platform, string> = {
   INSTAGRAM: "Reels 9:16, up to 15 min, under 1 GB.", TIKTOK: "Private posts only until TikTok audits the app.", YOUTUBE: "Shorts are 180 s or less.",
@@ -27,28 +36,63 @@ export function Posts() {
   const chanById = useMemo(() => new Map((d?.channels ?? []).map((c) => [c.id, c])), [d]);
   const posts = (d?.posts ?? []).filter((p) => !platform || p.platform === platform);
   const clip = pick ? clipById.get(pick) : undefined;
+  const channels = d?.channels ?? [];
+  const noClips = !d?.clips.length;
   return <div className="page">
-    <header className="page-header"><div><h1>Posts</h1><p className="page-subtitle">Schedule finished clips to your channels and track every post.</p></div>
-      <div className="review-actions"><select aria-label="Clip to post" value={pick} onChange={(e) => setPick(e.target.value)}><option value="">Choose a finished clip…</option>{d?.clips.map((c) => <option key={c.id} value={c.id}>{c.title ?? "Clip"}</option>)}</select>
-        <Button disabled={!clip} onClick={() => setOpen(true)}>Post / schedule</Button></div></header>
+    <header className="page-header">
+      <div>
+        <h1>Posts</h1>
+        <p className="page-subtitle">Send a finished clip to your channels, then watch every post through to live.</p>
+      </div>
+      <div className="actions">
+        <select aria-label="Clip to post" value={pick} onChange={(e) => setPick(e.target.value)} disabled={noClips}>
+          <option value="">{noClips ? "No finished clips yet" : "Choose a finished clip…"}</option>
+          {d?.clips.map((c) => <option key={c.id} value={c.id}>{c.title ?? "Clip"}</option>)}
+        </select>
+        <Button disabled={!clip} onClick={() => setOpen(true)}>Post or schedule</Button>
+      </div>
+    </header>
 
-    <section className="glass-panel">
-      <h2>Channels</h2>
-      <p className="caption muted">Automatic posting needs each platform's developer app connected. Until then, add your accounts as manual channels: at the scheduled time the post shows under "Due now" with the file, the caption and a button that opens the platform's upload page.</p>
-      <div className="lib-grid">{d?.channels.map((c) => <article key={c.id} className="glass-panel lib-card"><strong>{pname(c.platform)}</strong><span>{c.handle}</span>
-        <span className={`status-pill ${c.status === "CONNECTED" ? "tone-green" : c.status === "MANUAL" ? "tone-blue" : "tone-orange"}`}>{c.status[0] + c.status.slice(1).toLowerCase()}</span>
-        <p className="caption muted">{RULES[c.platform as Platform]}</p>
-        <Button size="sm" variant="ghost" aria-label="Remove channel" onClick={async () => { try { await removeChannel({ data: { id: c.id } }); await refresh(); } catch (e) { err(e); } }}><Trash2 />Remove</Button></article>)}</div>
-      <div className="filter-bar"><select aria-label="Platform" value={newP} onChange={(e) => setNewP(e.target.value as Platform)}>{PLATFORMS.map((p) => <option key={p} value={p}>{pname(p)}</option>)}</select>
+    <section className="glass-panel section">
+      <SectionHead
+        title="Channels"
+        hint="Automatic posting needs each platform's developer app approved. Until then add an account as a manual channel: at the scheduled time the post appears under Due now with the file, the caption and a link straight to the upload page."
+      />
+      {channels.length ? <div className="channel-grid">{channels.map((c) => <article key={c.id} className="glass-panel lib-card">
+        <div className="lib-card-head"><strong>{pname(c.platform)}</strong>
+          <span className={`status-pill ${c.status === "CONNECTED" ? "tone-green" : c.status === "MANUAL" ? "tone-blue" : "tone-orange"}`}>{c.status[0] + c.status.slice(1).toLowerCase()}</span></div>
+        <span className="caption">{c.handle}</span>
+        <p className="caption">{RULES[c.platform as Platform]}</p>
+        <div className="lib-actions"><button className="btn-chip" aria-label={`Remove ${c.handle}`} onClick={async () => { try { await removeChannel({ data: { id: c.id } }); await refresh(); } catch (e) { err(e); } }}><Trash2 />Remove</button></div>
+      </article>)}</div> : <EmptyState icon={Send} title="No channels yet" hint="Add the accounts you post to. A manual channel works today; swap it to automatic once that platform approves your app." />}
+      <div className="filter-bar" style={{ marginTop: "var(--s4)", marginBottom: 0 }}>
+        <select aria-label="Platform" value={newP} onChange={(e) => setNewP(e.target.value as Platform)}>{PLATFORMS.map((p) => <option key={p} value={p}>{pname(p)}</option>)}</select>
         <input aria-label="Handle" placeholder="@handle" value={handle} onChange={(e) => setHandle(e.target.value)} />
-        <Button size="sm" disabled={!handle.trim()} onClick={async () => { try { await addManualChannel({ data: { platform: newP, handle } }); setHandle(""); await refresh(); toast.success("Channel added"); } catch (e) { err(e); } }}><Plus />Add manual channel</Button></div>
+        <Button size="sm" disabled={!handle.trim()} onClick={async () => { try { await addManualChannel({ data: { platform: newP, handle } }); setHandle(""); await refresh(); toast.success("Channel added"); } catch (e) { err(e); } }}><Plus />Add manual channel</Button>
+      </div>
     </section>
 
-    <section className="filter-bar"><select aria-label="Filter platform" value={platform} onChange={(e) => setPlatform(e.target.value)}><option value="">All platforms</option>{PLATFORMS.map((p) => <option key={p} value={p}>{pname(p)}</option>)}</select></section>
-    <div className="posts-board">{COLS.map((col) => <section key={col} className="glass-panel posts-col"><h3>{col}</h3>
-      {posts.filter((p) => postColumn(p) === col).map((p) => { const c = clipById.get(p.clip_id); const ch = p.channel_id ? chanById.get(p.channel_id) : undefined;
-        return <PostCard key={p.id} p={p} clip={c} handle={ch?.handle ?? ""} refresh={refresh} />; })}
-    </section>)}</div>
+    <div className="section">
+      <div className="section-head">
+        <h2>Every post</h2>
+        <div className="actions">
+          <select aria-label="Filter platform" value={platform} onChange={(e) => setPlatform(e.target.value)}>
+            <option value="">All platforms</option>{PLATFORMS.map((p) => <option key={p} value={p}>{pname(p)}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="posts-board">{COLS.map((col) => {
+        const inCol = posts.filter((p) => postColumn(p) === col);
+        return <section key={col} className="glass-panel posts-col">
+          <header><h3>{col}</h3>{inCol.length > 0 && <span className="board-count">{inCol.length}</span>}</header>
+          {inCol.length
+            ? inCol.map((p) => { const c = clipById.get(p.clip_id); const ch = p.channel_id ? chanById.get(p.channel_id) : undefined;
+                return <PostCard key={p.id} p={p} clip={c} handle={ch?.handle ?? ""} refresh={refresh} />; })
+            : <p className="board-empty">{COL_EMPTY[col]}</p>}
+        </section>;
+      })}</div>
+    </div>
+
     {open && clip && <Distribute clip={clip} onClose={() => { setOpen(false); void refresh(); }} />}
   </div>;
 }

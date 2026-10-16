@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearch } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { Scissors, Sparkles, Check, Pencil, ChevronRight, Film } from "lucide-react";
+import { EmptyState, LoadingRows } from "./kit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { clipWorkspace, confirmClipCount, createClipJob, saveClipDefaults, syncClipJobs, type ClipWorkspace } from "@/lib/clip.functions";
@@ -67,9 +68,11 @@ export function Clips() {
       queue={ws.data.queue} initialSourceId={preselected} onDone={async () => { setFormOpen(false); await refresh(); }} />}
 
     <h2 className="section-title">Jobs <span className="caption muted">newest first</span></h2>
-    {ws.isLoading ? <p className="muted">Loading…</p>
+    {ws.isLoading ? <LoadingRows />
       : jobs.length ? <div className="clip-jobs">{jobs.map((j) => <JobCard key={j.id} job={j} refresh={refresh} />)}</div>
-      : <section className="glass-panel lib-empty"><p className="muted">No clip jobs yet. Pick a source and start clipping.</p></section>}
+      : <section className="glass-panel"><EmptyState icon={Scissors} title="No clip jobs yet"
+          hint="Pick a source and the AI finds the moments worth cutting. Each job lands in Review when it finishes."
+          action={<Button size="sm" onClick={() => setFormOpen(true)}>Start a clip job</Button>} /></section>}
   </div>;
 }
 
@@ -158,7 +161,9 @@ function ClipJobForm({ sources, music, defaults, queue, initialSourceId, onDone 
     } catch (e) { err(e); }
   }
 
-  if (!sources.length) return <section className="glass-panel lib-empty"><p className="muted">No ready sources to clip. Upload or import a video in <Link to="/library">Library</Link> first.</p></section>;
+  if (!sources.length) return <section className="glass-panel"><EmptyState icon={Scissors} title="Nothing ready to clip"
+    hint="Upload a video or paste a link in the Library. Sources appear here as soon as they finish processing."
+    action={<Button asChild size="sm"><Link to="/library">Open the Library</Link></Button>} /></section>;
 
   return <section className="glass-panel clip-form" aria-label="New clip job">
     <div className="clip-form-row">

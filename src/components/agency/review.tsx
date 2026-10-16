@@ -1,7 +1,8 @@
 const ZIP_LIB = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, X, Scissors, Play, Copy, Star, ThumbsDown, Download, Share2, Merge, FileCode, Captions } from "lucide-react";
+import { Check, X, Scissors, Play, Copy, Star, ThumbsDown, Download, Share2, Merge, FileCode, Captions, ClipboardCheck } from "lucide-react";
+import { EmptyState, LoadingGrid } from "./kit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
@@ -93,7 +94,9 @@ export function Review({ job: jobParam }: { job?: string | undefined }) {
       <Button size="sm" variant="ghost" onClick={() => toast.info("Open one clip in the editor and use “Apply to other clips”.")}>Apply my style</Button>
       <Button size="sm" variant="ghost" disabled title="Comes with Prompt 11">Edit with AI</Button>
     </section>}
-    {q.isLoading ? <p className="muted">Loading…</p> : !clips.length ? <section className="glass-panel placeholder-panel"><p>No clips match. Clips appear here when a clip job completes.</p></section> :
+    {q.isLoading ? <LoadingGrid count={6} className="lib-grid" height={300} /> : !clips.length ? <section className="glass-panel"><EmptyState icon={ClipboardCheck} title="No clips to review"
+      hint="When a clip job finishes, every moment it found lands here to approve, trim and export."
+      action={<Button asChild size="sm"><Link to="/clips" search={{ source: undefined }}>Start a clip job</Link></Button>} /></section> :
       <div className={view === "grid" ? "lib-grid review-grid" : "review-list"}>{clips.map((c, i) => <ClipCard key={c.id} c={c} focused={i === focus} data={d!} selected={sel.includes(c.id)} rendering={rendering[c.id]}
         onSelect={(v) => setSel((x) => (v ? [...x, c.id] : x.filter((y) => y !== c.id)))} onAct={(s) => act([c.id], s)} onTrim={() => setTrim(c)} onPreview={() => setPreview(c)} onScore={() => setScoreOf(c)}
         onExport={() => exportClips([c.id])} res={res} setRes={setRes} refresh={refresh} source={c.source_asset_id ? srcById.get(c.source_asset_id) : undefined} search={search} />)}</div>}

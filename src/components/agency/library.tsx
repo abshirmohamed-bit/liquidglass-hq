@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Upload, Link2, Trash2, RotateCcw, Pencil, Scissors, Film, FileText, Send, Wand2, Star } from "lucide-react";
+import { Upload, Link2, Trash2, RotateCcw, Pencil, Scissors, Film, FileText, Send, Wand2, Star, FolderOpen, type LucideIcon } from "lucide-react";
+import { EmptyState, LoadingGrid } from "./kit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { engineAccount, listLibrary, uploadStart, uploadComplete, engineImport, pollImports, renameItem, trashItem, restoreItem, deleteForever, setBrollMeta, engineCatalog, attachSubtitles, nativeSource } from "@/lib/library.functions";
@@ -91,7 +92,7 @@ export function Library() {
     <UploadCard disabled={false} linkDisabled={!connected} onFiles={(files, sub) => files.forEach((f) => uploadOne(f, "UPLOAD", [], sub))} onImported={async (id, sub) => { if (id && sub) { try { await uploadSubtitle(sub, id); } catch (e) { err(e); } } await refresh(); }} />
     {progress.length > 0 && <section className="glass-panel lib-progress">{progress.map((p) => <div key={p.name} className="lib-progress-row"><span>{p.name}</span><div className="lib-bar"><i style={{ width: `${p.pct}%` }} /></div><span>{p.error ? <>{p.error} <Button size="sm" variant="outline" onClick={p.retry}>Resume</Button></> : `${p.pct}%`}</span></div>)}</section>}
     <nav className="lib-tabs" role="tablist">{TABS.map((t) => <button key={t} role="tab" aria-selected={tab === t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>{t}</button>)}</nav>
-    {lib.isLoading ? <p className="muted">Loading…</p> : lib.data && <TabBody tab={tab} data={lib.data} refresh={refresh} connected={!!connected} upload={uploadOne} />}
+    {lib.isLoading ? <LoadingGrid /> : lib.data && <TabBody tab={tab} data={lib.data} refresh={refresh} connected={!!connected} upload={uploadOne} />}
   </div>;
 }
 
@@ -135,7 +136,10 @@ function TabBody({ tab, data, refresh, connected, upload }: { tab: Tab; data: Li
   if (tab === "Trash") return <Trash data={data} refresh={refresh} />;
   return <AssetTab tab={tab} rows={data.assets.filter((a) => a.source === ASSET_TAB_SOURCE[tab] && a.status !== "TRASHED")} refresh={refresh} connected={connected} upload={upload} />;
 }
-const Empty = ({ text }: { text: string }) => <section className="glass-panel lib-empty"><p className="muted">{text}</p></section>;
+const Empty = ({ text, icon }: { text: string; icon?: LucideIcon }) => {
+  const [title, ...rest] = text.split(/(?<=\.)\s+/);
+  return <section className="glass-panel"><EmptyState icon={icon ?? FolderOpen} title={(title ?? text).replace(/\.$/, "")} hint={rest.join(" ") || undefined} /></section>;
+};
 
 function Sources({ rows, refresh }: { rows: Lib["sources"]; refresh: () => Promise<void> }) {
   const [filter, setFilter] = useState<"All" | "Ready" | "Failed">("All"); const [q, setQ] = useState("");
