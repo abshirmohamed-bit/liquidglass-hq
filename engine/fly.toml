@@ -47,6 +47,10 @@ kill_timeout = "300s"
   source = "crayz_data"
   destination = "/data"
   initial_size = "10gb"
+  # Media fills disks. Grow at 80% full rather than failing a render at 3am.
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = "5GB"
+  auto_extend_size_limit = "50GB"
 
 [checks]
   [checks.health]
