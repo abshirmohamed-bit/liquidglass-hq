@@ -34,14 +34,20 @@ import { agencyPages, extraPages } from "./pages";
  * headings — it never reorders tabs. A heading is dropped when the role
  * cannot see any tab under it.
  */
-const GROUPS: { label: string | null; tabs: string[] }[] = [
+/**
+ * The sidebar follows the journey: start work, approve it, publish it, run the
+ * business. Everything occasional sits under "More" so the daily path is short.
+ */
+const GROUPS: { label: string | null; tabs: string[]; folded?: boolean }[] = [
   { label: null, tabs: ["Dashboard"] },
+  { label: "Make clips", tabs: ["Library", "Clips", "Review"] },
+  { label: "Publish", tabs: ["Posts", "Analytics"] },
+  { label: "Business", tabs: ["Clients", "Money"] },
   {
-    label: "Pipeline",
-    tabs: ["Library", "Clips", "Review", "Formats", "Posts", "Campaigns", "Tools"],
+    label: "More",
+    folded: true,
+    tabs: ["Formats", "Campaigns", "Tools", "Ideation", "Thumbnails", "Leads", "Team", "Onboarding", "Settings"],
   },
-  { label: "Clients", tabs: ["Clients", "Analytics", "Ideation", "Thumbnails"] },
-  { label: "Business", tabs: ["Money", "Leads", "Team", "Onboarding", "Settings"] },
 ];
 
 function NotificationBell() {
@@ -157,6 +163,7 @@ function AccountMenu() {
 
 export function AgencyShell({ children, signedIn }: { children: ReactNode; signedIn: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   // Dark is the default; only an explicit saved choice turns the lights on.
   const [light, setLight] = useState(false);
   const me = useQuery({ ...meQuery, enabled: signedIn }).data;
@@ -187,6 +194,7 @@ export function AgencyShell({ children, signedIn }: { children: ReactNode; signe
   const tabs = role ? (visibleTabs(role) as string[]) : agencyPages.map((p) => p.title);
   const groups = GROUPS.map((g) => ({
     label: g.label,
+    folded: !!g.folded,
     pages: agencyPages.filter((p) => g.tabs.includes(p.title) && tabs.includes(p.title)),
   })).filter((g) => g.pages.length > 0);
   const current = [...agencyPages, ...extraPages]
@@ -242,8 +250,23 @@ export function AgencyShell({ children, signedIn }: { children: ReactNode; signe
                 key={group.label ?? "main"}
                 style={i > 0 ? { marginTop: "var(--s4)" } : undefined}
               >
-                {group.label && !collapsed && <p className="sidebar-label">{group.label}</p>}
-                {group.pages.map((p) => (
+                {group.folded && !collapsed ? (
+                  <button
+                    type="button"
+                    className="nav-link nav-more"
+                    aria-expanded={moreOpen}
+                    onClick={() => setMoreOpen((v) => !v)}
+                  >
+                    <ChevronDown className={moreOpen ? "more-chevron is-open" : "more-chevron"} />
+                    <span className="nav-text">More</span>
+                  </button>
+                ) : (
+                  group.label && !collapsed && <p className="sidebar-label">{group.label}</p>
+                )}
+                {(!group.folded || collapsed || moreOpen || group.pages.some((p) => path.startsWith(p.path))
+                  ? group.pages
+                  : []
+                ).map((p) => (
                   <Link
                     key={p.path}
                     to={p.path}

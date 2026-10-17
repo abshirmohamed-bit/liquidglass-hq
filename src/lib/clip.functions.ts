@@ -99,7 +99,8 @@ export const createClipJob = createServerFn({ method: "POST" }).middleware([requ
       owner_id: context.userId,
       created_by: context.userId,
       engine: "NATIVE",
-      engine_job_id: `cz_${crypto.randomUUID()}`,
+      // the Engine assigns this when the job is submitted
+      engine_job_id: null,
       status: "QUEUED",
       source_asset_id: data.sourceId,
       coverage: data.coverage,
@@ -131,10 +132,15 @@ export const createClipJob = createServerFn({ method: "POST" }).middleware([requ
 export const confirmClipCount = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ jobId: z.string().uuid(), count: z.number().int().min(CLIP_COUNT_MIN).max(CLIP_COUNT_MAX) }))
   .handler(async ({ context, data }) => {
-    const job = (await context.supabase.from("clip_jobs").select("id,status").eq("id", data.jobId).maybeSingle()).data;
+    const job = (await context.supabase.from("clip_jobs").select("id,status,engine_job_id").eq("id", data.jobId).maybeSingle()).data;
     if (!job) throw new Error("That clip job no longer exists.");
     if (job.status !== "AWAITING_CONFIRMATION") throw new Error("This job is not waiting for a count.");
-    const u = await context.supabase.from("clip_jobs").update({ clip_count: data.count, status: "PROCESSING", stage: "BUILDING", progress: 55 }).eq("id", data.jobId);
+    if (job.engine_job_id) {
+      const { engineClient } = await import("./engine.server");
+      const r = await engineClient("PATCH", `/v1/autoclip/${encodeURIComponent(job.engine_job_id)}`, { clip_count: data.count });
+      if (!r.ok) throw new Error(r.error.message);
+    }
+    const u = await context.supabase.from("clip_jobs").update({ clip_count: data.count, status: "PROCESSING", stage: "FINDING", progress: 30 }).eq("id", data.jobId);
     if (u.error) throw new Error(u.error.message);
     return true;
   });

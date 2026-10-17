@@ -10,6 +10,7 @@ from pathlib import Path
 
 from app import worker
 from app.config import settings
+import pytest
 
 
 def probe(path: Path) -> dict:
@@ -165,3 +166,38 @@ def test_auto_count_can_pause_for_confirmation(api, uploaded_asset):
             break
     assert job["status"] == "completed", job.get("error")
     assert len(job["clips"]) == 2
+
+
+def _sentences(count: int, each_ms: int = 4000) -> list[dict]:
+    words = ("the real question people keep asking is whether this actually changes anything "
+             "because every number looks good until you compare it").split()
+    return [{"start_ms": i * each_ms, "end_ms": i * each_ms + each_ms - 200,
+             "text": " ".join(words[(i * 3) % len(words):][:7]) or "a sentence"}
+            for i in range(count)]
+
+
+@pytest.mark.parametrize("want", [3, 5, 10, 15, 20])
+def test_asking_for_n_clips_returns_n_clips(want):
+    """Snapping to sentence boundaries used to drop collisions and quietly return fewer."""
+    from app.pipeline.find import find
+
+    got = find(_sentences(360), count=want, target_ms=45_000, coverage="best")
+    assert len(got) == want, f"asked for {want}, got {len(got)}"
+
+
+def test_backfilled_clips_still_never_overlap():
+    from app.pipeline.find import find
+
+    got = find(_sentences(360), count=20, target_ms=45_000, coverage="best")
+    for a, b in zip(got, got[1:]):
+        assert a.end_ms <= b.start_ms, "clips must not overlap after backfilling"
+
+
+def test_a_short_video_returns_what_actually_fits_rather_than_overlapping():
+    """Two minutes cannot hold twenty 45s clips; returning fewer is correct."""
+    from app.pipeline.find import find
+
+    got = find(_sentences(30), count=20, target_ms=45_000, coverage="best")
+    assert 0 < len(got) < 20
+    for a, b in zip(got, got[1:]):
+        assert a.end_ms <= b.start_ms

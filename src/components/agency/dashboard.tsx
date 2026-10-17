@@ -20,6 +20,7 @@ import {
 } from "@/lib/ops.functions";
 import { EmptyState } from "./kit";
 import { IntegrationBanner } from "./integrations";
+import { NewJob } from "./newjob";
 
 const stageTone: Record<string, string> = {
   WAITING_FOR_FOOTAGE: "tone-orange",
@@ -140,6 +141,8 @@ export function Dashboard() {
           </p>
         </div>
       </header>
+
+      <NewJob />
 
       {signedIn === false && (
         <p className="notice">

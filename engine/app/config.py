@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 4 * 1024**3
     # 0 means "no quota"; the app shows a bar only when a limit is set.
     storage_limit_bytes: int = 0
+    # "ytdlp" reads real links; "fake" keeps tests offline.
+    analyze_provider: str = "ytdlp"
     min_source_seconds: int = 10
     max_source_seconds: int = 10800
     concurrent_jobs: int = 3

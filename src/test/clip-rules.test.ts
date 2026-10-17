@@ -58,7 +58,9 @@ describe("clip length parsing", () => {
     expect(parseClipLength("custom", 40, 90)).toEqual({ min_s: 40, max_s: 90 });
     expect(parseClipLength("custom", 90, 40)).toHaveProperty("error");
     expect(parseClipLength("custom", 5, 40)).toHaveProperty("error");
-    expect(parseClipLength("custom", 40, 900)).toHaveProperty("error");
+    // 900s is the top of the 10m~15m band, so it is valid; past it is not.
+    expect(parseClipLength("custom", 40, 900)).toEqual({ min_s: 40, max_s: 900 });
+    expect(parseClipLength("custom", 40, 901)).toHaveProperty("error");
   });
   it("labels lengths like the job card copy", () => {
     expect(lengthLabel("auto")).toBe("auto length");
