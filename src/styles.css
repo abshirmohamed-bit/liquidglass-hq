@@ -808,9 +808,12 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .preset.is-on { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 22%, transparent); }
 .preset-sample { font-size: .8rem; font-weight: 800; letter-spacing: -.01em; }
 .sample-none { opacity: .45; font-weight: 500; text-decoration: line-through; }
-.sample-karaoke { color: #facc15; }
-.sample-highlight_green { color: #4ade80; }
-.sample-pop_pink { color: #f472b6; }
+.sample-karaoke_highlight { color: #facc15; }
+.sample-bold_white { color: #fff; }
+.sample-highlighter { color: #111; background: #4ade80; padding: 0 4px; border-radius: 3px; }
+.sample-yellow_pop { color: #facc15; -webkit-text-stroke: .6px #000; }
+.sample-word_pop { color: #f472b6; }
+.sample-uppercase_impact { text-transform: uppercase; letter-spacing: .02em; }
 .sample-minimal { font-weight: 500; opacity: .8; }
 .preset-name { font-size: .75rem; color: var(--muted-foreground); }
 
