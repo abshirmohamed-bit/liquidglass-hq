@@ -80,9 +80,15 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
       });
       if (!ins.error) inserted++;
     }
+    // Autopilot takes it from here: approve what clears the bar and render it.
+    const { autoExportJobClips } = await import("./autopilot.server");
+    const rendering = await autoExportJobClips(db, job);
     await notify(db, job.owner_id, "CLIPS_READY", "Clips are ready",
-      `${inserted} clip${inserted === 1 ? "" : "s"} from ${String(data["source_name"] ?? "your video")} are waiting in Review.`, "/review");
-    await audit(db, job.owner_id, "engine.autoclip.completed", "clip_jobs", job.id, { clips: inserted, event_id: ev.id });
+      rendering
+        ? `${inserted} clip${inserted === 1 ? "" : "s"} from ${String(data["source_name"] ?? "your video")}. ${rendering} are rendering now.`
+        : `${inserted} clip${inserted === 1 ? "" : "s"} from ${String(data["source_name"] ?? "your video")} are waiting in Review.`,
+      "/review");
+    await audit(db, job.owner_id, "engine.autoclip.completed", "clip_jobs", job.id, { clips: inserted, auto_rendering: rendering, event_id: ev.id });
     return "processed";
   }
 
@@ -134,7 +140,10 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
         thumbnail_url: typeof a["thumbnail_url"] === "string" ? a["thumbnail_url"] : clip.thumbnail_url, error: null, edits: edits as never, last_event_id: ev.id,
       }).eq("id", clip.id);
       await db.from("assets").insert({ owner_id: clip.owner_id, created_by: clip.created_by, type: "VIDEO", source: "EXPORT", name: clip.title ?? "Clip", url, size_bytes: num("size"), duration_ms: typeof a["length"] === "number" ? Math.round((a["length"] as number) * 1000) : null, status: "READY", tags: [] as never });
-      for (const u of people) await db.from("notifications").insert({ owner_id: clip.owner_id, user_id: u, type: "EXPORT_READY", title: "Clip exported", body: `${clip.title ?? "A clip"} is ready to download.`, link, read: false });
+      // Autopilot writes the copy and queues the post to every channel.
+      const { autoQueueClip } = await import("./autopilot.server");
+      const queued = await autoQueueClip(db, clip);
+      for (const u of people) await db.from("notifications").insert({ owner_id: clip.owner_id, user_id: u, type: "EXPORT_READY", title: queued ? "Clip queued to post" : "Clip exported", body: queued ? `${clip.title ?? "A clip"} is written up and queued to ${queued} channel${queued === 1 ? "" : "s"}.` : `${clip.title ?? "A clip"} is ready to download.`, link: queued ? "/posts" : link, read: false });
     }
     await audit(db, clip.owner_id, `engine.${ev.type}`, "clips", clip.id, { event_id: ev.id });
     return "processed";

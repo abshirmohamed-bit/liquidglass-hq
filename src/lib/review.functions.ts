@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { sign, editsOf, must } from "./review-helpers";
-import { EXPORT_SIZES, EXPORT_STALE_MS, STORAGE_PREFIX, makeShareToken, mergeIssue, mergeSegments, shareTokenValid, trimIssue } from "./review-rules";
+import { EXPORT_STALE_MS, makeShareToken, mergeIssue, mergeSegments, shareTokenValid, trimIssue } from "./review-rules";
 
 export const reviewData = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
   const db = context.supabase;
@@ -83,31 +83,15 @@ export const mergeClips = createServerFn({ method: "POST" }).middleware([require
     return ins.id;
   });
 
-/** engineExport: only APPROVED clips (or READY ones being re-exported). Renders run in the browser. */
+/** Send approved clips (or READY ones being re-exported) to the Engine to render. */
 export const startExport = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ ids: z.array(z.string().uuid()).min(1).max(100), resolution: z.enum(["HD", "UHD"]) }))
   .handler(async ({ context, data }) => {
-    const db = context.supabase;
-    const rows = must(await db.from("clips").select("id,status,start_ms,end_ms,aspect,edits,title,source_asset_id,source_assets(public_url,name)").in("id", data.ids).in("status", ["APPROVED", "READY"]));
-    const out = [];
-    for (const c of rows) {
-      const src = c.source_assets as { public_url: string | null; name: string } | null;
-      if (!src?.public_url) { await db.from("clips").update({ status: "FAILED", error: "The source video file isn't stored in the app, so it can't be rendered." }).eq("id", c.id); continue; }
-      const exportId = `exp_${crypto.randomUUID()}`;
-      const e = editsOf(c.edits);
-      await db.from("clips").update({ status: "EXPORTING", engine_export_id: exportId, resolution: data.resolution, error: null, edits: { ...e, finish_dirty: undefined, export_started_at: new Date().toISOString() } as never }).eq("id", c.id);
-      out.push({ clipId: c.id, exportId, title: c.title ?? "clip", aspect: c.aspect, sourceUrl: await sign(db, src.public_url), segments: e.segments ?? [{ start_ms: c.start_ms ?? 0, end_ms: c.end_ms ?? 0 }], size: EXPORT_SIZES[data.resolution] });
-    }
-    return { workspace: (await db.rpc("workspace_of", { _uid: context.userId })).data as string, jobs: out };
-  });
-
-export const finishExport = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator(z.object({ exportId: z.string().min(5).max(80), path: z.string().max(400).nullable(), thumbPath: z.string().max(400).nullable(), width: z.number().int().nullable(), height: z.number().int().nullable(), size: z.number().int().nullable(), lengthSec: z.number().nullable(), error: z.string().max(500).optional() }))
-  .handler(async ({ context, data }) => {
-    const { applyEngineEvent } = await import("./engine-events.server");
-    const ev = data.error || !data.path
-      ? { id: `evt_${data.exportId}_failed`, type: "export.failed", data: { export_id: data.exportId, error: data.error ?? "Render failed" } }
-      : { id: `evt_${data.exportId}_done`, type: "export.completed", data: { export_id: data.exportId, asset: { url: STORAGE_PREFIX + data.path, size: data.size, length: data.lengthSec, width: data.width, height: data.height, thumbnail_url: data.thumbPath ? STORAGE_PREFIX + data.thumbPath : null } } };
-    return applyEngineEvent(context.supabase, ev);
+    // The Engine renders. Nothing happens in the browser any more, so the tab
+    // is free to be closed and a job can finish while you are away.
+    const { exportClipsOnEngine } = await import("./export.server");
+    const r = await exportClipsOnEngine(context.supabase, data.ids, data.resolution);
+    return { started: r.started.length, failed: r.failed };
   });
 
 export const shareJob = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])

@@ -55,6 +55,9 @@ const jobFormSchema = z.object({
   extras: extrasSchema.default({ removeSilences: false, removeFillers: false, zoom: "Balanced", autoTransitions: false, soundEffects: false, grade: "none", keywordHighlight: false, emojis: false, autoBroll: false }),
   brollAssetId: z.string().uuid().nullable().default(null),
   musicAssetId: z.string().uuid().nullable().default(null),
+  // On: the AI picks the count, approves what clears the bar, renders it and
+  // queues the posts. Off: the job stops at each of those for your decision.
+  autopilot: z.boolean().default(false),
 });
 
 export const clipWorkspace = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
@@ -125,6 +128,7 @@ export const createClipJob = createServerFn({ method: "POST" }).middleware([requ
       music_asset_id: data.musicAssetId,
       broll_asset_id: data.brollAssetId,
       formats: { layouts: data.layouts, extras: data.extras } as never,
+      edits: { autopilot: data.autopilot } as never,
       progress: 0,
     }).select("id").single();
     if (ins.error) throw new Error(ins.error.message);

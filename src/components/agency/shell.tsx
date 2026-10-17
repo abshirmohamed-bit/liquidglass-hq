@@ -114,8 +114,12 @@ function NotificationBell() {
 }
 
 function AccountMenu() {
-  const me = useQuery(meQuery).data;
+  const account = useQuery(meQuery);
+  const me = account.data;
   const navigate = useNavigate();
+  // Until the account resolves, a "Sign in" button tells the user they have
+  // been logged out. Hold a quiet placeholder instead.
+  if (account.isPending) return <span className="account-pending skeleton" aria-hidden="true" />;
   if (!me)
     return (
       <Button asChild variant="outline" size="sm">

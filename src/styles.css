@@ -317,6 +317,8 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .loading-row { display: flex; align-items: center; gap: var(--s2); color: var(--muted-foreground); font-size: 13px; padding: var(--s5) 0; }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .55 } }
 .skeleton { background: var(--surface-high); border-radius: var(--r-sm); animation: pulse 1.6s ease-in-out infinite; }
+.account-pending { display: inline-block; width: 104px; height: 28px; border-radius: var(--r-pill); }
+.page-pending-head { display: grid; gap: var(--s2); min-width: 0; }
 
 /* ---------- kit: pills, chips, badges ---------- */
 .status-pill {
@@ -700,7 +702,7 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .ed-bottom-left { top: 95%; left: 18%; } .ed-bottom-right { top: 95%; left: 82%; }
 
 /* ---------- posts ---------- */
-.posts-board { display: grid; grid-template-columns: repeat(5, minmax(210px, 1fr)); gap: var(--s3); overflow-x: auto; padding-bottom: var(--s2); }
+.posts-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: var(--s3); padding-bottom: var(--s2); }
 .posts-col { display: flex; flex-direction: column; gap: var(--s2); min-height: 180px; padding: var(--s3); }
 .posts-col > header { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: 2px 2px var(--s1); }
 .posts-col h3 { font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--muted-foreground); }
