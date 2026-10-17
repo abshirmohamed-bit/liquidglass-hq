@@ -35,3 +35,5 @@
 - Library Projects reads real clip records; Engine-backed Review exports use Engine project endpoints and completion polling, while legacy local-only exports preserve their browser render path.
 - Resolve private storage markers with the shared signing helper before returning thumbnails to page queries; never relax CSP to permit storage schemes.
 - Feed extracted mono PCM samples directly to Whisper; avoid incompatible PyAV decoding and keep transcription threads bounded.
+
+- Download Git LFS model binaries from the media endpoint, not raw GitHub pointer files; otherwise the face detector cannot load at export time.
