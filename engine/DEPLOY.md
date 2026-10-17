@@ -172,3 +172,30 @@ fly scale count 2
 
 Each machine needs its own volume, and each runs its own worker. Jobs are
 claimed from the database, so they will not collide.
+
+## When YouTube says "sign in to confirm you're not a bot"
+
+YouTube scores the address a request comes from, and a cloud machine's address
+scores badly. The same video your browser plays without a thought can be
+refused to the Engine. The image already does everything that can be done
+from this side: it mints a PO token locally, solves YouTube's JavaScript
+challenge with Node, uses IPv4 only, and tries several player clients before
+giving up. No account and no cookies are involved.
+
+If a link is still refused, there are two reliable ways out.
+
+**A residential proxy.** This is the real fix: it gives requests an address
+that is not a datacentre. Any residential provider works.
+
+```bash
+fly secrets set YTDLP_PROXY="http://user:pass@host:port"
+```
+
+**Upload the file instead.** Download the video yourself and upload it in the
+Library. Nothing is asked of YouTube, so nothing can be refused.
+
+A cookies file is a third option and the worst one. Put a `cookies.txt` at
+`/data/cookies.txt` on the volume and the Engine will use it. The cookies
+expire within weeks, and the Google account that exported them can be
+rate-limited or locked for being used from a server — so never use your own
+account for this.
