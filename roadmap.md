@@ -1,4 +1,5 @@
 # Agency Admin first pass
+- [ ] Restore Engine visibility in Settings and welcome setup; preserve the existing engine/ processor and clip-engine.server.ts integration (Fly.io hosts the container, not a separate product).
 - [x] Confirmed prompt-only scope: no unrelated features; test each original prompt before the extension document.
 - [x] Match the supplied Base44 screenshot’s dashboard appearance; presentation-only shell, both themes and setup navigation verified. Live dashboard totals and objectives remain part of Prompt 9.
 - [x] Rechecked Prompt 1: exact color tokens, glass blur/saturation, modal radius, typography, both themes and 72px sidebar verified in browser.
