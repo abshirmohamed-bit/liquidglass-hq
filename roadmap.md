@@ -1,5 +1,5 @@
 # Agency Admin first pass
-- [ ] Reproduce and fix real URL → Get clips failure; verify with the hosted Engine and signed-in UI without modifying engine/.
+- [ ] Fix real URL → Get clips failure using https://youtu.be/fRVNp0AYoPA?si=BpzhE-oOc3r1SUW8. Reproduced signed-in: analysis succeeds, 830.361s 3840×1920 AV1/Opus download exists, import stalls and Fly health/exec time out; no app source/job created. Same machine recovered by restart; bounded-thread decode succeeds. Blocker: user forbids changes under separately managed engine/. Engine owner must implement bounded decoding/encoding and durable asynchronous import recovery, then retest exact URL through Review.
 - [x] Restore Engine visibility in Settings and welcome setup; preserved engine/ and clip-engine.server.ts; signed-in card/guide verified, 9 tests passed (live processor test skipped without deployment configuration).
 - [x] Confirmed prompt-only scope: no unrelated features; test each original prompt before the extension document.
 - [x] Match the supplied Base44 screenshot’s dashboard appearance; presentation-only shell, both themes and setup navigation verified. Live dashboard totals and objectives remain part of Prompt 9.
