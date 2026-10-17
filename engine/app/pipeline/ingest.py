@@ -1,6 +1,7 @@
 """Getting a video into the Engine: uploads and link imports."""
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from .. import media, storage, webhooks
 from ..config import settings
 from ..errors import EngineError
 from ..models import Asset, utcnow
+
+log = logging.getLogger("engine.ingest")
 
 VIDEO_TYPES = {"video/mp4", "video/quicktime", "video/webm", "video/x-matroska", "video/x-msvideo",
                "video/x-m4v", "video/mpeg", "video/x-ms-wmv", "video/x-flv", "video/3gpp"}
@@ -141,17 +144,35 @@ def _ytdlp(url: str, dest: Path) -> None:
     exe = shutil.which("yt-dlp")
     if not exe:
         raise EngineError("NOT_CONFIGURED", "yt-dlp is not installed, so page links cannot be resolved.")
+    from . import ytdlp_opts
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [exe, "--no-playlist", "--quiet", "--no-warnings",
-           "-f", "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best",
-           "--merge-output-format", "mp4", "-o", str(dest), url]
-    cookies = Path("/data/cookies.txt")
-    if cookies.exists():
-        cmd[1:1] = ["--cookies", str(cookies)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-    if proc.returncode != 0 or not dest.exists():
-        tail = (proc.stderr or "").strip().splitlines()[-2:]
-        raise EngineError("VALIDATION_ERROR", "Could not fetch that link: " + " / ".join(tail))
+    last = ""
+    for client in ytdlp_opts.PLAYER_CLIENTS:
+        cmd = [exe, "--no-playlist", "--quiet", "--no-warnings",
+               *ytdlp_opts.cli_args(client),
+               "-f", "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best",
+               "--merge-output-format", "mp4", "-o", str(dest), url]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        if proc.returncode == 0 and dest.exists():
+            return
+        last = (proc.stderr or "").strip()
+        log.warning("yt-dlp could not fetch %s as %s: %s", url, client, last[-300:])
+        if not ytdlp_opts.looks_blocked(last):
+            break
+    raise EngineError("VALIDATION_ERROR", _download_error(last))
+
+
+def _download_error(stderr: str) -> str:
+    """yt-dlp writes for maintainers. The person pasting a link needs one line."""
+    from . import ytdlp_opts
+
+    if ytdlp_opts.looks_blocked(stderr):
+        return ("YouTube would not serve this video to the Engine — it asks a "
+                "cloud server to prove it is not a bot. Download the video and "
+                "upload the file instead, or set a residential proxy on the Engine.")
+    tail = stderr.strip().splitlines()[-2:]
+    return "Could not fetch that link: " + " / ".join(tail)
 
 
 def asset_event(asset: Asset) -> dict:

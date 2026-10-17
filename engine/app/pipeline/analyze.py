@@ -7,6 +7,7 @@ that should cost a download, so this only ever reads metadata.
 """
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -14,6 +15,8 @@ from typing import Any
 from ..config import settings
 from ..errors import EngineError
 from .find import suggest_count
+
+log = logging.getLogger("engine.analyze")
 
 # Sites whose terms mean the creator must confirm they hold the rights.
 RIGHTS_HOSTS = re.compile(
@@ -118,13 +121,25 @@ def _ytdlp(url: str) -> UrlInfo:
     except ImportError as e:  # pragma: no cover - production dependency
         raise EngineError("ENGINE_ERROR", "The link importer is not installed on this Engine.") from e
 
-    opts = {"quiet": True, "no_warnings": True, "skip_download": True,
-            "noplaylist": True, "socket_timeout": 20}
-    try:
-        with yt_dlp.YoutubeDL(opts) as y:
-            raw = y.extract_info(url, download=False)
-    except Exception as e:
-        raise EngineError("IMPORT_FAILED", _friendly(str(e))) from e
+    from . import ytdlp_opts
+
+    # YouTube gates each player client differently, so a refusal for one is
+    # worth retrying as another before telling the user it cannot be read.
+    raw = None
+    last = ""
+    for client in ytdlp_opts.PLAYER_CLIENTS:
+        opts = {**ytdlp_opts.api_opts(client), "skip_download": True}
+        try:
+            with yt_dlp.YoutubeDL(opts) as y:
+                raw = y.extract_info(url, download=False)
+            break
+        except Exception as e:
+            last = str(e)
+            if not ytdlp_opts.looks_blocked(last):
+                raise EngineError("IMPORT_FAILED", _friendly(last)) from e
+            log.warning("yt-dlp was refused for %s as %s: %s", url, client, last)
+    if raw is None:
+        raise EngineError("IMPORT_FAILED", _friendly(last))
     if not raw:
         raise EngineError("IMPORT_FAILED", "Nothing could be read from that link.")
     if raw.get("_type") == "playlist":
