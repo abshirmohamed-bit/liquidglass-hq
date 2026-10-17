@@ -1,5 +1,5 @@
 # Agency Admin first pass
-- [ ] Authorized Engine repair: bound processing threads, implement durable recoverable imports, wait for READY in Get clips, deploy existing Fly config and verify the exact YouTube URL through Review.
+- [ ] Authorized Engine repair: bounded threads and durable recoverable imports deployed; 66 Engine tests and 21 selected app tests passed. Signed-in exact YouTube URL analyzed and rights-confirmed Get clips submitted. Health stays 200 (s3, ffmpeg true) during real two-thread encoding. End-to-end Review result remains unverified: target import is queued behind two older 4K AV1 imports; no completed clips yet. Resume checking the persisted queue before resubmitting.
 - [x] Restore Engine visibility in Settings and welcome setup; preserved engine/ and clip-engine.server.ts; signed-in card/guide verified, 9 tests passed (live processor test skipped without deployment configuration).
 - [x] Confirmed prompt-only scope: no unrelated features; test each original prompt before the extension document.
 - [x] Match the supplied Base44 screenshot’s dashboard appearance; presentation-only shell, both themes and setup navigation verified. Live dashboard totals and objectives remain part of Prompt 9.
