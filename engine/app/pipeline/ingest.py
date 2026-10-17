@@ -69,7 +69,10 @@ def ingest_video(session: Session, asset: Asset, src: Path) -> Asset:
     storage.put_file(storage.open_write(thumb_key), thumb_key, "image/jpeg")
 
     mezz_key = f"mezzanine/{asset.id}.mp4"
-    if info.needs_mezzanine:
+    if info.vcodec in media.COPYABLE:
+        media.remux_copy(src, storage.open_write(mezz_key))
+        storage.put_file(storage.open_write(mezz_key), mezz_key, "video/mp4")
+    elif info.needs_mezzanine:
         media.make_mezzanine(src, storage.open_write(mezz_key))
         storage.put_file(storage.open_write(mezz_key), mezz_key, "video/mp4")
     else:

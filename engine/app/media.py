@@ -114,6 +114,29 @@ def make_mezzanine(src: Path, dest: Path, fps: float = 30.0) -> Path:
     return dest
 
 
+#: Codecs ffmpeg seeks reliably once they are in an indexed mp4. A source in
+#: one of these never needs re-encoding on the way in.
+COPYABLE = {"h264", "hevc", "vp9", "av1"}
+
+
+def remux_copy(src: Path, dest: Path) -> Path:
+    """Keep the video bit-for-bit; normalise the audio and container only.
+
+    FFmpeg decodes the retained source when rendering individual clips, so a
+    long 4K import need not first encode every frame into another 4K video.
+    Encoding a whole source is minutes of work; this is seconds.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    ffmpeg(["-i", str(src), "-map", "0:v:0", "-map", "0:a:0?",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+            "-movflags", "+faststart", str(dest)])
+    return dest
+
+
+#: The name this arrived under. AV1 was the first codec it was needed for.
+remux_av1 = remux_copy
+
+
 def extract_audio(src: Path, dest: Path, rate: int = 16000) -> Path:
     """16 kHz mono wav: what speech recognition wants."""
     dest.parent.mkdir(parents=True, exist_ok=True)

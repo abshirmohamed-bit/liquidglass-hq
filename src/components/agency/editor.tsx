@@ -76,7 +76,15 @@ export function Editor({ clipId }: { clipId: string }) {
       // Save first so the Engine renders what is on screen, then hand it over.
       await saveFinish({ data: { ids: [clipId], patch: patch() } });
       const r = await startExport({ data: { ids: [clipId], resolution: "HD" } });
-      if (!r.started) { toast.error(r.failed[0]?.error ?? "Approve the clip in Review before exporting."); return; }
+      if (r.engineFailed.length) { toast.error(r.engineFailed[0]!.error); return; }
+      if (!r.engineQueued) {
+        // An older clip with no Engine project behind it still renders in the
+        // browser, and Review is where that path lives.
+        toast.error(r.jobs.length
+          ? "This clip is not on the Engine yet — export it from Review."
+          : "Approve the clip in Review before exporting.");
+        return;
+      }
       toast.success("Rendering on the Engine — you can close this tab.");
       await qc.invalidateQueries({ queryKey: ["editor", clipId] }); await qc.invalidateQueries({ queryKey: ["review"] });
     } catch (e) { err(e); } finally { setBusy(""); }

@@ -35,7 +35,7 @@ const CAPTION_PRESETS = [
  * `stages` are the values the Engine reports on the job.
  */
 const STEPS = [
-  { label: "Fetching the video", stages: ["IMPORTING"] },
+  { label: "Fetching and preparing the video", stages: ["IMPORTING"] },
   { label: "Listening to it", stages: ["TRANSCRIBING"] },
   { label: "Finding the moments", stages: ["FINDING", "FRAMING"] },
   { label: "Cutting and captioning", stages: ["BUILDING"] },
@@ -64,7 +64,7 @@ const mmss = (ms: number) => {
   return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 };
 
-type Phase = "setup" | "importing" | "clipping" | "done";
+type Phase = "setup" | "importing" | "clipping" | "done" | "failed";
 
 type Options = {
   model: string;
@@ -103,6 +103,7 @@ export function NewJob() {
   const [phase, setPhase] = useState<Phase>("setup");
   const [jobId, setJobId] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState(0);
+  const [failure, setFailure] = useState("");
   const [elapsed, setElapsed] = useState(0);
   const [url, setUrl] = useState("");
   const [details, setDetails] = useState<LinkDetails | null>(null);
@@ -175,14 +176,16 @@ export function NewJob() {
     // user onto another screen to wonder whether anything is happening.
     onSuccess: (job) => setJobId(job.id),
     onError: (e: Error) => {
-      toast.error(e.message);
-      setPhase("setup");
+      setFailure(e.message);
+      setPhase("failed");
     },
   });
 
   const running = phase === "importing" || phase === "clipping";
 
   function begin() {
+    setFailure("");
+    setJobId(null);
     setStartedAt(Date.now());
     setElapsed(0);
     setPhase("importing");
@@ -190,6 +193,7 @@ export function NewJob() {
   }
 
   function reset() {
+    setFailure("");
     setPhase("setup");
     setJobId(null);
     setDetails(null);
@@ -216,8 +220,8 @@ export function NewJob() {
   useEffect(() => {
     if (jobStatus === "COMPLETED") setPhase("done");
     if (jobStatus === "FAILED") {
-      toast.error(jobError || "The clip job failed.");
-      setPhase("setup");
+      setFailure(jobError || "The clip job failed.");
+      setPhase("failed");
       setJobId(null);
     }
   }, [jobStatus, jobError]);
@@ -251,7 +255,7 @@ export function NewJob() {
         <Upload size={13} aria-hidden /> Or upload a file from the Library.
       </p>
 
-      {details && (running || phase === "done") && (
+      {details && phase !== "setup" && (
         <JobRun
           details={details}
           phase={phase}
@@ -260,7 +264,9 @@ export function NewJob() {
           clips={job.data?.clips ?? 0}
           elapsed={elapsed}
           jobId={jobId}
+          failure={failure}
           onAgain={reset}
+          onRetry={begin}
         />
       )}
 
@@ -434,7 +440,7 @@ export function NewJob() {
  * gone, because there is nothing left to set.
  */
 function JobRun({
-  details, phase, step, percent, clips, elapsed, jobId, onAgain,
+  details, phase, step, percent, clips, elapsed, jobId, failure, onAgain, onRetry,
 }: {
   details: LinkDetails;
   phase: Phase;
@@ -443,9 +449,12 @@ function JobRun({
   clips: number;
   elapsed: number;
   jobId: string | null;
+  failure: string;
   onAgain: () => void;
+  onRetry: () => void;
 }) {
   const done = phase === "done";
+  const failed = phase === "failed";
   return (
     <div className="job-run glass-panel">
       <div className="job-preview">
@@ -461,34 +470,52 @@ function JobRun({
             {details.channel ? `${details.channel} · ` : ""}
             {mmss(details.duration_ms)}
           </p>
-          <p className="job-run-state">
-            {done
-              ? `${clips} clip${clips === 1 ? "" : "s"} ready`
-              : STEPS[step]?.label ?? "Working"}
+          <p className={failed ? "job-run-state is-failed" : "job-run-state"}>
+            {failed
+              ? "Stopped"
+              : done
+                ? `${clips} clip${clips === 1 ? "" : "s"} ready`
+                : STEPS[step]?.label ?? "Working"}
             <span className="caption muted"> · {clock(elapsed)}</span>
           </p>
         </div>
       </div>
 
-      <div className="job-bar" role="progressbar" aria-label="Progress">
-        <i
-          className={percent == null ? "is-waiting" : ""}
-          style={percent == null ? undefined : { width: `${Math.max(4, percent)}%` }}
-        />
-      </div>
+      {failed ? (
+        <p className="job-run-error">{failure}</p>
+      ) : (
+        <>
+          <div className="job-bar" role="progressbar" aria-label="Progress">
+            <i
+              className={percent == null ? "is-waiting" : ""}
+              style={percent == null ? undefined : { width: `${Math.max(4, percent)}%` }}
+            />
+          </div>
 
-      <ol className="job-steps">
-        {STEPS.map((s, i) => (
-          <li key={s.label} className={i < step ? "is-done" : i === step ? "is-now" : ""}>
-            <span className="job-step-dot">
-              {i < step ? <Check size={11} /> : i === step ? <Loader2 size={11} className="spin" /> : null}
-            </span>
-            {s.label}
-          </li>
-        ))}
-      </ol>
+          <ol className="job-steps">
+            {STEPS.map((s, i) => (
+              <li key={s.label} className={i < step ? "is-done" : i === step ? "is-now" : ""}>
+                <span className="job-step-dot">
+                  {i < step ? <Check size={11} /> : i === step ? <Loader2 size={11} className="spin" /> : null}
+                </span>
+                {s.label}
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
 
-      {done ? (
+      {failed ? (
+        <div className="job-actions">
+          <Button variant="ghost" type="button" onClick={onAgain}>
+            Start over
+          </Button>
+          <Button type="button" onClick={onRetry}>
+            <Sparkles size={16} />
+            Try again
+          </Button>
+        </div>
+      ) : done ? (
         <div className="job-actions">
           <Button variant="ghost" type="button" onClick={onAgain}>
             Clip another video

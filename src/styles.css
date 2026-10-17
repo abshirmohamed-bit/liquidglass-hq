@@ -615,11 +615,14 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .lib-filters { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-bottom: var(--s4); }
 .lib-filters input, .lib-filters select { min-width: 160px; width: auto; }
 .lib-filters .seg { flex: none; }
-.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--s3); }
-.lib-card { padding: var(--s3); display: grid; gap: var(--s2); align-content: start; }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: var(--s3); }
+.lib-card { padding: var(--s3); display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; overflow: hidden; gap: var(--s2); align-content: start; }
 .lib-card img, .lib-card video, .lib-thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: var(--r-md); background: var(--surface-high); display: grid; place-items: center; color: var(--muted-foreground); }
 .lib-card h3 { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lib-card-head { display: flex; justify-content: space-between; gap: var(--s2); align-items: center; }
+.lib-card-head { display: flex; justify-content: space-between; gap: var(--s2); align-items: center; min-width: 0; }
+.lib-card-head h3 { min-width: 0; flex: 1; }
+.lib-card-head > span { flex-shrink: 0; }
+.lib-card p, .clip-job-body p { overflow-wrap: anywhere; min-width: 0; }
 .lib-note { display: none; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
 .lib-card:hover .lib-note { display: block; }
 .lib-actions { display: flex; flex-wrap: wrap; gap: var(--s1); }
@@ -826,6 +829,13 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 /* ---------- the card that replaces the options while a job runs ---------- */
 .job-run { margin-top: var(--s4); display: grid; gap: var(--s4); }
 .job-run-state { margin: var(--s2) 0 0; font-size: .9rem; font-weight: 500; }
+.job-run-state.is-failed { color: var(--destructive); }
+.job-run-error {
+  margin: 0; font-size: .875rem; color: var(--foreground);
+  padding: var(--s3); border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  border: var(--hairline) solid color-mix(in oklab, var(--destructive) 28%, transparent);
+}
 .job-bar { height: 6px; border-radius: var(--r-pill); background: var(--surface-high); overflow: hidden; }
 .job-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--primary); transition: width .6s ease; }
 /* Before the Engine reports a number there is nothing honest to fill, so the

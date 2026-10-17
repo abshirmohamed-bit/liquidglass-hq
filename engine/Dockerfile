@@ -45,7 +45,7 @@ RUN mkdir -p /usr/share/fonts/truetype/crayz && cd /usr/share/fonts/truetype/cra
 # tracking, which works but is less precise on talking heads.
 RUN mkdir -p /models && \
     curl -fsSL -o /models/face_detection_yunet.onnx \
-      "https://raw.githubusercontent.com/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" || \
+      "https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx" || \
     echo "note: face model not fetched; motion tracking will be used"
 ENV FACE_MODEL_PATH=/models/face_detection_yunet.onnx
 
