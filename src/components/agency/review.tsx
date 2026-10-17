@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
 import { finishSpec } from "@/lib/finish-rules";
 import { Distribute } from "./posts";
-import { reviewData, updateClip, setClipStatus, trimClip, duplicateClip, mergeClips, startExport, finishExport, shareJob } from "@/lib/review.functions";
+import { reviewData, updateClip, setClipStatus, trimClip, duplicateClip, mergeClips, startExport, finishExport, shareJob, clipPreview } from "@/lib/review.functions";
 import { CLIP_STATUSES, FLAG_FILTERS, defaultJob, filterClips, fromLabel, formatPrecise, parsePrecise, trimIssue, transcriptWords, sliceWords, snapToSentence, needsReexport, srtFor, timelineFile, mergeIssue, exportSize, type Resolution, type TimelineFormat } from "@/lib/review-rules";
 
 type Data = Awaited<ReturnType<typeof reviewData>>;
@@ -172,10 +172,26 @@ function Transcript({ clip, source, search, only }: { clip: Clip; source?: Sourc
 
 function PreviewModal({ clip, source, search, onClose, onExport, refresh }: { clip: Clip; source?: Source | undefined; search: string; onClose: () => void; onExport: () => void; refresh: () => Promise<void> }) {
   const [only, setOnly] = useState(false);
-  const url = source?.playUrl ? `${source.playUrl}#t=${(clip.start_ms ?? 0) / 1000},${(clip.end_ms ?? 0) / 1000}` : null;
+  // Ask the Engine to cut a real preview. Falls back to the exported file if there is one.
+  const preview = useQuery({
+    queryKey: ["clip-preview", clip.id],
+    queryFn: () => clipPreview({ data: { clipId: clip.id } }),
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
+  const url = clip.video_url ?? preview.data?.url ?? null;
   return <Modal title={clip.title ?? "Preview"} onClose={onClose}>
     <label className="lib-check"><input type="checkbox" checked={only} onChange={(e) => setOnly(e.target.checked)} />Transcript only</label>
-    {!only && (url ? <><span className="status-pill">Low-res preview</span><video src={url} controls autoPlay className="review-preview" onTimeUpdate={(e) => { if (e.currentTarget.currentTime >= (clip.end_ms ?? 0) / 1000) e.currentTarget.pause(); }} /></> : <>{clip.thumbnail_url && <img src={clip.thumbnail_url} alt="" />}<p>{clip.title}</p></>)}
+    {!only && (
+      url
+        ? <><span className="status-pill">{clip.video_url ? "Exported clip" : "Low-res preview"}</span>
+            <video src={url} controls autoPlay className="review-preview" /></>
+        : preview.isPending
+          ? <p className="caption">Cutting a preview on the Engine — a few seconds…</p>
+          : preview.isError
+            ? <p className="caption warn">{(preview.error as Error).message}</p>
+            : <>{clip.thumbnail_url && <img src={clip.thumbnail_url} alt="" />}<p>{clip.title}</p></>
+    )}
     <Transcript clip={clip} source={source} search={search} only={only} />
     <p><strong>Scene analysis:</strong> {clip.scene_analysis || "—"}</p>
     <div className="review-actions">
