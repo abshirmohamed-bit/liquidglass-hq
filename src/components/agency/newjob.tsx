@@ -1,14 +1,14 @@
-import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation } from "@tanstack/react-query";
-import { Link2, Loader2, Sparkles, Upload } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Check, Link2, Loader2, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { analyzeLink, type LinkDetails } from "@/lib/analyze.functions";
 import { engineImport, importedSourceStatus } from "@/lib/library.functions";
 import { waitForImportedSource } from "@/lib/import-wait";
-import { createClipJob } from "@/lib/clip.functions";
+import { clipJobStatus, createClipJob } from "@/lib/clip.functions";
 import { ASPECT_OPTIONS, GENRES, LENGTH_BANDS, bandByValue } from "@/lib/clip-rules";
 
 /** The clip models, in the creator's words rather than the engine's. */
@@ -30,6 +30,31 @@ const CAPTION_PRESETS = [
   { id: "minimal", name: "Minimal" },
 ] as const;
 
+/**
+ * What the Engine is doing, in order, for the card shown while it works.
+ * `stages` are the values the Engine reports on the job.
+ */
+const STEPS = [
+  { label: "Fetching the video", stages: ["IMPORTING"] },
+  { label: "Listening to it", stages: ["TRANSCRIBING"] },
+  { label: "Finding the moments", stages: ["FINDING", "FRAMING"] },
+  { label: "Cutting and captioning", stages: ["BUILDING"] },
+] as const;
+
+/** Which step is in progress, from the phase and the Engine's own stage. */
+function stepIndex(phase: Phase, stage: string | null): number {
+  if (phase === "importing") return 0;
+  if (phase === "done") return STEPS.length;
+  const i = STEPS.findIndex((s) => (s.stages as readonly string[]).includes(stage ?? ""));
+  return i === -1 ? 1 : i;
+}
+
+const clock = (seconds: number) => {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+};
+
 const mmss = (ms: number) => {
   const s = Math.max(0, Math.round(ms / 1000));
   const h = Math.floor(s / 3600);
@@ -38,6 +63,8 @@ const mmss = (ms: number) => {
   const pad = (n: number) => String(n).padStart(2, "0");
   return h ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 };
+
+type Phase = "setup" | "importing" | "clipping" | "done";
 
 type Options = {
   model: string;
@@ -68,12 +95,15 @@ const defaults = (d: LinkDetails): Options => ({
 });
 
 export function NewJob() {
-  const navigate = useNavigate();
   const importVideo = useServerFn(engineImport);
   const readImport = useServerFn(importedSourceStatus);
   const createJob = useServerFn(createClipJob);
   const analyze = useServerFn(analyzeLink);
-  const [importing, setImporting] = useState(false);
+  const readJob = useServerFn(clipJobStatus);
+  const [phase, setPhase] = useState<Phase>("setup");
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
   const [url, setUrl] = useState("");
   const [details, setDetails] = useState<LinkDetails | null>(null);
   const [opts, setOpts] = useState<Options | null>(null);
@@ -97,13 +127,9 @@ export function NewJob() {
         data: { url: details.url, name: details.title, rightsConfirmed: opts.rights },
       });
       if (!imported.ready) {
-        setImporting(true);
-        try {
-          await waitForImportedSource(() => readImport({ data: { id: imported.id } }));
-        } finally {
-          setImporting(false);
-        }
+        await waitForImportedSource(() => readImport({ data: { id: imported.id } }));
       }
+      setPhase("clipping");
       return createJob({
         data: {
           sourceId: imported.id,
@@ -145,15 +171,56 @@ export function NewJob() {
         },
       });
     },
-    onSuccess: () => {
-      toast.success("Finding your clips. They'll appear in Review when they're ready.");
-      setDetails(null);
-      setOpts(null);
-      setUrl("");
-      navigate({ to: "/clips", search: { source: undefined } });
+    // The card stays put and follows the job through, rather than throwing the
+    // user onto another screen to wonder whether anything is happening.
+    onSuccess: (job) => setJobId(job.id),
+    onError: (e: Error) => {
+      toast.error(e.message);
+      setPhase("setup");
     },
-    onError: (e: Error) => toast.error(e.message),
   });
+
+  const running = phase === "importing" || phase === "clipping";
+
+  function begin() {
+    setStartedAt(Date.now());
+    setElapsed(0);
+    setPhase("importing");
+    start.mutate();
+  }
+
+  function reset() {
+    setPhase("setup");
+    setJobId(null);
+    setDetails(null);
+    setOpts(null);
+    setUrl("");
+  }
+
+  // The clock the user watches. One second is the only sensible tick for it.
+  useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setElapsed(Math.round((Date.now() - startedAt) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [running, startedAt]);
+
+  const job = useQuery({
+    queryKey: ["clip-job", jobId],
+    queryFn: () => readJob({ data: { id: jobId! } }),
+    enabled: !!jobId && phase === "clipping",
+    refetchInterval: 4000,
+  });
+
+  const jobStatus = job.data?.status;
+  const jobError = job.data?.error;
+  useEffect(() => {
+    if (jobStatus === "COMPLETED") setPhase("done");
+    if (jobStatus === "FAILED") {
+      toast.error(jobError || "The clip job failed.");
+      setPhase("setup");
+      setJobId(null);
+    }
+  }, [jobStatus, jobError]);
 
   const blocked = !!details?.needs_rights && !opts?.rights;
 
@@ -175,7 +242,7 @@ export function NewJob() {
           aria-label="Video link"
           inputMode="url"
         />
-        <Button type="submit" disabled={!url.trim() || look.isPending}>
+        <Button type="submit" disabled={!url.trim() || look.isPending || running}>
           {look.isPending ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
           {look.isPending ? "Reading" : "Get clips"}
         </Button>
@@ -184,7 +251,20 @@ export function NewJob() {
         <Upload size={13} aria-hidden /> Or upload a file from the Library.
       </p>
 
-      {details && opts && (
+      {details && (running || phase === "done") && (
+        <JobRun
+          details={details}
+          phase={phase}
+          step={stepIndex(phase, job.data?.stage ?? null)}
+          percent={phase === "done" ? 100 : phase === "clipping" ? job.data?.progress ?? null : null}
+          clips={job.data?.clips ?? 0}
+          elapsed={elapsed}
+          jobId={jobId}
+          onAgain={reset}
+        />
+      )}
+
+      {details && opts && phase === "setup" && (
         <div className="job-setup glass-panel">
           <div className="job-preview">
             {details.thumbnail_url ? (
@@ -334,16 +414,94 @@ export function NewJob() {
           )}
 
           <div className="job-actions">
-            <Button variant="ghost" type="button" disabled={start.isPending} onClick={() => { setDetails(null); setOpts(null); }}>
+            <Button variant="ghost" type="button" onClick={reset}>
               Cancel
             </Button>
-            <Button type="button" disabled={blocked || start.isPending} onClick={() => start.mutate()}>
-              {start.isPending ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-              {start.isPending ? importing ? "Importing video" : "Starting" : "Get clips"}
+            <Button type="button" disabled={blocked} onClick={begin}>
+              <Sparkles size={16} />
+              Get clips
             </Button>
           </div>
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * What replaces the options once the work starts: the video you chose, the
+ * step the Engine is on, and how long it has been going. The settings are
+ * gone, because there is nothing left to set.
+ */
+function JobRun({
+  details, phase, step, percent, clips, elapsed, jobId, onAgain,
+}: {
+  details: LinkDetails;
+  phase: Phase;
+  step: number;
+  percent: number | null;
+  clips: number;
+  elapsed: number;
+  jobId: string | null;
+  onAgain: () => void;
+}) {
+  const done = phase === "done";
+  return (
+    <div className="job-run glass-panel">
+      <div className="job-preview">
+        {details.thumbnail_url ? (
+          <div className="job-thumb">
+            <img src={details.thumbnail_url} alt="" />
+            <span className="job-quality">{details.quality}</span>
+          </div>
+        ) : null}
+        <div className="min-w-0">
+          <h3 className="job-title">{details.title || "Untitled video"}</h3>
+          <p className="caption">
+            {details.channel ? `${details.channel} · ` : ""}
+            {mmss(details.duration_ms)}
+          </p>
+          <p className="job-run-state">
+            {done
+              ? `${clips} clip${clips === 1 ? "" : "s"} ready`
+              : STEPS[step]?.label ?? "Working"}
+            <span className="caption muted"> · {clock(elapsed)}</span>
+          </p>
+        </div>
+      </div>
+
+      <div className="job-bar" role="progressbar" aria-label="Progress">
+        <i
+          className={percent == null ? "is-waiting" : ""}
+          style={percent == null ? undefined : { width: `${Math.max(4, percent)}%` }}
+        />
+      </div>
+
+      <ol className="job-steps">
+        {STEPS.map((s, i) => (
+          <li key={s.label} className={i < step ? "is-done" : i === step ? "is-now" : ""}>
+            <span className="job-step-dot">
+              {i < step ? <Check size={11} /> : i === step ? <Loader2 size={11} className="spin" /> : null}
+            </span>
+            {s.label}
+          </li>
+        ))}
+      </ol>
+
+      {done ? (
+        <div className="job-actions">
+          <Button variant="ghost" type="button" onClick={onAgain}>
+            Clip another video
+          </Button>
+          <Button asChild>
+            <Link to="/review" search={{ job: jobId ?? undefined }}>Open the clips</Link>
+          </Button>
+        </div>
+      ) : (
+        <p className="caption muted">
+          You can leave this page. The Engine keeps working and the clips land in Review.
+        </p>
+      )}
+    </div>
   );
 }

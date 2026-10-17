@@ -152,6 +152,43 @@ export const confirmClipCount = createServerFn({ method: "POST" }).middleware([r
     return true;
   });
 
+/**
+ * One job's progress, for the card the dashboard shows while it works.
+ * Also nudges the Engine along, so the card keeps moving even if a webhook
+ * is slow to arrive.
+ */
+export const clipJobStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ id: z.string().uuid() }))
+  .handler(async ({ context, data }) => {
+    const db = context.supabase;
+    const job = (
+      await db
+        .from("clip_jobs")
+        .select("id,status,stage,progress,error,suggested_count")
+        .eq("id", data.id)
+        .maybeSingle()
+    ).data;
+    if (!job) throw new Error("That clip job no longer exists.");
+    if (ACTIVE_STATUSES.includes(job.status)) {
+      const { advanceActiveJobs } = await import("./clip-engine.server");
+      await advanceActiveJobs(db, 1);
+    }
+    const fresh =
+      (
+        await db
+          .from("clip_jobs")
+          .select("id,status,stage,progress,error,suggested_count")
+          .eq("id", data.id)
+          .maybeSingle()
+      ).data ?? job;
+    const clips = await db
+      .from("clips")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", data.id);
+    return { ...fresh, clips: clips.count ?? 0 };
+  });
+
 /** Fallback sync: advances internal jobs (the Engine's polling stand-in). */
 export const syncClipJobs = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
   const { advanceActiveJobs } = await import("./clip-engine.server");
