@@ -47,7 +47,8 @@ def test_a_failed_import_says_so_instead_of_spinning():
         s.refresh(a)
         assert a.status == "failed"
         assert "went nowhere" in (a.error or "")
-        ev = s.exec(select(WebhookEvent).where(WebhookEvent.event == "asset.failed")).first()
+        ev = next((event for event in s.exec(select(WebhookEvent).where(WebhookEvent.event == "asset.failed")).all()
+                   if event.data.get("asset_id") == "ast_fail"), None)
         assert ev is not None and ev.data["asset_id"] == "ast_fail"
 
 

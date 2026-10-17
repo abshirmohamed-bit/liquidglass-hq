@@ -4,11 +4,14 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import EngineError
 from .config import settings
+
+_processing_slot = threading.BoundedSemaphore(1)
 
 
 def _bin(name: str) -> str:
@@ -35,8 +38,9 @@ def ffmpeg(args: list[str], timeout: int = 3600) -> subprocess.CompletedProcess:
         bounded.append(arg)
     # Decoder options are per input; encoder options must precede the output.
     bounded[-1:-1] = ["-threads", threads]
-    return run([_bin("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y",
-                "-filter_threads", threads, "-filter_complex_threads", threads, *bounded], timeout)
+    with _processing_slot:
+        return run([_bin("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y",
+                    "-filter_threads", threads, "-filter_complex_threads", threads, *bounded], timeout)
 
 
 @dataclass
