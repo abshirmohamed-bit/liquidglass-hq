@@ -26,7 +26,8 @@ type Row = {
   edits: unknown;
 };
 
-const SELECT = "id,start_ms,end_ms,aspect,caption_style_id,title_text,title_style,watermark_text,engine_project_id,edits";
+const SELECT =
+  "id,start_ms,end_ms,aspect,caption_style_id,title_text,title_style,watermark_text,engine_project_id,edits";
 
 /** The clip as it looks here, in the shape the Engine's PATCH expects. */
 function patchFor(c: Row): Record<string, unknown> {
@@ -38,8 +39,10 @@ function patchFor(c: Row): Record<string, unknown> {
   }
   if (c.aspect) p["aspect"] = c.aspect;
   if (c.caption_style_id) p["caption_style_id"] = c.caption_style_id;
-  if (c.title_text?.trim()) p["title"] = { text: c.title_text.trim(), style: c.title_style || "bold_band" };
-  if (c.watermark_text?.trim()) p["watermark"] = { text: c.watermark_text.trim(), position: "bottom", opacity: 0.8 };
+  if (c.title_text?.trim())
+    p["title"] = { text: c.title_text.trim(), style: c.title_style || "bold_band" };
+  if (c.watermark_text?.trim())
+    p["watermark"] = { text: c.watermark_text.trim(), position: "bottom", opacity: 0.8 };
   return p;
 }
 
@@ -53,8 +56,9 @@ async function fail(db: Db, id: string, message: string) {
  * the Engine renders the clip as it looks in Review.
  */
 export async function exportClipsOnEngine(db: Db, ids: string[], resolution: Resolution) {
-  const rows = ((await db.from("clips").select(SELECT)
-    .in("id", ids).in("status", ["APPROVED", "READY"])).data ?? []) as Row[];
+  const rows = ((
+    await db.from("clips").select(SELECT).in("id", ids).in("status", ["APPROVED", "READY"])
+  ).data ?? []) as Row[];
   const { engineClient } = await import("./engine.server");
   const started: string[] = [];
   const failed: { id: string; error: string }[] = [];
@@ -78,11 +82,24 @@ export async function exportClipsOnEngine(db: Db, ids: string[], resolution: Res
       failed.push({ id: c.id, error: r.error.message });
       continue;
     }
-    const edits = (c.edits && typeof c.edits === "object" ? c.edits : {}) as Record<string, unknown>;
-    await db.from("clips").update({
-      status: "EXPORTING", engine_export_id: r.data.id, resolution, error: null,
-      edits: { ...edits, finish_dirty: undefined, export_started_at: new Date().toISOString() } as never,
-    }).eq("id", c.id);
+    const edits = (c.edits && typeof c.edits === "object" ? c.edits : {}) as Record<
+      string,
+      unknown
+    >;
+    await db
+      .from("clips")
+      .update({
+        status: "EXPORTING",
+        engine_export_id: r.data.id,
+        resolution,
+        error: null,
+        edits: {
+          ...edits,
+          finish_dirty: undefined,
+          export_started_at: new Date().toISOString(),
+        } as never,
+      })
+      .eq("id", c.id);
     started.push(c.id);
   }
   return { started, failed };

@@ -21,7 +21,7 @@ type JobRow = {
   genre: string | null; mode: string; prompt: string | null; must_include: unknown;
   headline_top_n: number | null; alternates: boolean | null; edit_level: string | null;
   aspect: string; framing: string | null; language: string | null;
-  source_asset_id: string; formats: unknown; created_at: string;
+  source_asset_id: string; formats: unknown; edits: unknown; created_at: string;
   caption_style_id: string | null;
   source_assets: { name: string; engine_asset_id: string | null } | null;
 };
