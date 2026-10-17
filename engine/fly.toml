@@ -36,8 +36,10 @@ kill_timeout = "300s"
 
 
 [[vm]]
-  # Video encoding is the whole job. 2 CPUs and 4GB is the realistic floor
-  # for ffmpeg plus a Whisper model; scale up when renders feel slow.
+  # Video encoding is the whole job. Dedicated cores roughly halve render time
+  # against shared ones. Needs a payment method: trial organizations cannot
+  # launch "performance" machines and are capped at 2 cores.
+  # Trial fallback: cpu_kind = "shared", cpus = 2.
   size = "performance-2x"
   memory = "4gb"
 
@@ -47,6 +49,10 @@ kill_timeout = "300s"
   source = "crayz_data"
   destination = "/data"
   initial_size = "10gb"
+  # Media fills disks. Grow at 80% full rather than failing a render at 3am.
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = "5GB"
+  auto_extend_size_limit = "50GB"
 
 [checks]
   [checks.health]
