@@ -1,59 +1,48 @@
-# crayZmundo Engine on Fly.io
+# fly.toml app configuration file generated for crayzmundo-engine on 2026-10-17T03:17:31Z
 #
-# Rename the app below, then: fly launch --no-deploy --copy-config  (see DEPLOY.md)
-app = "crayzmundo-engine"
-primary_region = "syd"            # Sydney — closest to Melbourne
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-# Give an in-flight render time to finish on deploy before SIGKILL.
-# Must stay above the Engine's SHUTDOWN_GRACE_S (120s). These are top-level
-# keys: in TOML anything after a [table] header belongs to that table.
-kill_signal = "SIGTERM"
-kill_timeout = "300s"
+app = 'crayzmundo-engine'
+primary_region = 'syd'
+kill_signal = 'SIGTERM'
+kill_timeout = '5m0s'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  DATA_DIR = "/data"
-  # Whisper weights land here so a deploy does not re-download them.
-  HF_HOME = "/data/models"
-  PORT = "8080"
+  DATA_DIR = '/data'
+  HF_HOME = '/data/models'
+  PORT = '8080'
+
+[[mounts]]
+  source = 'crayz_data'
+  destination = '/data'
+  initial_size = '10gb'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  # MUST stay "off". Fly's proxy only sees inbound requests — it cannot see a
-  # render in progress, so autostop would kill jobs mid-encode.
-  auto_stop_machines = "off"
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
   [http_service.concurrency]
-    type = "requests"
-    # Encoding is CPU-bound; queueing beats thrashing.
-    soft_limit = 20
+    type = 'requests'
     hard_limit = 40
-
-
-[[vm]]
-  # Video encoding is the whole job. 2 CPUs and 4GB is the realistic floor
-  # for ffmpeg plus a Whisper model; scale up when renders feel slow.
-  size = "performance-2x"
-  memory = "4gb"
-
-# SQLite, the Whisper weights, and any locally-stored media.
-# Media itself belongs in Tigris (see DEPLOY.md); this volume is for state.
-[[mounts]]
-  source = "crayz_data"
-  destination = "/data"
-  initial_size = "10gb"
+    soft_limit = 20
 
 [checks]
   [checks.health]
-    type = "http"
     port = 8080
-    method = "GET"
-    path = "/v1/health"
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "40s"
+    type = 'http'
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '40s'
+    method = 'GET'
+    path = '/v1/health'
+
+[[vm]]
+  size = 'performance-2x'
+  memory = '4gb'
