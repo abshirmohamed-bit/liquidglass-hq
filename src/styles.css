@@ -823,6 +823,36 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .switch.rights { font-size: .9rem; color: var(--muted-foreground); }
 .job-actions { display: flex; justify-content: flex-end; gap: var(--s3); }
 
+/* ---------- the card that replaces the options while a job runs ---------- */
+.job-run { margin-top: var(--s4); display: grid; gap: var(--s4); }
+.job-run-state { margin: var(--s2) 0 0; font-size: .9rem; font-weight: 500; }
+.job-bar { height: 6px; border-radius: var(--r-pill); background: var(--surface-high); overflow: hidden; }
+.job-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--primary); transition: width .6s ease; }
+/* Before the Engine reports a number there is nothing honest to fill, so the
+   bar paces instead of pretending to a percentage. */
+.job-bar i.is-waiting { width: 34%; animation: job-pace 1.6s ease-in-out infinite; }
+@keyframes job-pace { 0% { margin-left: -34% } 100% { margin-left: 100% } }
+
+.job-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.job-steps li {
+  display: flex; align-items: center; gap: var(--s2);
+  font-size: .875rem; color: var(--muted-foreground);
+}
+.job-steps li.is-now { color: var(--foreground); font-weight: 500; }
+.job-steps li.is-done { color: var(--muted-foreground); }
+.job-step-dot {
+  flex: none; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: var(--hairline) solid var(--border); background: var(--surface-high);
+  color: var(--muted-foreground);
+}
+.job-steps li.is-now .job-step-dot { border-color: color-mix(in oklab, var(--primary) 55%, transparent); color: var(--primary); }
+.job-steps li.is-done .job-step-dot { background: color-mix(in oklab, var(--success) 18%, transparent); border-color: color-mix(in oklab, var(--success) 40%, transparent); color: var(--success); }
+
+@media (prefers-reduced-motion: reduce) {
+  .job-bar i.is-waiting { animation: none; width: 100%; opacity: .45; }
+}
+
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

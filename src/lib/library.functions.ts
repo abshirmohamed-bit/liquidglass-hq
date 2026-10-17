@@ -112,10 +112,30 @@ export const engineImport = createServerFn({ method: "POST" }).middleware([requi
     const r = await (await engine())<EngineAsset>("POST", "/v1/assets", direct ? { url: data.url, name } : { url: data.url, name, rights_confirmed: true });
     if (!r.ok) fail(r.error);
     const x = (r as { data: EngineAsset }).data;
-    const ready = !!x.url && x.status !== "importing" && x.status !== "pending";
+    if (x.status === "failed") throw new Error(typeof x.error === "string" ? x.error : x.error?.message || "Import failed");
+    const ready = !!x.url && x.status === "ready";
     const ins = await context.supabase.from("source_assets").insert({ name, kind: "LINK", source_url: data.url, ...(ready ? sourceFields(x) : { engine_asset_id: x.id, status: "UPLOADING" }) }).select("id").single();
     if (ins.error) throw new Error(ins.error.message);
     return { id: ins.data.id, ready };
+  });
+
+/** Refresh only this owner's requested source, without polling unrelated imports. */
+export const importedSourceStatus = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ id: z.string().uuid() }))
+  .handler(async ({ context, data }) => {
+    const row = await context.supabase.from("source_assets").select("status,error,engine_asset_id").eq("id", data.id).single();
+    if (row.error) throw new Error(row.error.message);
+    if (row.data.status !== "UPLOADING" || !row.data.engine_asset_id) return { status: row.data.status, error: row.data.error };
+    const r = await (await engine())<EngineAsset>("GET", `/v1/assets/${encodeURIComponent(row.data.engine_asset_id)}`);
+    if (!r.ok) throw new Error(r.error.message);
+    const x = r.data;
+    const fields = x.status === "failed"
+      ? { status: "FAILED", error: typeof x.error === "string" ? x.error : x.error?.message || "Import failed" }
+      : x.status === "ready" && x.url ? sourceFields(x) : null;
+    if (!fields) return { status: "UPLOADING", error: null };
+    const updated = await context.supabase.from("source_assets").update(fields).eq("id", data.id).select("status,error").single();
+    if (updated.error) throw new Error(updated.error.message);
+    return updated.data;
   });
 
 /** Polls GET /v1/assets/{id} for link imports still UPLOADING. */
