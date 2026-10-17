@@ -18,12 +18,15 @@ const MODELS = [
   { value: "SPEECH", label: "Clip talking", hint: "Best for interviews and podcasts" },
 ] as const;
 
+/** These ids must exist in the Engine's style catalogue (GET /v1/subtitle-styles). */
 const CAPTION_PRESETS = [
   { id: "none", name: "No caption" },
-  { id: "karaoke", name: "Karaoke" },
+  { id: "karaoke_highlight", name: "Karaoke" },
   { id: "bold_white", name: "Bold" },
-  { id: "highlight_green", name: "Highlight" },
-  { id: "pop_pink", name: "Pop" },
+  { id: "highlighter", name: "Highlight" },
+  { id: "yellow_pop", name: "Pop" },
+  { id: "word_pop", name: "Word pop" },
+  { id: "uppercase_impact", name: "Impact" },
   { id: "minimal", name: "Minimal" },
 ] as const;
 
@@ -41,7 +44,6 @@ type Options = {
   genre: string;
   band: string;
   autoHeadline: boolean;
-  autoZoom: boolean;
   prompt: string;
   startMs: number;
   endMs: number;
@@ -56,11 +58,10 @@ const defaults = (d: LinkDetails): Options => ({
   genre: "Auto",
   band: LENGTH_BANDS.find((b) => b.label === d.suggested.clip_length)?.value ?? "auto",
   autoHeadline: true,
-  autoZoom: false,
   prompt: "",
   startMs: 0,
   endMs: d.duration_ms,
-  caption: "karaoke",
+  caption: "karaoke_highlight",
   aspect: "9:16",
   coverage: "BEST_MOMENTS",
   rights: false,
@@ -125,10 +126,12 @@ export function NewJob() {
           framing: "AUTO",
           language: details.language || "auto",
           captionLanguage: "same",
+          captionStyleId: opts.caption === "none" ? "bold_white" : opts.caption,
+          captionsEnabled: opts.caption !== "none",
           extras: {
             removeSilences: false,
             removeFillers: false,
-            zoom: opts.autoZoom ? "Dynamic" : "Balanced",
+            zoom: "Balanced",
             autoTransitions: false,
             soundEffects: false,
             grade: "none",
@@ -262,14 +265,6 @@ export function NewJob() {
                 onChange={(e) => set("autoHeadline", e.target.checked)}
               />
               <span>Auto headline</span>
-            </label>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={opts.autoZoom}
-                onChange={(e) => set("autoZoom", e.target.checked)}
-              />
-              <span>Auto zoom</span>
             </label>
           </div>
 

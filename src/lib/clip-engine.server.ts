@@ -22,6 +22,7 @@ type JobRow = {
   headline_top_n: number | null; alternates: boolean | null; edit_level: string | null;
   aspect: string; framing: string | null; language: string | null;
   source_asset_id: string; formats: unknown; created_at: string;
+  caption_style_id: string | null;
   source_assets: { name: string; engine_asset_id: string | null } | null;
 };
 
@@ -81,6 +82,7 @@ function requestFor(job: JobRow, engineAssetId: string) {
     formats: [...new Set(layouts)].slice(0, 5),
     framing: (job.framing ?? "AUTO").toLowerCase(),
     language: job.language && job.language !== "auto" ? job.language : null,
+    caption_style_id: job.caption_style_id || "bold_white",
   };
 }
 
