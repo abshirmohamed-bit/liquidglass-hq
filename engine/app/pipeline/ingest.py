@@ -108,12 +108,23 @@ def mark_failed(session: Session, asset: Asset, exc: Exception) -> None:
 
 def _import_url(session: Session, asset: Asset, url: str) -> Asset:
     dest = storage.open_write(f"sources/{asset.id}/download.mp4")
+    # A killed encode can leave a complete download. Validate before reusing;
+    # never treat a partial download as a successful source.
+    downloaded = False
+    if dest.exists():
+        try:
+            media.probe(dest)
+            downloaded = True
+        except Exception:
+            dest.unlink(missing_ok=True)
     if needs_rights(url):
         if not asset.rights_confirmed:
             raise EngineError("RIGHTS_REQUIRED", "Confirm you own this footage or have the rights to clip it.")
-        _ytdlp(url, dest)
+        if not downloaded:
+            _ytdlp(url, dest)
     else:
-        _download(url, dest)
+        if not downloaded:
+            _download(url, dest)
     asset.storage_key = f"sources/{asset.id}/download.mp4"
     asset.source_url = url
     return ingest_video(session, asset, dest)

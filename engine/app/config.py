@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     # How long to let an in-flight render finish when asked to shut down.
     # Fly sends SIGTERM then SIGKILL after kill_timeout; keep this under it.
     shutdown_grace_s: float = 120.0
+    processing_threads: int = 2
 
     # transcription
     transcribe_provider: str = "faster-whisper"  # faster-whisper | fake

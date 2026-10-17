@@ -118,7 +118,8 @@ def _faster_whisper(audio: Path, vocabulary: list[str], language: str | None) ->
     key = f"{cfg.whisper_model}:{device}"
     model = _model_cache.get(key)
     if model is None:
-        model = WhisperModel(cfg.whisper_model, device=device, compute_type="float16" if device == "cuda" else "int8")
+        model = WhisperModel(cfg.whisper_model, device=device, compute_type="float16" if device == "cuda" else "int8",
+                             cpu_threads=max(1, min(4, cfg.processing_threads)), num_workers=1)
         _model_cache[key] = model
 
     prompt = ", ".join(vocabulary[:30]) if vocabulary else None
