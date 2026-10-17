@@ -66,6 +66,7 @@ def test_recovery_has_attempt_budget(api):
 
 def test_rights_required_before_queue(api):
     response = api.post("/v1/assets", json={"url": "https://youtu.be/no-rights"})
-    assert response.status_code == 422 or response.status_code == 403
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "RIGHTS_REQUIRED"
     with session() as s:
         assert not s.exec(select(Asset).where(Asset.source_url == "https://youtu.be/no-rights")).first()
