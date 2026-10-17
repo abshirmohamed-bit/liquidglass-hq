@@ -6,15 +6,18 @@
     file and never printed.
 
     Run from the repo root in PowerShell:
-        .\engine\deploy-fly.ps1 -SiteUrl "https://your-live-site.com"
+        .\engine\deploy-fly.ps1
 #>
 [CmdletBinding()]
 param(
     [string] $App     = "crayzmundo-engine",
     [string] $Region  = "syd",
-    [Parameter(Mandatory = $true)]
-    [string] $SiteUrl,                       # your published crayZmundo site
-    [string] $SecretsFile = "crayzmundo-secrets.local"
+    # The published crayZmundo site - where the Engine posts "clips are ready".
+    [string] $SiteUrl = "https://liquidglass-hq.lovable.app",
+    [string] $SecretsFile = "crayzmundo-secrets.local",
+    # Trial orgs cannot create add-ons. Skip the bucket and keep clips on the
+    # volume, which the Engine serves publicly from /media.
+    [switch] $SkipStorage
 )
 
 $ErrorActionPreference = "Stop"
@@ -78,10 +81,22 @@ if (-not (fly volumes list -a $App 2>$null | Select-String -Quiet "crayz_data"))
 
 # --- 6. object storage for finished clips ----------------------------------
 Step 6 "Object storage (Tigris) for the rendered clips"
-if (-not (fly secrets list -a $App 2>$null | Select-String -Quiet "BUCKET_NAME")) {
+if ($SkipStorage) {
+    Ok "Skipped (-SkipStorage). Clips stay on the volume, served from https://$App.fly.dev/media/..."
+} elseif (-not (fly secrets list -a $App 2>$null | Select-String -Quiet "BUCKET_NAME")) {
     Note "Fly will print access keys. SAVE THEM - they cannot be shown again."
     fly storage create --public -a $App
-    Ok "Created. The Engine switches itself from local disk to object storage."
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "    Bucket NOT created (see the error above)." -ForegroundColor Yellow
+        Write-Host "    Common cause: a trial organization needs a card before add-ons." -ForegroundColor Yellow
+        Write-Host "    This is NOT fatal. Without a bucket the Engine keeps clips on the" -ForegroundColor Yellow
+        Write-Host "    volume and serves them from https://$App.fly.dev/media/... , which is" -ForegroundColor Yellow
+        Write-Host "    public. Add a card later, re-run this script, then set:" -ForegroundColor Yellow
+        Write-Host "      fly secrets set S3_PUBLIC_BASE_URL=`"https://<bucket>.t3.tigrisfiles.io`" -a $App" -ForegroundColor Yellow
+    } else {
+        Ok "Created. The Engine switches itself from local disk to object storage."
+        Note "Now set: fly secrets set S3_PUBLIC_BASE_URL=`"https://<bucket>.t3.tigrisfiles.io`" -a $App"
+    }
 } else { Ok "Already attached (BUCKET_NAME is set)." }
 
 # --- 7. secrets ------------------------------------------------------------
@@ -125,4 +140,8 @@ Done. Remaining, by hand:
   2. Publish the Lovable app so the secrets apply to the live site.
   3. Settings -> Engine -> Send test event. A 200 means both halves agree.
   4. Delete $SecretsFile.
+
+If step 6 could not create the bucket, nothing is broken: clips are stored on
+the volume and served from https://$App.fly.dev/media/... . Health will report
+storage_backend: local, which is correct until you add a card and re-run.
 "@ -ForegroundColor White

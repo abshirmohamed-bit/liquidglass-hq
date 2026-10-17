@@ -36,8 +36,10 @@ kill_timeout = "300s"
 
 
 [[vm]]
-  # Video encoding is the whole job. 2 CPUs and 4GB is the realistic floor
-  # for ffmpeg plus a Whisper model; scale up when renders feel slow.
+  # Video encoding is the whole job. Dedicated cores roughly halve render time
+  # against shared ones. Needs a payment method: trial organizations cannot
+  # launch "performance" machines and are capped at 2 cores.
+  # Trial fallback: cpu_kind = "shared", cpus = 2.
   size = "performance-2x"
   memory = "4gb"
 
