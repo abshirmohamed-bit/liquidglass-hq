@@ -109,6 +109,8 @@ def _step(s: Session, job: Job) -> None:
         return
 
     if job.stage == "finalizing":
+        if not clips_payload(s, job.id):
+            raise RuntimeError("No usable moments were found. Try Clip anything or choose a different range.")
         job.status = "completed"
         job.progress = 100
         job.processing_s = round(job.processing_s + (time.time() - started), 2)
@@ -190,15 +192,35 @@ def _find(s: Session, job: Job, asset: Asset, params: dict) -> list[finder.Momen
         count = int(requested)
 
     envelope: list[float] = []
-    if params.get("mode") == "energy" or (params.get("mode", "auto") == "auto" and not sentences):
-        envelope = media.loudness_envelope(storage.local_path(asset.mezzanine_key))
+    mode = params.get("mode", "auto")
+    if mode in {"energy", "visual"} or (mode == "auto" and not sentences):
+        envelope = media.loudness_envelope(storage.local_path(asset.mezzanine_key or asset.storage_key))
 
     moments = finder.find(
-        sentences, count=count, target_ms=target, mode=params.get("mode", "auto"),
+        sentences if mode != "visual" else [], count=count, target_ms=target,
+        mode="energy" if mode == "visual" else mode,
         coverage=coverage, genre=params.get("genre", "auto"), prompt=params.get("prompt", ""),
         must_include=params.get("must_include") or [], keep_qa=params.get("keep_qa", True),
         envelope=envelope,
     )
+    # Sparse speech can yield sentences but no viable speech-sized clip. Auto
+    # must then use the real source's audio peaks, not finish with zero projects.
+    if not moments and mode == "auto":
+        envelope = envelope or media.loudness_envelope(
+            storage.local_path(asset.mezzanine_key or asset.storage_key))
+        moments = finder.energy_find(envelope, count, target)
+    bounded: list[finder.Moment] = []
+    for moment in moments:
+        moment.start_ms = max(start_ms, moment.start_ms)
+        moment.end_ms = min(end_ms, moment.end_ms)
+        if moment.duration_ms < 2000:
+            continue
+        if any(moment.start_ms < other.end_ms and other.start_ms < moment.end_ms for other in bounded):
+            continue
+        bounded.append(moment)
+    moments = bounded
+    if not moments:
+        raise RuntimeError("No usable moments were found. Try Clip anything or choose a different range.")
     if coverage == "whole":
         covered = [{"start_ms": m.start_ms, "end_ms": m.end_ms} for m in moments]
         job.skipped = _gaps(covered, start_ms, end_ms)

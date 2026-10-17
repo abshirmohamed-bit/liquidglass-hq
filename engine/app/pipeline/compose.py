@@ -273,7 +273,8 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
     inputs: list[str] = ["-ss", f"{render.in_ms / 1000:.3f}", "-t", f"{dur_s:.3f}", "-i", str(render.source)]
     chain: list[str] = []
 
-    track = framing.track(render.source, mode=render.framing_mode) if render.framing_mode != "center" else None
+    track = framing.track(render.source, mode=render.framing_mode,
+                          in_ms=render.in_ms, out_ms=render.out_ms) if render.framing_mode != "center" else None
     sendcmd_path = workdir / "pan.cmd"
 
     if render.layout in {"full-video", "title-subtitles"}:

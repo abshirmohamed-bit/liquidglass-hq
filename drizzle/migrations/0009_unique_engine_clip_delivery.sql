@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX clips_job_engine_project_unique ON public.clips (job_id, engine_project_id);

@@ -62,7 +62,7 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
     let inserted = 0;
     for (const [i, raw] of clips.entries()) {
       const c = (raw ?? {}) as Record<string, unknown>;
-      const ins = await db.from("clips").insert({
+      const ins = await db.from("clips").upsert({
         owner_id: job.owner_id, created_by: job.created_by, job_id: job.id, source_asset_id: job.source_asset_id,
         engine_project_id: typeof c["project_id"] === "string" ? c["project_id"] : null,
         index: typeof c["index"] === "number" ? c["index"] : i + 1,
@@ -77,9 +77,11 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
         reason: typeof c["reason"] === "string" ? c["reason"] : null,
         alternate_of: typeof c["alternate_of"] === "string" ? c["alternate_of"] : null,
         aspect: job.aspect, layout: firstLayout, status: "FOUND", last_event_id: ev.id,
-      });
-      if (!ins.error) inserted++;
+      }, { onConflict: "job_id,engine_project_id", ignoreDuplicates: true }).select("id");
+      if (ins.error) throw new Error(ins.error.message);
+      inserted += ins.data?.length ?? 0;
     }
+    if (!inserted) return "duplicate";
     // Autopilot takes it from here: approve what clears the bar and render it.
     const { autoExportJobClips } = await import("./autopilot.server");
     const rendering = await autoExportJobClips(db, job);
