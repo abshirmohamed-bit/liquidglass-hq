@@ -1,4 +1,5 @@
 # Agency Admin first pass
+- [ ] Reproduce and fix real URL → Get clips failure; verify with the hosted Engine and signed-in UI without modifying engine/.
 - [x] Restore Engine visibility in Settings and welcome setup; preserved engine/ and clip-engine.server.ts; signed-in card/guide verified, 9 tests passed (live processor test skipped without deployment configuration).
 - [x] Confirmed prompt-only scope: no unrelated features; test each original prompt before the extension document.
 - [x] Match the supplied Base44 screenshot’s dashboard appearance; presentation-only shell, both themes and setup navigation verified. Live dashboard totals and objectives remain part of Prompt 9.
