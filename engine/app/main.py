@@ -31,6 +31,7 @@ MAX_BODY = 512 * 1024
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     engine()                      # create tables
+    worker.recover_stuck()        # a deploy or a crash leaves work half done
     worker.start()
     log.info("engine ready: storage=%s transcribe=%s finder=%s",
              settings().storage_backend, settings().transcribe_provider, settings().resolve_finder())

@@ -55,10 +55,46 @@ def start(interval: float = 1.0) -> None:
     _thread.start()
 
 
-def stop(timeout: float = 5.0) -> None:
+def stop(timeout: float | None = None) -> None:
+    """Ask the loop to finish what it is doing, then wait for it.
+
+    A render takes tens of seconds. Giving it five was enough to kill one
+    mid-frame on every deploy and leave the export stuck in "processing".
+    """
+    from .config import settings
+
     _stop.set()
     if _thread:
-        _thread.join(timeout=timeout)
+        _thread.join(timeout=timeout if timeout is not None else settings().shutdown_grace_s)
+        if _thread.is_alive():
+            log.warning("worker did not finish in time; in-flight work will be retried on boot")
+
+
+def recover_stuck() -> int:
+    """Put work that was interrupted back in the queue.
+
+    A machine can vanish mid-render — a deploy, a host migration, an out-of-
+    memory kill. Whatever was "processing" belongs to nobody once the process
+    is gone, so on boot it goes back to "queued" rather than hanging forever.
+    """
+    from sqlmodel import select
+
+    from .db import session
+    from .models import Export, Job
+
+    moved = 0
+    with session() as s:
+        for model in (Job, Export):
+            for row in s.exec(select(model).where(model.status == "processing")).all():
+                row.status = "queued"
+                row.progress = 0
+                s.add(row)
+                moved += 1
+        if moved:
+            s.commit()
+    if moved:
+        log.info("requeued %d item(s) interrupted by the last shutdown", moved)
+    return moved
 
 
 def drain(max_passes: int = 200, sleep: float = 0.01, until: Callable[[], bool] | None = None) -> int:
