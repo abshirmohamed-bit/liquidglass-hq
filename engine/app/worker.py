@@ -22,9 +22,10 @@ def tick() -> int:
     from . import webhooks
     from .pipeline import exports as export_pipeline
     from .pipeline import jobs as job_pipeline
+    from .pipeline import imports as import_pipeline
 
     done = 0
-    for step in (job_pipeline.advance_one, export_pipeline.advance_one):
+    for step in (import_pipeline.advance_one, job_pipeline.advance_one, export_pipeline.advance_one):
         try:
             done += 1 if step() else 0
         except Exception:
@@ -83,6 +84,8 @@ def recover_stuck() -> int:
     from .models import Export, Job
 
     moved = 0
+    from .pipeline.imports import recover
+    moved += recover()
     with session() as s:
         for model in (Job, Export):
             for row in s.exec(select(model).where(model.status == "processing")).all():

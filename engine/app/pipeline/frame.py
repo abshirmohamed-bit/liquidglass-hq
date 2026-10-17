@@ -79,7 +79,10 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS) -> Tra
     import cv2
     import numpy as np
 
-    cap = cv2.VideoCapture(str(video))
+    from ..config import settings
+    threads = max(1, min(4, settings().processing_threads))
+    cv2.setNumThreads(threads)
+    cap = cv2.VideoCapture(str(video), cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, threads])
     if not cap.isOpened():
         return Track("none", 0, 0, [], [])
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1

@@ -30,3 +30,4 @@
 - Clip job flow lives in src/lib/clip-engine.server.ts + clip.functions.ts with shared form/range rules in src/lib/clip-rules.ts; clip_jobs DB enums are uppercase (engine NATIVE, framing AUTO/BOTH/CENTER, edit_level clips/captions/cropped/full) and the UI maps its lowercase form values on submit.
 - Sign-up is disabled; users are created only by admins via createTeamLogin on the Team tab.
 - Library upload limits, resolution badges, upscale note and 30-day trash purge live in src/lib/library-rules.ts; Engine-deleting logic is shared in src/lib/library.server.ts so the UI and nightly purge behave the same.
+- Engine imports use a durable SQLite queue and a single worker per mounted volume; startup recovers interrupted claims, and shared media wrappers bound decoder, encoder, filter and transcription threads to keep HTTP responsive.
