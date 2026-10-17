@@ -120,3 +120,8 @@ def test_the_tracker_follows_a_moving_subject(tmp_path):
     assert len(t.samples) >= 3, "the tracker found nothing on an obviously moving subject"
     xs = [x for _, x in t.samples]
     assert xs[-1] > xs[0] + 0.05, "the track should follow the subject left to right"
+
+    selected = track(clip, mode="auto", in_ms=1000, out_ms=3000)
+    assert (selected.width, selected.height) == (640, 360)
+    assert selected.samples
+    assert all(1000 <= ms < 3000 for ms, _ in selected.samples)

@@ -24,6 +24,7 @@ app/pipeline/imports.py
 app/pipeline/ingest.py
 app/pipeline/jobs.py
 app/pipeline/transcribe.py
+app/pipeline/ytdlp_opts.py
 app/routers/__init__.py
 app/routers/assets.py
 app/routers/clips.py
@@ -38,4 +39,5 @@ tests/test_compose.py
 tests/test_contract.py
 tests/test_import_queue.py
 tests/test_pipeline.py
+tests/test_transcribe_pcm.py
 tests/test_webhooks.py

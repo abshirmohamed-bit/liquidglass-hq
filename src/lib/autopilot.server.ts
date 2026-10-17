@@ -57,9 +57,12 @@ export async function autoExportJobClips(
     .slice(0, AUTO_APPROVE_MAX);
   if (!good.length) return 0;
   const ids = good.map((c) => c.id);
-  await db.from("clips").update({ status: "APPROVED" }).in("id", ids);
+  const claimed = await db.from("clips").update({ status: "APPROVED" })
+    .in("id", ids).eq("status", "FOUND").select("id");
+  const claimedIds = claimed.data?.map((clip) => clip.id) ?? [];
+  if (!claimedIds.length) return 0;
   const { exportClipsOnEngine } = await import("./export.server");
-  const r = await exportClipsOnEngine(db, ids, "HD");
+  const r = await exportClipsOnEngine(db, claimedIds, "HD");
   return r.started.length;
 }
 

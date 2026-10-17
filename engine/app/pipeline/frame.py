@@ -74,8 +74,24 @@ def _detector():
     return None, None
 
 
-def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS) -> Track:
+def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
+          in_ms: int = 0, out_ms: int | None = None) -> Track:
     """Walk the clip and work out where the subject is over time."""
+    if out_ms is not None:
+        from tempfile import TemporaryDirectory
+        from .. import media
+        info = media.probe(video)
+        # Decode only the selected range, not the full retained AV1 source.
+        with TemporaryDirectory(prefix="tracking-") as directory:
+            proxy = Path(directory) / "proxy.mp4"
+            media.ffmpeg([
+                "-ss", f"{in_ms / 1000:.3f}", "-t", f"{max(1, out_ms - in_ms) / 1000:.3f}",
+                "-i", str(video), "-an", "-vf", "scale=480:-2,fps=4",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", str(proxy),
+            ], timeout=300)
+            result = track(proxy, mode=mode, sample_ms=sample_ms)
+        return Track(result.strategy, info.width, info.height,
+                     [(ms + in_ms, x) for ms, x in result.samples], result.faces)
     import cv2
     import numpy as np
 
