@@ -119,7 +119,7 @@ def _ytdlp(url: str) -> UrlInfo:
         raise EngineError("ENGINE_ERROR", "The link importer is not installed on this Engine.") from e
 
     opts = {"quiet": True, "no_warnings": True, "skip_download": True,
-            "noplaylist": True, "socket_timeout": 20}
+            "noplaylist": True, "socket_timeout": 20, "ignore_no_formats_error": True}
     try:
         with yt_dlp.YoutubeDL(opts) as y:
             raw = y.extract_info(url, download=False)

@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { sign } from "./review-helpers";
 import {
   ACTIVE_STATUSES, ASPECT_OPTIONS, CLIP_COUNT_MAX, CLIP_COUNT_MIN, DONT_CLIP_MAX_MS, EDIT_LEVELS, estimateWaitMinutes,
   HEADLINE_TOP_DEFAULT, LAYOUT_OPTIONS, MAX_MUST_INCLUDE, MAX_PROMPT_CHARS, MAX_SOURCE_MS, MIN_SOURCE_MS, MODE_OPTIONS,
@@ -67,9 +68,11 @@ export const clipWorkspace = createServerFn({ method: "GET" }).middleware([requi
   if (sources.error) throw new Error(sources.error.message);
   if (music.error) throw new Error(music.error.message);
   const pending = (jobs.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status)).length;
+  const signedJobs = await Promise.all((jobs.data ?? []).map(async (j) => ({ ...j, source_assets: j.source_assets ? { ...j.source_assets, thumbnail_url: await sign(context.supabase, j.source_assets.thumbnail_url) } : null })));
+  const signedSources = await Promise.all((sources.data ?? []).map(async (s) => ({ ...s, thumbnail_url: await sign(context.supabase, s.thumbnail_url) })));
   return {
-    jobs: jobs.data ?? [],
-    sources: sources.data ?? [],
+    jobs: signedJobs,
+    sources: signedSources,
     music: music.data ?? [],
     queue: { pending, waitMinutes: estimateWaitMinutes(pending) },
     badge: badge.count ?? 0,

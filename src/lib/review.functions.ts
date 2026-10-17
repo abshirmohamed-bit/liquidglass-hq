@@ -6,6 +6,18 @@ import { EXPORT_SIZES, EXPORT_STALE_MS, STORAGE_PREFIX, makeShareToken, mergeIss
 
 export const reviewData = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
   const db = context.supabase;
+  const active = must(await db.from("clips").select("id,engine_export_id").eq("status", "EXPORTING"));
+  const { engineClient } = await import("./engine.server");
+  const { applyEngineEvent } = await import("./engine-events.server");
+  for (const clip of active.slice(0, 3)) {
+    if (!clip.engine_export_id || clip.engine_export_id.startsWith("exp_") && clip.engine_export_id.includes("-")) continue;
+    const result = await engineClient<{ status: string; asset?: Record<string, unknown>; error?: string }>("GET", `/v1/exports/${encodeURIComponent(clip.engine_export_id)}`);
+    if (!result.ok) continue;
+    if (result.data.status === "completed" || result.data.status === "failed") await applyEngineEvent(db, {
+      id: `poll_${clip.engine_export_id}_${result.data.status}`, type: `export.${result.data.status}`,
+      data: { export_id: clip.engine_export_id, asset: result.data.asset, error: result.data.error },
+    });
+  }
   // Fallback: an export left EXPORTING past the stale window (browser closed mid-render) is marked failed.
   const stale = must(await db.from("clips").select("id,edits").eq("status", "EXPORTING"));
   for (const c of stale) {
@@ -83,14 +95,24 @@ export const mergeClips = createServerFn({ method: "POST" }).middleware([require
     return ins.id;
   });
 
-/** engineExport: only APPROVED clips (or READY ones being re-exported). Renders run in the browser. */
+/** Real Engine projects render on the Engine; legacy local sources retain browser export. */
 export const startExport = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ ids: z.array(z.string().uuid()).min(1).max(100), resolution: z.enum(["HD", "UHD"]) }))
   .handler(async ({ context, data }) => {
     const db = context.supabase;
-    const rows = must(await db.from("clips").select("id,status,start_ms,end_ms,aspect,edits,title,source_asset_id,source_assets(public_url,name)").in("id", data.ids).in("status", ["APPROVED", "READY"]));
+    const rows = must(await db.from("clips").select("id,status,start_ms,end_ms,aspect,edits,title,engine_project_id,source_asset_id,source_assets(public_url,name)").in("id", data.ids).in("status", ["APPROVED", "READY"]));
     const out = [];
     for (const c of rows) {
+      if (c.engine_project_id?.startsWith("prj_")) {
+        const { engineClient } = await import("./engine.server");
+        const path = `/v1/projects/${encodeURIComponent(c.engine_project_id)}`;
+        const update = await engineClient("PATCH", path, { in_ms: c.start_ms, out_ms: c.end_ms, aspect: c.aspect });
+        if (!update.ok) throw new Error(update.error.message);
+        const result = await engineClient<{ id: string }>("POST", `${path}/export`, { resolution: data.resolution === "UHD" ? "2160p" : "1080p" });
+        if (!result.ok) throw new Error(result.error.message);
+        must(await db.from("clips").update({ status: "EXPORTING", engine_export_id: result.data.id, resolution: data.resolution, error: null }).eq("id", c.id));
+        continue;
+      }
       const src = c.source_assets as { public_url: string | null; name: string } | null;
       if (!src?.public_url) { await db.from("clips").update({ status: "FAILED", error: "The source video file isn't stored in the app, so it can't be rendered." }).eq("id", c.id); continue; }
       const exportId = `exp_${crypto.randomUUID()}`;
@@ -98,7 +120,7 @@ export const startExport = createServerFn({ method: "POST" }).middleware([requir
       await db.from("clips").update({ status: "EXPORTING", engine_export_id: exportId, resolution: data.resolution, error: null, edits: { ...e, finish_dirty: undefined, export_started_at: new Date().toISOString() } as never }).eq("id", c.id);
       out.push({ clipId: c.id, exportId, title: c.title ?? "clip", aspect: c.aspect, sourceUrl: await sign(db, src.public_url), segments: e.segments ?? [{ start_ms: c.start_ms ?? 0, end_ms: c.end_ms ?? 0 }], size: EXPORT_SIZES[data.resolution] });
     }
-    return { workspace: (await db.rpc("workspace_of", { _uid: context.userId })).data as string, jobs: out };
+    return { workspace: (await db.rpc("workspace_of", { _uid: context.userId })).data as string, jobs: out, engineQueued: rows.filter((c) => c.engine_project_id?.startsWith("prj_")).length };
   });
 
 export const finishExport = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator(z.object({ exportId: z.string().min(5).max(80), path: z.string().max(400).nullable(), thumbPath: z.string().max(400).nullable(), width: z.number().int().nullable(), height: z.number().int().nullable(), size: z.number().int().nullable(), lengthSec: z.number().nullable(), error: z.string().max(500).optional() }))

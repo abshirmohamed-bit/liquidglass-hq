@@ -41,7 +41,8 @@ export function Review({ job: jobParam }: { job?: string | undefined }) {
   async function exportClips(ids: string[]) {
     try {
       const r = await startExport({ data: { ids, resolution: res } }); await refresh();
-      if (!r.jobs.length) { toast.error("Only approved clips can be exported."); return; }
+      if (r.engineQueued) toast.success("Exporting on your Engine.");
+      if (!r.jobs.length) { if (!r.engineQueued) toast.error("Only approved clips can be exported."); return; }
       const { renderClip } = await import("@/lib/media-render");
       for (const j of r.jobs) {
         const c = d?.clips.find((x) => x.id === j.clipId); const size = exportSize(res, c?.aspect);
