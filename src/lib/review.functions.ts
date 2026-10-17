@@ -162,3 +162,30 @@ export const decideShared = createServerFn({ method: "POST" })
       body: `${c.title ?? "A clip"}${data.note ? ` — ${data.note}` : ""}`, link: c.job_id ? `/review?job=${c.job_id}` : "/review" });
     return true;
   });
+
+/**
+ * A real trimmed preview from the Engine.
+ *
+ * The Review modal used to play the whole source video with a `#t=start,end`
+ * marker on the URL — the browser seeks, but it is still the full file, and most
+ * browsers ignore the end time, which is why the player showed the full length.
+ * This renders an actual cut-down clip with its captions, crop and title burned
+ * in, so what you watch is what you will export.
+ */
+export const clipPreview = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ clipId: z.string().uuid() }))
+  .handler(async ({ context, data }): Promise<{ url: string }> => {
+    const clip = (await context.supabase.from("clips")
+      .select("id,engine_project_id,video_url").eq("id", data.clipId).maybeSingle()).data;
+    if (!clip) throw new Error("That clip no longer exists.");
+    // Already exported: the finished file beats a preview render.
+    if (clip.video_url) return { url: clip.video_url };
+    if (!clip.engine_project_id) {
+      throw new Error("This clip has not reached the Engine yet, so it cannot be previewed.");
+    }
+    const { engineClient } = await import("./engine.server");
+    const r = await engineClient<{ preview_url: string }>(
+      "POST", `/v1/projects/${encodeURIComponent(clip.engine_project_id)}/preview`);
+    if (!r.ok) throw new Error(r.error.message);
+    return { url: r.data.preview_url };
+  });
