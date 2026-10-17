@@ -31,3 +31,7 @@
 - Sign-up is disabled; users are created only by admins via createTeamLogin on the Team tab.
 - Library upload limits, resolution badges, upscale note and 30-day trash purge live in src/lib/library-rules.ts; Engine-deleting logic is shared in src/lib/library.server.ts so the UI and nightly purge behave the same.
 - Engine imports use a durable SQLite queue and a single worker per mounted volume; startup recovers interrupted claims, and shared media wrappers bound decoder, encoder, filter and transcription threads to keep HTTP responsive.
+- Retain AV1 video during import and normalize its audio/container only; bounded FFmpeg decodes actual clip renders, avoiding full-source 4K transcoding without reducing source resolution.
+- Library Projects reads real clip records; Engine-backed Review exports use Engine project endpoints and completion polling, while legacy local-only exports preserve their browser render path.
+- Resolve private storage markers with the shared signing helper before returning thumbnails to page queries; never relax CSP to permit storage schemes.
+- Feed extracted mono PCM samples directly to Whisper; avoid incompatible PyAV decoding and keep transcription threads bounded.

@@ -105,6 +105,8 @@ def _fake(audio: Path, duration_s: float) -> Transcription:
 
 def _faster_whisper(audio: Path, vocabulary: list[str], language: str | None) -> Transcription:
     from faster_whisper import WhisperModel
+    import wave
+    import numpy as np
 
     cfg = settings()
     device = cfg.whisper_device
@@ -123,10 +125,17 @@ def _faster_whisper(audio: Path, vocabulary: list[str], language: str | None) ->
         _model_cache[key] = model
 
     prompt = ", ".join(vocabulary[:30]) if vocabulary else None
+    # extract_audio already produces 16 kHz mono PCM; passing samples avoids
+    # faster-whisper's incompatible PyAV decoder and its unbounded threads.
+    with wave.open(str(audio), "rb") as wav:
+        if wav.getframerate() != 16000 or wav.getnchannels() != 1 or wav.getsampwidth() != 2:
+            raise ValueError("Transcription requires 16 kHz mono 16-bit PCM audio.")
+        samples = np.frombuffer(wav.readframes(wav.getnframes()), dtype="<i2").astype(np.float32) / 32768.0
     segments, info = model.transcribe(  # type: ignore[union-attr]
-        str(audio), word_timestamps=True, vad_filter=True,
+        samples, word_timestamps=True, vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 500},
-        language=language or None, beam_size=5, initial_prompt=prompt,
+        language=language.replace("_", "-").split("-")[0].lower() if language and language.lower() != "auto" else None,
+        beam_size=5, initial_prompt=prompt,
     )
     words: list[Word] = []
     for seg in segments:

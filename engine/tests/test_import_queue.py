@@ -22,6 +22,17 @@ def test_ffmpeg_bounds_each_input_and_output():
     assert args[-3:] == ["-threads", "2", "out.mp4"]
 
 
+def test_av1_import_retains_video_without_full_frame_encode():
+    from pathlib import Path
+    with patch("app.media.ffmpeg") as ffmpeg:
+        media.remux_av1(Path("source.mp4"), Path("normalized.mp4"))
+    args = ffmpeg.call_args.args[0]
+    assert args[args.index("-c:v") + 1] == "copy"
+    assert args[args.index("-c:a") + 1] == "aac"
+    assert "-vf" not in args
+    assert "-r" not in args
+
+
 def test_import_returns_before_processing_and_recovers(api):
     url = "https://youtu.be/queue-test"
     with patch("app.pipeline.ingest.import_url") as ingest:

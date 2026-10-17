@@ -114,6 +114,19 @@ def make_mezzanine(src: Path, dest: Path, fps: float = 30.0) -> Path:
     return dest
 
 
+def remux_av1(src: Path, dest: Path) -> Path:
+    """Keep seekable AV1 video bit-for-bit; normalize audio/container only.
+
+    FFmpeg decodes the retained source when rendering individual clips, so a
+    long 4K import need not first encode every frame into another 4K video.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    ffmpeg(["-i", str(src), "-map", "0:v:0", "-map", "0:a:0?",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+            "-movflags", "+faststart", str(dest)])
+    return dest
+
+
 def extract_audio(src: Path, dest: Path, rate: int = 16000) -> Path:
     """16 kHz mono wav: what speech recognition wants."""
     dest.parent.mkdir(parents=True, exist_ok=True)

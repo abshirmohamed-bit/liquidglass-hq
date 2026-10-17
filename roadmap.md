@@ -1,5 +1,7 @@
 # Agency Admin first pass
-- [ ] Authorized Engine repair: bounded threads and durable recoverable imports deployed; 66 Engine tests and 21 selected app tests passed. Signed-in exact YouTube URL analyzed and rights-confirmed Get clips submitted. Health stays 200 (s3, ffmpeg true) during real two-thread encoding. End-to-end Review result remains unverified: target import is queued behind two older 4K AV1 imports; no completed clips yet. Resume checking the persisted queue before resubmitting.
+- [ ] Capture and visually inspect Clips, Review and Library during the exact-URL test for distorted layout, rendering and data.
+- [ ] Fix screenshot's blocked storage:// thumbnail on Clips by resolving private media to signed URLs; keep the existing content security policy.
+- [ ] Continue real-video verification until the supplied YouTube video's clips appear in Library/Projects and Clips. Bounded threads and durable recoverable imports deployed; 66 Engine tests and 21 selected app tests passed. Exact URL submitted signed-in with rights confirmed. Check the persisted queue without creating duplicate imports; verify real generated clips through both pages before completion.
 - [x] Restore Engine visibility in Settings and welcome setup; preserved engine/ and clip-engine.server.ts; signed-in card/guide verified, 9 tests passed (live processor test skipped without deployment configuration).
 - [x] Confirmed prompt-only scope: no unrelated features; test each original prompt before the extension document.
 - [x] Match the supplied Base44 screenshot’s dashboard appearance; presentation-only shell, both themes and setup navigation verified. Live dashboard totals and objectives remain part of Prompt 9.
