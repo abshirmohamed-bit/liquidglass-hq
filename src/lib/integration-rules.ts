@@ -10,9 +10,9 @@ const addKey = (names: string): GuideStep => ({ title: "Store it securely", body
 
 /** Recommended order: AI first (required), then Higgsfield, YouTube, Discord, Notion. */
 export const INTEGRATIONS: Integration[] = [
-  { id: "engine", name: "crayZmundo Engine", minutes: 10, secrets: ["ENGINE_API_KEY", "ENGINE_WEBHOOK_SECRET"], intro: "Your self-hosted clipping, editing, rendering and transcription service. Every media step runs here.",
+  { id: "engine", name: "crayZmundo Engine", minutes: 10, secrets: ["ENGINE_API_KEY", "ENGINE_WEBHOOK_SECRET"], intro: "crayZmundo’s own video processor for clipping, editing, rendering and transcription. Fly.io hosts its container; it is not a separate platform.",
     steps: [
-      { title: "Deploy the Engine", body: "Follow the Engine tab of the Build Pack to deploy the Docker image on your host." },
+      { title: "Deploy the Engine", body: "Deploy crayZmundo’s own container from engine/ to Fly.io using engine/DEPLOY.md." },
       { title: "Save the Engine URL", body: "Paste the Engine's base URL into the Engine URL field on this card and click Save. It is not a secret, so it is stored in settings." },
       addKey("ENGINE_API_KEY and ENGINE_WEBHOOK_SECRET"),
       { title: "Test", body: "Click Test Connection — it calls GET /v1/health on your Engine." },
