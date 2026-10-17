@@ -67,6 +67,9 @@ def api_opts(player_client: str = "default") -> dict:
         "socket_timeout": 20,
         "retries": 3,
         "sleep_requests": 1,
+        # Preserve a fix carried from lovable-sync so yt-dlp tolerates a thin
+        # list of formats returned to datacentre IPs.
+        "ignore_no_formats_error": True,
         # Bind to an IPv4 address: the same thing --force-ipv4 does.
         "source_address": "0.0.0.0",
         "extractor_args": {
