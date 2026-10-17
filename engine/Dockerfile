@@ -3,7 +3,7 @@ FROM python:3.12-slim
 
 # ffmpeg does the cutting and rendering; the fonts are what captions are drawn in.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ffmpeg curl ca-certificates \
+      ffmpeg curl ca-certificates gosu \
       fonts-dejavu-core fontconfig \
  && rm -rf /var/lib/apt/lists/*
 
@@ -37,10 +37,21 @@ RUN pip install --no-cache-dir \
       "boto3>=1.34"
 
 COPY app ./app
-RUN useradd -m engine && mkdir -p /data && chown -R engine /data /app
-USER engine
-ENV DATA_DIR=/data
+RUN useradd -m engine && chown -R engine /app
+
+# A Fly volume mounts as root, so ownership is fixed at boot and the process
+# then drops to an unprivileged user. gosu execs, so uvicorn stays PID 1 and
+# receives SIGTERM directly — a shell wrapper would swallow it.
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENV DATA_DIR=/data \
+    HF_HOME=/data/models \
+    SHUTDOWN_GRACE_S=120
 EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s \
   CMD curl -fsS http://localhost:8080/v1/health || exit 1
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# Graceful shutdown must outlast the worker's drain, which must outlast a render.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", \
+     "--timeout-graceful-shutdown", "150"]

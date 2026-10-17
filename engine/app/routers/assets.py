@@ -14,6 +14,7 @@ from ..errors import EngineError
 from ..responses import ok
 from ..ids import new_id
 from ..models import Asset, Upload, utcnow
+from ..pipeline import analyze as url_analyze
 from ..pipeline import ingest
 
 router = APIRouter()
@@ -99,6 +100,16 @@ def complete_upload(upload_id: str) -> dict:
         s.commit()
         s.refresh(asset)
         return ok(ingest.asset_payload(asset))
+
+
+class AnalyzeBody(BaseModel):
+    url: str
+
+
+@router.post("/v1/analyze")
+def analyze_url(body: AnalyzeBody) -> dict:
+    """Read a link's details so the creator can choose before anything downloads."""
+    return ok(url_analyze.analyze(body.url).payload())
 
 
 class ImportBody(BaseModel):

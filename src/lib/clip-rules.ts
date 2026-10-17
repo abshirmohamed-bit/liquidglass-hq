@@ -13,6 +13,20 @@ export const HEADLINE_TOP_DEFAULT = 10;
 export const CLIP_COUNT_MIN = 2;
 export const CLIP_COUNT_MAX = 60;
 export const CLIP_LENGTH_PRESETS = [30, 60, 90, 120, 180] as const;
+
+/** The length bands the picker offers. "auto" lets the AI choose per clip. */
+export const LENGTH_BANDS: { value: string; label: string; min_s: number; max_s: number }[] = [
+  { value: "auto", label: "Auto", min_s: 0, max_s: 0 },
+  { value: "lt30", label: "<30s", min_s: 15, max_s: 29 },
+  { value: "30_59", label: "30s~59s", min_s: 30, max_s: 59 },
+  { value: "60_89", label: "60s~89s", min_s: 60, max_s: 89 },
+  { value: "90_180", label: "90s~3m", min_s: 90, max_s: 180 },
+  { value: "180_300", label: "3m~5m", min_s: 180, max_s: 300 },
+  { value: "300_600", label: "5m~10m", min_s: 300, max_s: 600 },
+  { value: "600_900", label: "10m~15m", min_s: 600, max_s: 900 },
+];
+
+export const bandByValue = (v: string) => LENGTH_BANDS.find((b) => b.value === v) ?? LENGTH_BANDS[0]!;
 export const QUEUE_MINUTES_PER_JOB = 2;
 
 export type Coverage = "BEST_MOMENTS" | "WHOLE_VIDEO" | "DONT_CLIP";
@@ -126,7 +140,7 @@ export function parseClipLength(preset: string, minS: number, maxS: number): Cli
   const n = Number(preset);
   if (CLIP_LENGTH_PRESETS.some((p) => p === n)) return n;
   const lo = Math.round(minS); const hi = Math.round(maxS);
-  if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo < 15 || hi > 600 || hi <= lo) return { error: "Custom length must be 15s to 600s, with the max above the min." };
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo < 15 || hi > 900 || hi <= lo) return { error: "Custom length must be 15s to 900s, with the max above the min." };
   return { min_s: lo, max_s: hi };
 }
 

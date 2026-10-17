@@ -337,6 +337,59 @@ def parse_moments(text: str) -> list[Moment]:
     return out
 
 
+def _fill_to_count(found: list[Moment], sentences: list[dict], target_ms: int,
+                   count: int, span: tuple[int, int] | None = None) -> list[Moment]:
+    """Top the list back up to `count` from the footage nobody claimed.
+
+    Snapping moves edges onto sentence boundaries, and two picks can land on
+    the same boundary; the loser is dropped. Without this the creator asks for
+    15 clips and quietly gets 14 — more missing the more they ask for.
+    """
+    if len(found) >= count or not sentences:
+        return found
+    lo = span[0] if span else sentences[0]["start_ms"]
+    hi = span[1] if span else sentences[-1]["end_ms"]
+    floor = max(2000, int(target_ms * 0.4))
+
+    while len(found) < count:
+        taken = sorted(found, key=lambda m: m.start_ms)
+        gaps: list[tuple[int, int]] = []
+        cursor = lo
+        for m in taken:
+            if m.start_ms - cursor > floor:
+                gaps.append((cursor, m.start_ms))
+            cursor = max(cursor, m.end_ms)
+        if hi - cursor > floor:
+            gaps.append((cursor, hi))
+        if not gaps:
+            return found
+
+        best: Moment | None = None
+        best_score = -1.0
+        for gap_start, gap_end in sorted(gaps, key=lambda g: g[0] - g[1]):
+            inside = [s for s in sentences
+                      if s["start_ms"] >= gap_start and s["end_ms"] <= gap_end]
+            if not inside:
+                continue
+            start = inside[0]["start_ms"]
+            ends = [s["end_ms"] for s in inside if s["end_ms"] <= start + int(target_ms * 1.25)]
+            if not ends:
+                continue
+            end = max(ends)
+            if end - start < floor:
+                continue
+            text = " ".join(s["text"] for s in inside if s["start_ms"] < end)
+            score = sum(_sentence_score(s["text"]) for s in inside[:6])
+            if score > best_score:
+                best_score = score
+                best = Moment(start, end, _title_from(text), round(min(10.0, 4 + score / 4), 1),
+                              "Filled in so the count you asked for is the count you get.")
+        if best is None:
+            return found
+        found = sorted([*found, best], key=lambda m: m.start_ms)
+    return found
+
+
 def find(sentences: list[dict], *, count: int, target_ms: int, mode: str = "auto",
          coverage: str = "best", genre: str = "auto", prompt: str = "",
          must_include: list[str] | None = None, keep_qa: bool = True,
@@ -357,7 +410,15 @@ def find(sentences: list[dict], *, count: int, target_ms: int, mode: str = "auto
     else:
         raw = rules_find(sentences, count, target_ms, coverage)
     snapped = snap(raw, sentences, target_ms)
-    return snapped[:count] if coverage != "whole" else snapped
+    if coverage == "whole":
+        return snapped
+    if len(snapped) < count:
+        # ask for spares first: snapping drops collisions, so over-request cheaply
+        spare = snap(rules_find(sentences, count * 2, target_ms, coverage), sentences, target_ms)
+        if len(spare) > len(snapped):
+            snapped = spare
+        snapped = _fill_to_count(snapped, sentences, target_ms, count)
+    return snapped[:count]
 
 
 def suggest_count(duration_ms: int, coverage: str, target_ms: int) -> int:

@@ -8,6 +8,10 @@ export type EngineResult<T = unknown> = { ok: true; data: T } | { ok: false; err
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 export async function engineBaseUrl(): Promise<string | null> {
+  // An env var wins over the stored setting: it is how a local Engine is used
+  // in development and how a self-hosted deployment pins its own address.
+  const fromEnv = process.env["ENGINE_URL"];
+  if (fromEnv) return fromEnv.replace(/\/+$/, "");
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data } = await supabaseAdmin.from("app_settings").select("value").eq("key", "ENGINE_URL").limit(1).maybeSingle();
   if (!data?.value) return null;

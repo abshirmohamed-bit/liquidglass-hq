@@ -37,3 +37,49 @@ def test_subtitle_styles_catalog(api):
     styles = api.get("/v1/subtitle-styles").json()["styles"]
     assert len(styles) == 20
     assert {"id", "name", "font", "defaults"} <= set(styles[0])
+
+
+def test_work_interrupted_by_a_deploy_goes_back_in_the_queue():
+    """A machine can die mid-render; nothing should sit in "processing" forever."""
+    from sqlmodel import select
+
+    from app import worker
+    from app.db import session
+    from app.ids import new_id
+    from app.models import Export, Job
+
+    with session() as s:
+        s.add(Job(id=new_id("job"), asset_id="ast_x", status="processing", progress=55))
+        s.add(Export(id=new_id("exp"), project_id="prj_x", status="processing", progress=40))
+        s.commit()
+
+    assert worker.recover_stuck() >= 2
+
+    with session() as s:
+        assert not s.exec(select(Job).where(Job.status == "processing")).all()
+        assert not s.exec(select(Export).where(Export.status == "processing")).all()
+
+
+def test_a_bucket_in_the_environment_switches_storage_on_by_itself(monkeypatch):
+    """`fly storage create` sets these names; the Engine should need no more wiring."""
+    from app.config import Settings
+
+    monkeypatch.setenv("BUCKET_NAME", "crayz-media")
+    monkeypatch.setenv("AWS_ENDPOINT_URL_S3", "https://t3.storage.dev")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "secret")
+    s = Settings()
+    s._adopt_fly_storage()
+    assert s.storage_backend == "s3"
+    assert (s.s3_bucket, s.s3_endpoint, s.s3_access_key) == (
+        "crayz-media", "https://t3.storage.dev", "key")
+
+
+def test_without_a_bucket_storage_stays_local(monkeypatch):
+    from app.config import Settings
+
+    for k in ("BUCKET_NAME", "AWS_ENDPOINT_URL_S3", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    s = Settings()
+    s._adopt_fly_storage()
+    assert s.storage_backend == "local"

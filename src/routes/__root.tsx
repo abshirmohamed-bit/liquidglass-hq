@@ -134,7 +134,9 @@ const THEME_BOOT = `(function(){try{var t=localStorage.getItem('agency-theme');d
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    // The pre-paint script may add "light" before React hydrates, so the
+    // class here will not match the server's. That difference is intended.
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <HeadContent />
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
