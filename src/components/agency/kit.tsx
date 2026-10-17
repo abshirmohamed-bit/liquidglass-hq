@@ -69,6 +69,25 @@ export function LoadingRows({ count = 3, height = 72 }: { count?: number; height
   );
 }
 
+/**
+ * What a page shows while its code and data arrive: the shape of the page you
+ * asked for, never the page you just left.
+ */
+export function PagePending() {
+  return (
+    <div className="page" aria-busy="true" aria-label="Loading">
+      <div className="page-header">
+        <div className="page-pending-head">
+          <div className="skeleton" style={{ height: 30, width: 200 }} />
+          <div className="skeleton" style={{ height: 14, width: 340, maxWidth: "70vw" }} />
+        </div>
+      </div>
+      <div className="skeleton" style={{ height: 46 }} />
+      <LoadingGrid count={6} height={220} />
+    </div>
+  );
+}
+
 /** A heading with optional description and right-aligned actions. */
 export function SectionHead({
   title,

@@ -111,6 +111,7 @@ export function NewJob() {
           rangeEndMs: opts.endMs < details.duration_ms ? opts.endMs : null,
           coverage: opts.coverage,
           clipCount: "auto",
+          autopilot: true,
           lengthPreset: opts.band === "auto" ? "auto" : "custom",
           lengthMinS: band.min_s || 45,
           lengthMaxS: band.max_s || 120,

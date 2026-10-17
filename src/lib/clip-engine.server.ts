@@ -76,7 +76,9 @@ function requestFor(job: JobRow, engineAssetId: string) {
     must_include: Array.isArray(job.must_include) ? (job.must_include as string[]) : [],
     headline_top_n: job.headline_top_n ?? 0,
     alternates: !!job.alternates,
-    confirm_count: job.clip_count === "auto",
+    // Autopilot means the AI decides: stopping to ask for the number would
+    // park the job on a screen the user is not on.
+    confirm_count: job.clip_count === "auto" && (job.edits as { autopilot?: unknown } | null)?.autopilot !== true,
     edit_level: job.edit_level === "clips" ? "cuts_only" : (job.edit_level ?? "full"),
     aspect: job.aspect,
     formats: [...new Set(layouts)].slice(0, 5),

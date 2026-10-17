@@ -6,10 +6,9 @@ import { EmptyState, LoadingGrid } from "./kit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
-import { finishSpec } from "@/lib/finish-rules";
 import { Distribute } from "./posts";
-import { reviewData, updateClip, setClipStatus, trimClip, duplicateClip, mergeClips, startExport, finishExport, shareJob, clipPreview } from "@/lib/review.functions";
-import { CLIP_STATUSES, FLAG_FILTERS, defaultJob, filterClips, fromLabel, formatPrecise, parsePrecise, trimIssue, transcriptWords, sliceWords, snapToSentence, needsReexport, srtFor, timelineFile, mergeIssue, exportSize, type Resolution, type TimelineFormat } from "@/lib/review-rules";
+import { reviewData, updateClip, setClipStatus, trimClip, duplicateClip, mergeClips, startExport, shareJob, clipPreview } from "@/lib/review.functions";
+import { CLIP_STATUSES, FLAG_FILTERS, defaultJob, filterClips, fromLabel, formatPrecise, parsePrecise, trimIssue, transcriptWords, sliceWords, snapToSentence, needsReexport, srtFor, timelineFile, mergeIssue, type Resolution, type TimelineFormat } from "@/lib/review-rules";
 
 type Data = Awaited<ReturnType<typeof reviewData>>;
 type Clip = Data["clips"][number];
@@ -27,7 +26,7 @@ export function Review({ job: jobParam }: { job?: string | undefined }) {
   const [flags, setFlags] = useState<string[]>([]); const [search, setSearch] = useState(""); const [sort, setSort] = useState<"score" | "time">("score");
   const [view, setView] = useState<"grid" | "list">("grid"); const [sel, setSel] = useState<string[]>([]); const [focus, setFocus] = useState(0);
   const [trim, setTrim] = useState<Clip | null>(null); const [preview, setPreview] = useState<Clip | null>(null); const [scoreOf, setScoreOf] = useState<Clip | null>(null);
-  const [res, setRes] = useState<Resolution>("HD"); const [rendering, setRendering] = useState<Record<string, string>>({});
+  const [res, setRes] = useState<Resolution>("HD");
   const d = q.data;
   useEffect(() => { if (!job && !jobParam && d) setJob(defaultJob(d.jobs ?? [])); }, [d, job, jobParam]);
   const srcById = useMemo(() => new Map((d?.sources ?? []).map((s) => [s.id, s])), [d]);
@@ -40,18 +39,11 @@ export function Review({ job: jobParam }: { job?: string | undefined }) {
   async function act(ids: string[], s: "APPROVED" | "REJECTED") { try { await setClipStatus({ data: { ids, status: s } }); await refresh(); } catch (e) { err(e); } }
   async function exportClips(ids: string[]) {
     try {
-      const r = await startExport({ data: { ids, resolution: res } }); await refresh();
-      if (!r.jobs.length) { toast.error("Only approved clips can be exported."); return; }
-      const { renderClip } = await import("@/lib/media-render");
-      for (const j of r.jobs) {
-        const c = d?.clips.find((x) => x.id === j.clipId); const size = exportSize(res, c?.aspect);
-        try {
-          const out = await renderClip(r.workspace, { ...j, w: size.w, h: size.h, finish: c ? finishSpec(c, j.segments) : null }, (s) => setRendering((m) => ({ ...m, [j.clipId]: s })));
-          await finishExport({ data: { exportId: j.exportId, ...out } });
-          toast.success(`${j.title} is ready`);
-        } catch (e) { await finishExport({ data: { exportId: j.exportId, path: null, thumbPath: null, width: null, height: null, size: null, lengthSec: null, error: e instanceof Error ? e.message : "Render failed" } }); err(e); }
-        setRendering((m) => { const n = { ...m }; delete n[j.clipId]; return n; }); await refresh();
-      }
+      const r = await startExport({ data: { ids, resolution: res } });
+      await refresh();
+      if (!r.started) { toast.error(r.failed[0]?.error ?? "Only approved clips can be exported."); return; }
+      toast.success(`${r.started} clip${r.started === 1 ? "" : "s"} rendering on the Engine — you can close this tab.`);
+      if (r.failed.length) toast.error(`${r.failed.length} could not start: ${r.failed[0]!.error}`);
     } catch (e) { err(e); }
   }
   // Keyboard: A approve, R reject, arrows move, Cmd/Ctrl+K search.
@@ -97,7 +89,7 @@ export function Review({ job: jobParam }: { job?: string | undefined }) {
     {q.isLoading ? <LoadingGrid count={6} className="lib-grid" height={300} /> : !clips.length ? <section className="glass-panel"><EmptyState icon={ClipboardCheck} title="No clips to review"
       hint="When a clip job finishes, every moment it found lands here to approve, trim and export."
       action={<Button asChild size="sm"><Link to="/clips" search={{ source: undefined }}>Start a clip job</Link></Button>} /></section> :
-      <div className={view === "grid" ? "lib-grid review-grid" : "review-list"}>{clips.map((c, i) => <ClipCard key={c.id} c={c} focused={i === focus} data={d!} selected={sel.includes(c.id)} rendering={rendering[c.id]}
+      <div className={view === "grid" ? "lib-grid review-grid" : "review-list"}>{clips.map((c, i) => <ClipCard key={c.id} c={c} focused={i === focus} data={d!} selected={sel.includes(c.id)}
         onSelect={(v) => setSel((x) => (v ? [...x, c.id] : x.filter((y) => y !== c.id)))} onAct={(s) => act([c.id], s)} onTrim={() => setTrim(c)} onPreview={() => setPreview(c)} onScore={() => setScoreOf(c)}
         onExport={() => exportClips([c.id])} res={res} setRes={setRes} refresh={refresh} source={c.source_asset_id ? srcById.get(c.source_asset_id) : undefined} search={search} />)}</div>}
     {trim && <TrimModal clip={trim} source={trim.source_asset_id ? srcById.get(trim.source_asset_id) : undefined} onClose={() => setTrim(null)} onSaved={async () => { setTrim(null); await refresh(); }} />}
@@ -111,8 +103,8 @@ function Grades({ c }: { c: Clip }) {
   return <div className="review-grades">{(["hook", "flow", "value", "trend"] as const).map((k) => <span key={k}>{k[0]!.toUpperCase() + k.slice(1)} {typeof g[k] === "number" ? g[k] : "—"}</span>)}</div>;
 }
 
-function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTrim, onPreview, onScore, onExport, res, setRes, refresh, source, search }: {
-  c: Clip; data: Data; selected: boolean; focused: boolean; rendering?: string | undefined; onSelect: (v: boolean) => void; onAct: (s: "APPROVED" | "REJECTED") => void; onTrim: () => void; onPreview: () => void; onScore: () => void; onExport: () => void; res: Resolution; setRes: (r: Resolution) => void; refresh: () => Promise<void>; source?: Source | undefined; search: string;
+function ClipCard({ c, data, selected, focused, onSelect, onAct, onTrim, onPreview, onScore, onExport, res, setRes, refresh, source, search }: {
+  c: Clip; data: Data; selected: boolean; focused: boolean; onSelect: (v: boolean) => void; onAct: (s: "APPROVED" | "REJECTED") => void; onTrim: () => void; onPreview: () => void; onScore: () => void; onExport: () => void; res: Resolution; setRes: (r: Resolution) => void; refresh: () => Promise<void>; source?: Source | undefined; search: string;
 }) {
   const [title, setTitle] = useState(c.title ?? ""); const [posting, setPosting] = useState(false);
   const upd = async (f: Parameters<typeof updateClip>[0]["data"]) => { try { await updateClip({ data: f }); await refresh(); } catch (e) { err(e); } };
@@ -124,7 +116,7 @@ function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTr
     <label className="review-select"><input type="checkbox" aria-label="Select clip" checked={selected} onChange={(e) => onSelect(e.target.checked)} />#{c.index ?? "—"}</label>
     {c.status === "READY" && c.video_url ? <video src={c.video_url} poster={c.thumbnail_url ?? undefined} controls preload="metadata" /> : (c.thumbnail_url || source?.thumbnail_url) ? <img src={(c.thumbnail_url || source?.thumbnail_url)!} alt="" /> : <div className="lib-thumb"><Play /></div>}
     <input className="review-title" aria-label="Clip title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title.trim() && title !== c.title && upd({ id: c.id, title: title.trim() })} />
-    <p className="caption muted">{Math.round(dur / 1000)}s · From {fromLabel(c.start_ms)} {c.alternate_of && <span className="status-pill tone-purple">Alt cut</span>} <span className={`status-pill ${pill(c.status)}`}>{rendering ?? c.status[0] + c.status.slice(1).toLowerCase()}</span></p>
+    <p className="caption muted">{Math.round(dur / 1000)}s · From {fromLabel(c.start_ms)} {c.alternate_of && <span className="status-pill tone-purple">Alt cut</span>} <span className={`status-pill ${pill(c.status)}`}>{c.status[0] + c.status.slice(1).toLowerCase()}</span></p>
     <button className="review-score" onClick={onScore} aria-label="Score details">{c.score ?? "—"}</button><Grades c={c} />
     {c.reason && <p className="caption">{c.reason}</p>}
     {c.error && <p className="caption" style={{ color: "var(--destructive)" }}>{c.error}</p>}
