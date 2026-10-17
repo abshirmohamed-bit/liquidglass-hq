@@ -6,7 +6,7 @@
 # cookies, nothing of anyone's sign-in involved. It is built with Node, and
 # only the built script and the node binary are carried into the final image.
 FROM node:22-bookworm-slim AS potoken
-RUN apt-get update && apt-get install -y --no-install-recommends git \
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 RUN git clone --depth 1 --single-branch --branch 2.0.2 \
       https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git /opt/bgutil
