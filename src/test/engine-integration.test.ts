@@ -97,6 +97,6 @@ describe.skipIf(!LIVE)("the app drives the Engine and gets real clips", () => {
     for (let i = 1; i < ordered.length; i++) {
       expect(ordered[i].start_ms).toBeGreaterThanOrEqual(ordered[i - 1].end_ms);
     }
-    expect(db.tables["notifications"].some((n: Row) => n.type === "CLIPS_READY")).toBe(true);
+    expect(db.tables["notifications"].some((n: Row) => n["type"] === "CLIPS_READY")).toBe(true);
   }, 200_000);
 });
