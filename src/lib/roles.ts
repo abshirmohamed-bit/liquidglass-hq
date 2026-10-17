@@ -5,13 +5,13 @@ export const DEFAULT_ROLE: Role = "CLIPPER";
 
 /** Sidebar order, exactly as listed in Prompt 1. */
 export const NAV_ORDER = [
-  "Dashboard", "Library", "Clips", "Review", "Formats", "Posts", "Campaigns", "Tools",
+  "Dashboard", "Videos", "Library", "Clips", "Review", "Formats", "Posts", "Campaigns", "Tools",
   "Clients", "Analytics", "Ideation", "Thumbnails", "Money", "Leads", "Team", "Onboarding", "Settings",
 ] as const;
 export type NavTitle = (typeof NAV_ORDER)[number];
 
-const CLIPPER_TABS: NavTitle[] = ["Dashboard", "Library", "Clips", "Review", "Formats", "Posts", "Campaigns", "Tools"];
-const CLIENT_TABS: NavTitle[] = ["Dashboard", "Campaigns", "Review", "Posts", "Analytics"];
+const CLIPPER_TABS: NavTitle[] = ["Dashboard", "Videos", "Library", "Clips", "Review", "Formats", "Posts", "Campaigns", "Tools"];
+const CLIENT_TABS: NavTitle[] = ["Dashboard", "Videos", "Campaigns", "Review", "Posts", "Analytics"];
 
 export function visibleTabs(role: Role | null | undefined): NavTitle[] {
   if (role === "ADMIN") return [...NAV_ORDER];

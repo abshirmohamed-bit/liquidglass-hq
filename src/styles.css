@@ -826,6 +826,33 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .switch.rights { font-size: .9rem; color: var(--muted-foreground); }
 .job-actions { display: flex; justify-content: flex-end; gap: var(--s3); }
 
+/* ---------- Videos: one screen for a video and its clips ---------- */
+.video-grid { margin-top: var(--s4); }
+.video-card {
+  display: grid; gap: var(--s2); padding: var(--s3);
+  text-decoration: none; color: inherit;
+  transition: transform .18s ease, border-color .18s ease;
+}
+.video-card:hover { transform: translateY(-2px); border-color: color-mix(in oklab, var(--primary) 32%, var(--border)); }
+.video-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.video-thumb {
+  position: relative; aspect-ratio: 16 / 9; border-radius: var(--r-md); overflow: hidden;
+  background: var(--surface-high); display: grid; place-items: center; color: var(--muted-foreground);
+}
+.video-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video-thumb.is-wide { width: 200px; flex: none; }
+.video-name {
+  font-size: .95rem; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.video-back { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; margin-bottom: var(--s2); }
+.video-head { align-items: flex-start; gap: var(--s4); }
+
+@media (max-width: 720px) {
+  .video-head { flex-direction: column; }
+  .video-thumb.is-wide { width: 100%; }
+}
+
 /* ---------- the card that replaces the options while a job runs ---------- */
 .job-run { margin-top: var(--s4); display: grid; gap: var(--s4); }
 .job-run-state { margin: var(--s2) 0 0; font-size: .9rem; font-weight: 500; }

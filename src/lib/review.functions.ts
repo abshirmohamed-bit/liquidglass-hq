@@ -27,7 +27,7 @@ export const reviewData = createServerFn({ method: "GET" }).middleware([requireS
   const [clips, jobs, sources, members] = await Promise.all([
     db.from("clips").select("*").order("created_at", { ascending: false }),
     db.from("clip_jobs").select("id,status,created_at,aspect,source_asset_id").order("created_at", { ascending: false }),
-    db.from("source_assets").select("id,name,duration_ms,fps,width,height,transcript,public_url,thumbnail_url"),
+    db.from("source_assets").select("id,name,status,error,kind,size_bytes,created_at,duration_ms,fps,width,height,transcript,public_url,thumbnail_url"),
     db.from("team_logins").select("user_id,name"),
   ]);
   const me = (await db.from("profiles").select("display_name").eq("id", context.userId).maybeSingle()).data;

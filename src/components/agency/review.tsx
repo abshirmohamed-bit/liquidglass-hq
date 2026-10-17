@@ -18,18 +18,25 @@ const err = (e: unknown) => toast.error(e instanceof Error ? e.message : "Someth
 const pill = (s: string) => ({ FOUND: "tone-blue", APPROVED: "tone-green", REJECTED: "tone-red", EXPORTING: "tone-orange", READY: "tone-green", FAILED: "tone-red" } as Record<string, string>)[s] ?? "";
 function save(name: string, body: BlobPart, type = "text/plain") { const u = URL.createObjectURL(new Blob([body], { type })); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); }
 
-export function Review({ job: jobParam }: { job?: string | undefined }) {
+/**
+ * `embedded` means Videos is showing this for one video: the page chrome and
+ * the job and source pickers belong to that screen, not to this one.
+ */
+export function Review({ job: jobParam, source: sourceParam, embedded }: { job?: string | undefined; source?: string | undefined; embedded?: boolean }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["review"], queryFn: () => reviewData(), refetchInterval: (x) => (x.state.data?.clips.some((c) => c.status === "EXPORTING") ? 5000 : false) });
   const refresh = () => qc.invalidateQueries({ queryKey: ["review"] });
   const [job, setJob] = useState<string | undefined>(jobParam);
-  const [status, setStatus] = useState(""); const [source, setSource] = useState(""); const [mine, setMine] = useState(false);
+  const [status, setStatus] = useState(""); const [source, setSource] = useState(sourceParam ?? ""); const [mine, setMine] = useState(false);
   const [flags, setFlags] = useState<string[]>([]); const [search, setSearch] = useState(""); const [sort, setSort] = useState<"score" | "time">("score");
   const [view, setView] = useState<"grid" | "list">("grid"); const [sel, setSel] = useState<string[]>([]); const [focus, setFocus] = useState(0);
   const [trim, setTrim] = useState<Clip | null>(null); const [preview, setPreview] = useState<Clip | null>(null); const [scoreOf, setScoreOf] = useState<Clip | null>(null);
   const [res, setRes] = useState<Resolution>("HD"); const [rendering, setRendering] = useState<Record<string, string>>({});
   const d = q.data;
-  useEffect(() => { if (!job && !jobParam && d) setJob(defaultJob(d.jobs ?? [])); }, [d, job, jobParam]);
+  // Pinned to one video, every job for it belongs on screen, so the newest
+  // job must not quietly become a filter.
+  useEffect(() => { if (!sourceParam && !job && !jobParam && d) setJob(defaultJob(d.jobs ?? [])); }, [d, job, jobParam, sourceParam]);
+  useEffect(() => { if (sourceParam) setSource(sourceParam); }, [sourceParam]);
   const srcById = useMemo(() => new Map((d?.sources ?? []).map((s) => [s.id, s])), [d]);
   const clips = useMemo(() => {
     if (!d) return [];
@@ -74,14 +81,14 @@ export function Review({ job: jobParam }: { job?: string | undefined }) {
   });
   const selected = clips.filter((c) => sel.includes(c.id));
 
-  return <div className="page review-page">
-    <header className="page-header"><div><h1>Review</h1><p className="page-subtitle">Approve, trim and export found clips. Nothing is rendered until Export.</p></div>
+  return <div className={embedded ? "review-page" : "page review-page"}>
+    {!embedded && <header className="page-header"><div><h1>Review</h1><p className="page-subtitle">Approve, trim and export found clips. Nothing is rendered until Export.</p></div>
       {job && <Button variant="outline" onClick={async () => { try { const t = await shareJob({ data: { jobId: job } }); const url = `${location.origin}/review/${t}`; await navigator.clipboard.writeText(url).catch(() => {}); toast.success("Share link copied (valid 7 days)"); window.prompt("Share link (7 days, read-only)", url); } catch (e) { err(e); } }}><Share2 />Share link</Button>}
-    </header>
+    </header>}
     <section className="glass-panel filter-bar review-filters">
-      <select aria-label="Job" value={job ?? ""} onChange={(e) => setJob(e.target.value || undefined)}><option value="">All jobs</option>{d?.jobs?.map((j) => <option key={j.id} value={j.id}>{new Date(j.created_at).toLocaleString()} · {j.status.toLowerCase()}</option>)}</select>
+      {!sourceParam && <select aria-label="Job" value={job ?? ""} onChange={(e) => setJob(e.target.value || undefined)}><option value="">All jobs</option>{d?.jobs?.map((j) => <option key={j.id} value={j.id}>{new Date(j.created_at).toLocaleString()} · {j.status.toLowerCase()}</option>)}</select>}
       <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Any status</option>{CLIP_STATUSES.map((s) => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}</select>
-      <select aria-label="Source" value={source} onChange={(e) => setSource(e.target.value)}><option value="">Any source</option>{d?.sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+      {!sourceParam && <select aria-label="Source" value={source} onChange={(e) => setSource(e.target.value)}><option value="">Any source</option>{d?.sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
       <label className="lib-check"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />Assigned to me</label>
       <select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as "score" | "time")}><option value="score">By score</option><option value="time">Chronological</option></select>
       <Button size="sm" variant="ghost" onClick={() => setView(view === "grid" ? "list" : "grid")}>{view === "grid" ? "List view" : "Grid view"}</Button>

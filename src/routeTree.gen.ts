@@ -27,6 +27,7 @@ import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedTeamRouteImport } from './routes/_authenticated.team'
 import { Route as AuthenticatedThumbnailsRouteImport } from './routes/_authenticated.thumbnails'
 import { Route as AuthenticatedToolsRouteImport } from './routes/_authenticated.tools'
+import { Route as AuthenticatedVideosRouteImport } from './routes/_authenticated.videos'
 import { Route as ApiIdeationRouteImport } from './routes/api.ideation'
 import { Route as ReviewTokenRouteImport } from './routes/review_.$token'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated.clients.index'
@@ -127,6 +128,11 @@ const AuthenticatedToolsRoute = AuthenticatedToolsRouteImport.update({
   path: '/tools',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedVideosRoute = AuthenticatedVideosRouteImport.update({
+  id: '/videos',
+  path: '/videos',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const ApiIdeationRoute = ApiIdeationRouteImport.update({
   id: '/api/ideation',
   path: '/api/ideation',
@@ -203,6 +209,7 @@ export interface FileRoutesByFullPath {
   '/team': typeof AuthenticatedTeamRoute
   '/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/tools': typeof AuthenticatedToolsRoute
+  '/videos': typeof AuthenticatedVideosRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/review/$token': typeof ReviewTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -232,6 +239,7 @@ export interface FileRoutesByTo {
   '/team': typeof AuthenticatedTeamRoute
   '/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/tools': typeof AuthenticatedToolsRoute
+  '/videos': typeof AuthenticatedVideosRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/review/$token': typeof ReviewTokenRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -263,6 +271,7 @@ export interface FileRoutesById {
   '/_authenticated/team': typeof AuthenticatedTeamRoute
   '/_authenticated/thumbnails': typeof AuthenticatedThumbnailsRoute
   '/_authenticated/tools': typeof AuthenticatedToolsRoute
+  '/_authenticated/videos': typeof AuthenticatedVideosRoute
   '/api/ideation': typeof ApiIdeationRoute
   '/review_/$token': typeof ReviewTokenRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
@@ -294,6 +303,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/thumbnails'
     | '/tools'
+    | '/videos'
     | '/api/ideation'
     | '/review/$token'
     | '/clients/$clientId'
@@ -323,6 +333,7 @@ export interface FileRouteTypes {
     | '/team'
     | '/thumbnails'
     | '/tools'
+    | '/videos'
     | '/api/ideation'
     | '/review/$token'
     | '/clients/$clientId'
@@ -353,6 +364,7 @@ export interface FileRouteTypes {
     | '/_authenticated/team'
     | '/_authenticated/thumbnails'
     | '/_authenticated/tools'
+    | '/_authenticated/videos'
     | '/api/ideation'
     | '/review_/$token'
     | '/_authenticated/clients/$clientId'
@@ -505,6 +517,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedToolsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/videos': {
+      id: '/_authenticated/videos'
+      path: '/videos'
+      fullPath: '/videos'
+      preLoaderRoute: typeof AuthenticatedVideosRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/api/ideation': {
       id: '/api/ideation'
       path: '/api/ideation'
@@ -593,6 +612,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedTeamRoute: typeof AuthenticatedTeamRoute
   AuthenticatedThumbnailsRoute: typeof AuthenticatedThumbnailsRoute
   AuthenticatedToolsRoute: typeof AuthenticatedToolsRoute
+  AuthenticatedVideosRoute: typeof AuthenticatedVideosRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedEditorClipIdRoute: typeof AuthenticatedEditorClipIdRoute
   AuthenticatedIdeationThreadIdRoute: typeof AuthenticatedIdeationThreadIdRoute
@@ -615,6 +635,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedTeamRoute: AuthenticatedTeamRoute,
   AuthenticatedThumbnailsRoute: AuthenticatedThumbnailsRoute,
   AuthenticatedToolsRoute: AuthenticatedToolsRoute,
+  AuthenticatedVideosRoute: AuthenticatedVideosRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedEditorClipIdRoute: AuthenticatedEditorClipIdRoute,
   AuthenticatedIdeationThreadIdRoute: AuthenticatedIdeationThreadIdRoute,
