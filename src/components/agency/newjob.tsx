@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useMutation } from "@tanstack/react-query";
 import { Link2, Loader2, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { analyzeLink, type LinkDetails } from "@/lib/analyze.functions";
-import { engineImport } from "@/lib/library.functions";
+import { engineImport, importedSourceStatus } from "@/lib/library.functions";
+import { waitForImportedSource } from "@/lib/import-wait";
 import { createClipJob } from "@/lib/clip.functions";
 import { ASPECT_OPTIONS, GENRES, LENGTH_BANDS, bandByValue } from "@/lib/clip-rules";
 
@@ -66,6 +68,11 @@ const defaults = (d: LinkDetails): Options => ({
 
 export function NewJob() {
   const navigate = useNavigate();
+  const importVideo = useServerFn(engineImport);
+  const readImport = useServerFn(importedSourceStatus);
+  const createJob = useServerFn(createClipJob);
+  const analyze = useServerFn(analyzeLink);
+  const [importing, setImporting] = useState(false);
   const [url, setUrl] = useState("");
   const [details, setDetails] = useState<LinkDetails | null>(null);
   const [opts, setOpts] = useState<Options | null>(null);
@@ -73,7 +80,7 @@ export function NewJob() {
     setOpts((o) => (o ? { ...o, [k]: v } : o));
 
   const look = useMutation({
-    mutationFn: (u: string) => analyzeLink({ data: { url: u } }),
+    mutationFn: (u: string) => analyze({ data: { url: u } }),
     onSuccess: (d) => {
       setDetails(d);
       setOpts(defaults(d));
@@ -85,10 +92,18 @@ export function NewJob() {
     mutationFn: async () => {
       if (!details || !opts) throw new Error("Paste a link first.");
       const band = bandByValue(opts.band);
-      const imported = await engineImport({
+      const imported = await importVideo({
         data: { url: details.url, name: details.title, rightsConfirmed: opts.rights },
       });
-      return createClipJob({
+      if (!imported.ready) {
+        setImporting(true);
+        try {
+          await waitForImportedSource(() => readImport({ data: { id: imported.id } }));
+        } finally {
+          setImporting(false);
+        }
+      }
+      return createJob({
         data: {
           sourceId: imported.id,
           rangeStartMs: opts.startMs > 0 ? opts.startMs : null,
@@ -323,12 +338,12 @@ export function NewJob() {
           )}
 
           <div className="job-actions">
-            <Button variant="ghost" type="button" onClick={() => { setDetails(null); setOpts(null); }}>
+            <Button variant="ghost" type="button" disabled={start.isPending} onClick={() => { setDetails(null); setOpts(null); }}>
               Cancel
             </Button>
             <Button type="button" disabled={blocked || start.isPending} onClick={() => start.mutate()}>
               {start.isPending ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-              {start.isPending ? "Starting" : "Get clips"}
+              {start.isPending ? importing ? "Importing video" : "Starting" : "Get clips"}
             </Button>
           </div>
         </div>
