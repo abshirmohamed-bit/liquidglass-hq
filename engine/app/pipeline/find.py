@@ -177,9 +177,69 @@ def _partition(sentences: list[dict], target_ms: int) -> list[Moment]:
     return out
 
 
+#: Openers that carry no meaning. A hook that starts "so basically, you know"
+#: has spent its first three words saying nothing.
+_WEAK_OPENERS = (
+    "so", "and", "but", "well", "okay", "ok", "now", "then", "like", "right",
+    "you know", "i mean", "i think", "basically", "actually", "obviously",
+    "yeah", "um", "uh", "er", "anyway", "look", "listen",
+)
+
+
 def _title_from(text: str) -> str:
-    words = text.strip().strip(".!?").split()
-    return " ".join(words[:8])[:60] or "Clip"
+    """A headline meant to stop a scroll, out of a line that was merely said.
+
+    Spoken sentences bury their point: they open with filler and arrive at the
+    thing that matters several words in. This drops the filler, prefers the
+    part of the line that carries a question or a number, and stops at a
+    natural break rather than mid-thought.
+
+    It is a heuristic and reads like one. Hooks worth the name come from the
+    AI finder, which writes a title for the moment rather than trimming the
+    sentence it came from.
+    """
+    line = " ".join(text.split()).strip()
+    if not line:
+        return "Clip"
+
+    # A question inside the line is the hook, whatever was said before it.
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", line) if s.strip()]
+    question = next((s for s in sentences if s.endswith("?") and len(s.split()) >= 3), None)
+    if question:
+        line = question
+    elif sentences:
+        line = sentences[0]
+
+    lowered = line.lower()
+    trimmed = True
+    while trimmed:
+        trimmed = False
+        for opener in _WEAK_OPENERS:
+            if lowered.startswith(opener + " ") or lowered.startswith(opener + ","):
+                line = line[len(opener):].lstrip(" ,").strip()
+                lowered = line.lower()
+                trimmed = True
+                break
+
+    line = line.strip(" ,.;:-—")
+    if not line:
+        line = " ".join(text.split())
+
+    words = line.split()
+    if len(words) > 9:
+        # Stop at the last clause break inside the limit, so the title ends on
+        # a thought rather than halfway through one.
+        head = words[:9]
+        for i in range(len(head) - 1, 3, -1):
+            if head[i].endswith((",", ";", ":")):
+                head = head[:i + 1]
+                break
+        line = " ".join(head).strip(" ,.;:-—")
+
+    line = line[:60].strip(" ,.;:-—")
+    if not line:
+        return "Clip"
+    return line[0].upper() + line[1:]
 
 
 def _grades(score: float) -> dict[str, str]:

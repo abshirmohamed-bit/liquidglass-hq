@@ -158,3 +158,74 @@ def test_every_character_that_breaks_a_filter_graph_is_escaped():
     assert _escape_drawtext("a\\b") == r"a\\b"
     # A comma is literal inside the quotes and must not be mangled.
     assert "," in _escape_drawtext("20, 30")
+
+
+def test_the_blurred_layout_follows_the_subject_instead_of_ignoring_it():
+    """The streamer layout used to discard tracking and just letterbox."""
+    import inspect
+
+    from app.pipeline import compose
+
+    source = inspect.getsource(compose._two_layer)
+    assert "crop_filter" in source, "the blurred layout must use the tracked crop"
+    assert "[fg]" in source
+
+
+def test_two_faces_are_held_together_when_they_fit():
+    from app.pipeline.frame import _aim
+
+    # Two faces close together, well inside the window.
+    out = _aim([(0, [(0.45, 0.08), (0.55, 0.08)])], [])
+    assert out == [(0, 0.5)]
+
+
+def test_the_nearer_face_wins_when_both_cannot_fit():
+    from app.pipeline.frame import _aim
+
+    # One small face at the far left, one large one at the right. Aiming at
+    # the midpoint would frame the gap between them.
+    out = _aim([(0, [(0.10, 0.05), (0.80, 0.20)])], [])
+    assert out == [(0, 0.80)]
+
+
+def test_a_single_face_is_simply_followed():
+    from app.pipeline.frame import _aim
+
+    assert _aim([(0, [(0.33, 0.1)]), (500, [(0.66, 0.1)])], []) == [(0, 0.33), (500, 0.66)]
+
+
+def test_without_any_detection_the_motion_samples_still_drive_the_crop():
+    from app.pipeline.frame import _aim
+
+    fallback = [(0, 0.4), (500, 0.6)]
+    assert _aim([], fallback) == fallback
+
+
+def test_a_title_drops_the_filler_a_speaker_opens_with():
+    from app.pipeline.find import _title_from
+
+    assert _title_from("So basically, you know, the universe is mostly empty") \
+        .lower().startswith("the universe")
+
+
+def test_a_title_keeps_the_question_because_that_is_the_hook():
+    from app.pipeline.find import _title_from
+
+    out = _title_from("And I was thinking about it. How do we actually find aliens?")
+    assert out.endswith("?")
+    assert "aliens" in out.lower()
+
+
+def test_a_title_stops_on_a_thought_not_mid_phrase():
+    from app.pipeline.find import _title_from
+
+    out = _title_from("Um, the thing nobody tells you, is that it takes years of work")
+    assert not out.endswith(",")
+    assert len(out) <= 60
+
+
+def test_a_title_is_never_empty():
+    from app.pipeline.find import _title_from
+
+    assert _title_from("") == "Clip"
+    assert _title_from("so  and  but") != ""

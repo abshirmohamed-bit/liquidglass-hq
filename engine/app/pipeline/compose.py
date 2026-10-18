@@ -83,18 +83,27 @@ def _font_for(style: Style) -> str:
 
 
 def _escape_drawtext(text: str) -> str:
-    """Make text safe inside a single-quoted drawtext value.
+    """Escape text for a single-quoted drawtext value.
 
-    The apostrophe is the one that matters. A quote ends the value early, and
-    everything after it is read as filter syntax: a title like "YOU'VE POSTED
-    20, 30" made ffmpeg look for a filter called "30" and fail the whole
-    render. Closing the quote, escaping one, and reopening is the only way
-    to put an apostrophe inside a quoted value.
+    Kept for the simple cases and for the tests. Anything a person typed goes
+    through `_text_source` instead: quoting rules differ between -vf and
+    -filter_complex, so a title with an apostrophe that renders correctly in
+    one leaks into the filter's parameters in the other. A file has no
+    quoting rules at all.
     """
     return (text.replace("\\", r"\\")
             .replace("%", r"\%")
             .replace(":", r"\:")
             .replace("'", r"'\''"))
+
+
+def _text_source(text: str, workdir: Path | None, name: str) -> str:
+    """`textfile=` when there is somewhere to write, `text=` otherwise."""
+    if workdir is None:
+        return f"text='{_escape_drawtext(text)}'"
+    path = workdir / f"{name}.txt"
+    path.write_text(text, encoding="utf-8")
+    return f"textfile={path.as_posix()}:reload=0"
 
 
 def wrap_title(text: str, max_chars: int, max_lines: int = 2) -> list[str]:
@@ -122,7 +131,7 @@ def wrap_title(text: str, max_chars: int, max_lines: int = 2) -> list[str]:
     return lines
 
 
-def _title_filter(title: dict, w: int, h: int) -> str:
+def _title_filter(title: dict, w: int, h: int, workdir: Path | None = None) -> str:
     """A headline that always fits: wrapped to two lines, then shrunk to the width.
 
     ffmpeg cannot measure text for us, so the size is derived from the longest
@@ -152,7 +161,7 @@ def _title_filter(title: dict, w: int, h: int) -> str:
     parts: list[str] = []
     for i, line in enumerate(lines):
         y = top + i * gap
-        common = (f"text='{_escape_drawtext(line)}':fontcolor=white:fontsize={size}"
+        common = (f"{_text_source(line, workdir, f'title_{i}')}:fontcolor=white:fontsize={size}"
                   f":x=(w-text_w)/2:y={y}")
         if kind == "bold_band":
             parts.append(f"drawtext={common}:box=1:boxcolor=black@0.78:boxborderw={int(size * 0.42)}")
@@ -165,7 +174,7 @@ def _title_filter(title: dict, w: int, h: int) -> str:
     return ",".join(parts)
 
 
-def _watermark_filter(mark: dict, w: int, h: int) -> str:
+def _watermark_filter(mark: dict, w: int, h: int, workdir: Path | None = None) -> str:
     text = (mark.get("text") or "").strip()
     if not text:
         return ""
@@ -178,7 +187,7 @@ def _watermark_filter(mark: dict, w: int, h: int) -> str:
     y = {"top-left": f"{int(h * 0.05)}", "top-right": f"{int(h * 0.05)}",
          "bottom-left": f"h-text_h-{int(h * 0.05)}", "bottom-right": f"h-text_h-{int(h * 0.05)}",
          "centre-below-captions": f"{int(h * 0.62)}"}.get(pos, f"h-text_h-{int(h * 0.05)}")
-    return f"drawtext=text='{_escape_drawtext(text)}':fontcolor=white@{opacity}:fontsize={size}:x={x}:y={y}"
+    return f"drawtext={_text_source(text, workdir, 'watermark')}:fontcolor=white@{opacity}:fontsize={size}:x={x}:y={y}"
 
 
 def stitch(render: Render, workdir: Path) -> tuple[Path, int, int]:
@@ -290,19 +299,14 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
     if render.layout in {"full-video", "title-subtitles"}:
         crop, commands = framing.crop_filter(
             track or framing.Track("center", 0, 0, [], []), w, h, render.out_ms - render.in_ms)
-        if commands:
-            # sendcmd times are relative to the trimmed clip
-            shifted = []
-            for line in commands.splitlines():
-                t, rest = line.split(" ", 1)
-                shifted.append(f"{max(0.0, float(t) - render.in_ms / 1000):.2f} {rest}")
-            sendcmd_path.write_text("\n".join(shifted), encoding="utf-8")
-            chain.append(f"sendcmd=f={sendcmd_path.as_posix()}")
+        pan = _shift(commands, sendcmd_path, render.in_ms)
+        if pan:
+            chain.append(pan.rstrip(","))
         chain.append(crop)
         chain.append(f"scale={w}:{h}:flags=lanczos")
     elif render.layout == "streamer":
         # the clip over a blurred, filled copy of itself
-        return _two_layer(render, workdir, blur=True)
+        return _two_layer(render, workdir, blur=True, track=track)
     elif render.layout == "black-box":
         chain.append(f"scale={w}:-2:flags=lanczos")
         chain.append(f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black")
@@ -319,11 +323,11 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
         chain.append(f"subtitles={ass.as_posix()}")
 
     if render.title:
-        f = _title_filter(render.title, w, h)
+        f = _title_filter(render.title, w, h, workdir)
         if f:
             chain.append(f)
     if render.watermark:
-        f = _watermark_filter(render.watermark, w, h)
+        f = _watermark_filter(render.watermark, w, h, workdir)
         if f:
             chain.append(f)
 
@@ -336,14 +340,38 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
     return args, sendcmd_path
 
 
-def _two_layer(render: Render, workdir: Path, blur: bool) -> tuple[list[str], Path]:
-    """Streamer layout: the clip sits over a blurred fill of itself."""
+def _shift(commands: str | None, sendcmd_path: Path, in_ms: int) -> str:
+    """Write the pan script with times relative to the trimmed clip."""
+    if not commands:
+        return ""
+    shifted = []
+    for line in commands.splitlines():
+        at, _, rest = line.partition(" ")
+        try:
+            shifted.append(f"{max(0.0, float(at) - in_ms / 1000):.2f} {rest}")
+        except ValueError:
+            shifted.append(line)
+    sendcmd_path.write_text("\n".join(shifted), encoding="utf-8")
+    return f"sendcmd=f={sendcmd_path.as_posix()},"
+
+
+def _two_layer(render: Render, workdir: Path, blur: bool,
+               track: framing.Track | None = None) -> tuple[list[str], Path]:
+    """Streamer layout: the clip sits over a blurred fill of itself.
+
+    The subject is tracked here too. Without it the speaker sits wherever they
+    happened to stand and the blur does all the work, which is the look of a
+    clip nobody edited.
+    """
     w, h = render.size
     dur_s = max(0.1, (render.out_ms - render.in_ms) / 1000)
     sendcmd_path = workdir / "pan.cmd"
+    crop, commands = framing.crop_filter(
+        track or framing.Track("center", 0, 0, [], []), w, h, render.out_ms - render.in_ms)
+    fg = f"[0:v]{_shift(commands, sendcmd_path, render.in_ms)}{crop},scale={w}:-2:flags=lanczos[fg]"
     chain = [
         f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},boxblur=24:2[bg]",
-        f"[0:v]scale={w}:-2:flags=lanczos[fg]",
+        fg,
         "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base]",
     ]
     last = "base"
@@ -353,8 +381,8 @@ def _two_layer(render: Render, workdir: Path, blur: bool) -> tuple[list[str], Pa
         ass.write_text(build_ass(render.words, style, w, h, censored=render.censored), encoding="utf-8")
         chain.append(f"[{last}]subtitles={ass.as_posix()}[cap]")
         last = "cap"
-    for name, f in (("title", _title_filter(render.title or {}, w, h)),
-                    ("mark", _watermark_filter(render.watermark or {}, w, h))):
+    for name, f in (("title", _title_filter(render.title or {}, w, h, workdir)),
+                    ("mark", _watermark_filter(render.watermark or {}, w, h, workdir))):
         if f:
             chain.append(f"[{last}]{f}[{name}]")
             last = name

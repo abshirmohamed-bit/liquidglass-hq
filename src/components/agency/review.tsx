@@ -43,7 +43,9 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
   const refresh = () => qc.invalidateQueries({ queryKey: ["review"] });
   const [job, setJob] = useState<string | undefined>(jobParam);
   const [status, setStatus] = useState(""); const [source, setSource] = useState(sourceParam ?? ""); const [mine, setMine] = useState(false);
-  const [flags, setFlags] = useState<string[]>([]); const [search, setSearch] = useState(""); const [sort, setSort] = useState<"score" | "time">("score");
+  // Chronological by default: a run of clips from one video should read in the
+  // order the video says them, so a set makes sense watched end to end.
+  const [flags, setFlags] = useState<string[]>([]); const [search, setSearch] = useState(""); const [sort, setSort] = useState<"score" | "time">("time");
   const [view, setView] = useState<"grid" | "list">("grid"); const [sel, setSel] = useState<string[]>([]); const [focus, setFocus] = useState(0);
   const [trim, setTrim] = useState<Clip | null>(null); const [preview, setPreview] = useState<Clip | null>(null); const [scoreOf, setScoreOf] = useState<Clip | null>(null);
   const [res, setRes] = useState<Resolution>("HD"); const [rendering, setRendering] = useState<Record<string, string>>({});
@@ -111,7 +113,7 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
       <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Any status</option>{CLIP_STATUSES.map((s) => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}</select>
       {!sourceParam && <select aria-label="Source" value={source} onChange={(e) => setSource(e.target.value)}><option value="">Any source</option>{d?.sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
       <label className="lib-check"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />Assigned to me</label>
-      <select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as "score" | "time")}><option value="score">By score</option><option value="time">Chronological</option></select>
+      <select aria-label="Sort" value={sort} onChange={(e) => setSort(e.target.value as "score" | "time")}><option value="time">In video order</option><option value="score">Best first</option></select>
       <Button size="sm" variant="ghost" onClick={() => setView(view === "grid" ? "list" : "grid")}>{view === "grid" ? "List view" : "Grid view"}</Button>
       <div className="review-flags">{FLAG_FILTERS.map((f) => <button key={f} className={`status-pill ${flags.includes(f) ? "tone-blue" : ""}`} aria-pressed={flags.includes(f)} onClick={() => setFlags((x) => (x.includes(f) ? x.filter((y) => y !== f) : [...x, f]))}>{f}</button>)}</div>
       <input id="review-search" aria-label="Find keywords or moments" placeholder="Find keywords or moments (Ctrl/Cmd+K)" value={search} onChange={(e) => setSearch(e.target.value)} />
