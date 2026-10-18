@@ -279,3 +279,48 @@ def test_polling_a_running_job_stays_light(api, uploaded_asset):
     job = next(j for j in jobs if j["clips"])
     assert "finish" not in job["clips"][0]
     assert job["clips"][0]["title"], "the summary still names the clip"
+
+
+def test_a_preview_is_cut_once_and_then_reused(api, uploaded_asset):
+    """Rendering runs inside the request, so cutting the same clip twice is
+    CPU spent while the worker may be exporting that very clip."""
+    job = next(j for j in api.get("/v1/autoclip").json()["autoclips"] if j["clips"])
+    pid = job["clips"][0]["project_id"]
+
+    first = api.post(f"/v1/projects/{pid}/preview").json()
+    assert first["preview_url"], "a preview should be produced"
+
+    from app.db import session
+    from app.models import Project
+
+    with session() as s:
+        key = s.get(Project, pid).preview_key
+    assert key, "the preview should be remembered"
+
+    # Second ask: same URL, and nothing re-rendered.
+    before = (settings_media() / key).stat().st_mtime_ns
+    again = api.post(f"/v1/projects/{pid}/preview").json()
+    assert again["preview_url"] == first["preview_url"]
+    assert (settings_media() / key).stat().st_mtime_ns == before, "it re-rendered"
+
+
+def test_editing_a_clip_throws_the_stale_preview_away(api, uploaded_asset):
+    """A preview of the old settings would be a lie."""
+    from app.db import session
+    from app.models import Project
+
+    job = next(j for j in api.get("/v1/autoclip").json()["autoclips"] if j["clips"])
+    pid = job["clips"][0]["project_id"]
+    api.post(f"/v1/projects/{pid}/preview")
+    with session() as s:
+        assert s.get(Project, pid).preview_key
+
+    api.patch(f"/v1/projects/{pid}", json={"aspect": "1:1"})
+    with session() as s:
+        assert not s.get(Project, pid).preview_key, "an aspect change must clear it"
+
+
+def settings_media():
+    from app.config import settings
+
+    return settings().media_root

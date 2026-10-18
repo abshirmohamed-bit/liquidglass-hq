@@ -229,11 +229,18 @@ function PreviewModal({ clip, source, search, onClose, onExport, onAct, refresh 
   const [only, setOnly] = useState(false);
   const [posting, setPosting] = useState(false);
   // Ask the Engine to cut a real preview. Falls back to the exported file if there is one.
+  //
+  // Not while the clip is exporting: the Engine would render the same clip
+  // twice at once, the two fight over the same cores, and the finished file
+  // is moments away anyway. The list already polls every 5s while exporting,
+  // so this reopens on its own with the real video.
+  const rendering = clip.status === "EXPORTING";
   const preview = useQuery({
     queryKey: ["clip-preview", clip.id],
     queryFn: () => clipPreview({ data: { clipId: clip.id } }),
     staleTime: 10 * 60_000,
     retry: false,
+    enabled: !clip.video_url && !rendering,
   });
   const url = clip.video_url ?? preview.data?.url ?? null;
   return <Modal title={clip.title ?? "Preview"} onClose={onClose}>
@@ -242,11 +249,14 @@ function PreviewModal({ clip, source, search, onClose, onExport, onAct, refresh 
       url
         ? <><span className="status-pill">{clip.video_url ? "Exported clip" : "Low-res preview"}</span>
             <video src={url} controls autoPlay className="review-preview" /></>
-        : preview.isPending
-          ? <p className="caption">Cutting a preview on the Engine — a few seconds…</p>
-          : preview.isError
-            ? <p className="caption warn">{(preview.error as Error).message}</p>
-            : <>{clip.thumbnail_url && <img src={clip.thumbnail_url} alt="" />}<p>{clip.title}</p></>
+        : rendering
+          ? <>{clip.thumbnail_url && <img src={clip.thumbnail_url} alt="" />}
+              <p className="caption">Rendering this clip now — the video appears here the moment it finishes.</p></>
+          : preview.isFetching
+            ? <p className="caption">Cutting a preview on the Engine — a few seconds…</p>
+            : preview.isError
+              ? <p className="caption warn">{(preview.error as Error).message}</p>
+              : <>{clip.thumbnail_url && <img src={clip.thumbnail_url} alt="" />}<p>{clip.title}</p></>
     )}
     <Transcript clip={clip} source={source} search={search} only={only} />
     <p><strong>Scene analysis:</strong> {clip.scene_analysis || "—"}</p>

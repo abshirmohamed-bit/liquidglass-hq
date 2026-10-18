@@ -214,7 +214,10 @@ def patch_project(project_id: str, body: PatchBody) -> dict:
                 transcript = s.exec(select(T).where(T.asset_id == p.asset_id)).first()
                 if transcript:
                     data["captions"] = slice_words(list(transcript.words), new_in, new_out)
-                p.preview_key = ""
+        # A preview of the old settings would be a lie, so drop it and let the
+        # next open cut a fresh one.
+        if RENDER_FIELDS & set(data):
+            p.preview_key = ""
         for key, value in data.items():
             setattr(p, key, value)
         s.add(p)
@@ -237,12 +240,24 @@ def delete_project(project_id: str) -> dict:
     return ok()
 
 
+#: Anything that changes what a render looks like. A cached preview of a clip
+#: is only valid while none of these have moved.
+RENDER_FIELDS = {"in_ms", "out_ms", "aspect", "layout", "framing", "caption_style_id",
+                 "caption_options", "captions", "title", "watermark", "background"}
+
+
 @router.post("/v1/projects/{project_id}/preview")
 def make_preview(project_id: str) -> dict:
     with session() as s:
         p = s.get(Project, project_id)
         if not p or p.deleted_at:
             raise EngineError("NOT_FOUND", "No clip with that id.")
+        # Hand back the one already cut. Rendering is seconds of CPU even at
+        # preview quality, and this runs inside the request while the worker
+        # may be rendering the same clip for export. Any edit clears the key
+        # (see patch_project), so a cached preview is never a stale one.
+        if p.preview_key:
+            return ok(preview_url=storage.public_url(p.preview_key))
         return ok(preview_url=export_pipeline.preview(s, p))
 
 
