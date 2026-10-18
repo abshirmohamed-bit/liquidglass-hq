@@ -127,8 +127,8 @@ def _ytdlp(url: str) -> UrlInfo:
     # worth retrying as another before telling the user it cannot be read.
     raw = None
     last = ""
-    for client in ytdlp_opts.PLAYER_CLIENTS:
-        opts = {**ytdlp_opts.api_opts(client), "skip_download": True}
+    for client, via_proxy in ytdlp_opts.attempts():
+        opts = {**ytdlp_opts.api_opts(client, via_proxy), "skip_download": True}
         try:
             with yt_dlp.YoutubeDL(opts) as y:
                 raw = y.extract_info(url, download=False)
@@ -137,7 +137,8 @@ def _ytdlp(url: str) -> UrlInfo:
             last = str(e)
             if not ytdlp_opts.looks_blocked(last):
                 raise EngineError("IMPORT_FAILED", _friendly(last)) from e
-            log.warning("yt-dlp was refused for %s as %s: %s", url, client, last)
+            log.warning("yt-dlp was refused for %s as %s%s: %s", url, client,
+                        " via proxy" if via_proxy else "", last)
     if raw is None:
         raise EngineError("IMPORT_FAILED", _friendly(last))
     if not raw:

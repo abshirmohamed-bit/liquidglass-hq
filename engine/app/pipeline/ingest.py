@@ -162,16 +162,22 @@ def _ytdlp(url: str, dest: Path) -> None:
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     last = ""
-    for client in ytdlp_opts.PLAYER_CLIENTS:
+    for client, via_proxy in ytdlp_opts.attempts():
         cmd = [exe, "--no-playlist", "--quiet", "--no-warnings",
-               *ytdlp_opts.cli_args(client),
+               *ytdlp_opts.cli_args(client, via_proxy),
                "-f", "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best",
                "--merge-output-format", "mp4", "-o", str(dest), url]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         if proc.returncode == 0 and dest.exists():
+            if via_proxy:
+                log.info("fetched %s through the proxy after a refusal", url)
             return
         last = (proc.stderr or "").strip()
-        log.warning("yt-dlp could not fetch %s as %s: %s", url, client, last[-300:])
+        log.warning("yt-dlp could not fetch %s as %s%s: %s", url, client,
+                    " via proxy" if via_proxy else "", last[-300:])
+        # Only a refusal is worth another address or another client. Anything
+        # else — a private video, a dead link — fails the same way every time,
+        # and retrying it through metered bandwidth buys nothing.
         if not ytdlp_opts.looks_blocked(last):
             break
     raise EngineError("VALIDATION_ERROR", _download_error(last))

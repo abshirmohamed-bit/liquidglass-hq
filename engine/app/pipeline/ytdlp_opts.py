@@ -11,7 +11,10 @@ is the set of things that genuinely raise a server's standing.
   - IPv4 only. YouTube judges a server's IPv6 range much more harshly.
   - a calmer request rate, so a batch of videos does not look like a scrape.
   - a proxy, when YTDLP_PROXY is set. A residential address is the one thing
-    that reliably clears a blocked datacentre IP.
+    that reliably clears a blocked datacentre IP. It is metered by the
+    gigabyte and a video is a large number of them, so it is the last thing
+    tried rather than the route everything takes: most videos are served to
+    this machine without complaint and cost nothing. See `attempts()`.
   - cookies, when a cookies.txt is placed on the volume. Last resort: they
     expire, and they put the account that exported them at risk.
 
@@ -44,6 +47,31 @@ def proxy() -> str:
     return (os.environ.get("YTDLP_PROXY") or "").strip()
 
 
+def proxy_first() -> bool:
+    """Send everything through the proxy instead of only what is refused.
+
+    Worth turning on if YouTube starts refusing this machine for everything,
+    when trying direct first is just a slow way to fail. Off by default.
+    """
+    return (os.environ.get("YTDLP_PROXY_ALWAYS") or "").strip().lower() in {"1", "true", "yes"}
+
+
+def attempts() -> list[tuple[str, bool]]:
+    """Every (player client, through the proxy?) to try, in order.
+
+    Direct first, for every client, because that traffic is free and usually
+    works. Only once YouTube has refused all of them does the proxy get used,
+    and a refusal transfers almost nothing — the gigabytes are only spent on
+    the attempt that actually succeeds.
+    """
+    if proxy() and proxy_first():
+        return [(c, True) for c in PLAYER_CLIENTS]
+    direct = [(c, False) for c in PLAYER_CLIENTS]
+    if not proxy():
+        return direct
+    return direct + [(c, True) for c in PLAYER_CLIENTS]
+
+
 def js_runtime() -> str:
     """The Node that solves YouTube's JS challenge and runs the token script."""
     return os.environ.get("NODE_PATH_BIN") or shutil.which("node") or "/usr/bin/node"
@@ -58,7 +86,7 @@ def _pot_arg() -> str:
     return f"youtubepot-bgutilscript:server_home={BGUTIL_HOME}"
 
 
-def api_opts(player_client: str = "default") -> dict:
+def api_opts(player_client: str = "default", use_proxy: bool = False) -> dict:
     """Options for the Python API, used by the link reader."""
     opts: dict = {
         "quiet": True,
@@ -81,14 +109,14 @@ def api_opts(player_client: str = "default") -> dict:
     }
     if player_client != "default":
         opts["extractor_args"]["youtube"] = {"player_client": [player_client]}
-    if proxy():
+    if use_proxy and proxy():
         opts["proxy"] = proxy()
     if COOKIE_FILE.exists():
         opts["cookiefile"] = str(COOKIE_FILE)
     return opts
 
 
-def cli_args(player_client: str = "default") -> list[str]:
+def cli_args(player_client: str = "default", use_proxy: bool = False) -> list[str]:
     """The same settings as flags, for the download subprocess."""
     args = [
         "--force-ipv4",
@@ -99,7 +127,7 @@ def cli_args(player_client: str = "default") -> list[str]:
     ]
     if player_client != "default":
         args += ["--extractor-args", f"youtube:player_client={player_client}"]
-    if proxy():
+    if use_proxy and proxy():
         args += ["--proxy", proxy()]
     if COOKIE_FILE.exists():
         args += ["--cookies", str(COOKIE_FILE)]

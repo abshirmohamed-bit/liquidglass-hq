@@ -243,6 +243,30 @@ that is not a datacentre. Any residential provider works.
 fly secrets set YTDLP_PROXY="http://user:pass@host:port"
 ```
 
+**It is only used on videos YouTube refuses.** Residential bandwidth is sold
+by the gigabyte and a video is most of one, so routing every download through
+it would be the largest line on the bill — several times the machine itself.
+The Engine therefore tries every player client on its own address first, and
+only falls back to the proxy once YouTube has refused all of them. Most videos
+never touch it, so most videos cost nothing.
+
+A failed attempt transfers almost nothing, so the gigabytes are only spent on
+the attempt that actually works. An error that is *not* a refusal — a private
+video, a dead link — stops the whole thing immediately rather than paying to
+be told the same thing again.
+
+Buy credit that does not expire rather than a monthly plan: at a few videos a
+day only a fraction of them need the proxy, so a small top-up lasts. Watch for
+`fetched ... through the proxy after a refusal` in `fly logs` to see how often
+it is actually used.
+
+If YouTube ever starts refusing this machine for *everything*, trying direct
+first is just a slow way to fail. Skip it:
+
+```bash
+fly secrets set YTDLP_PROXY_ALWAYS=1     # back to normal: unset it
+```
+
 **Upload the file instead.** Download the video yourself and upload it in the
 Library. Nothing is asked of YouTube, so nothing can be refused.
 
