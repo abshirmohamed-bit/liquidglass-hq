@@ -199,3 +199,27 @@ A cookies file is a third option and the worst one. Put a `cookies.txt` at
 expire within weeks, and the Google account that exported them can be
 rate-limited or locked for being used from a server — so never use your own
 account for this.
+
+## Faster transcription with Groq
+
+Transcribing on the Engine's own CPU is the slow part of a job: minutes for a
+long video. Groq runs the same Whisper family on their hardware at a couple of
+hundred times real time, and at `whisper-large-v3-turbo` rather than the
+`small` model this machine can afford. A 20-minute video costs about 1.3 cents
+and comes back in seconds.
+
+```bash
+fly secrets set GROQ_API_KEY="gsk_..."
+```
+
+That is the whole change. With a key set the Engine uses Groq; without one it
+uses its own CPU, and it falls back to the CPU on its own if Groq is
+rate-limited or down. To check which is live:
+
+```
+GET /v1/health   ->   "transcribe_provider": "groq" | "faster-whisper"
+```
+
+To pin it either way, set `TRANSCRIBE_PROVIDER` to `groq` (fail loudly if Groq
+is unreachable) or `faster-whisper` (never leave the machine). Audio leaves the
+Engine when Groq is in use, which is the trade being made.

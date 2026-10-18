@@ -39,9 +39,24 @@ class Settings(BaseSettings):
     processing_threads: int = 2
 
     # transcription
-    transcribe_provider: str = "faster-whisper"  # faster-whisper | fake
+    #   auto           — Groq when a key is set, this machine otherwise
+    #   groq           — always Groq, and fail loudly if it is unreachable
+    #   faster-whisper — always this machine
+    #   fake           — deterministic, for the test suite
+    transcribe_provider: str = "auto"
     whisper_model: str = "small"
     whisper_device: str = "auto"
+    # Groq runs Whisper on their hardware at a couple of hundred times real
+    # time. Without a key nothing changes and the local model is used.
+    groq_api_key: str = ""
+    groq_model: str = "whisper-large-v3-turbo"
+    groq_timeout_s: float = 180.0
+
+    def resolve_transcriber(self) -> str:
+        """The provider actually used, once the key situation is known."""
+        if self.transcribe_provider != "auto":
+            return self.transcribe_provider
+        return "groq" if self.groq_api_key else "faster-whisper"
 
     # moment finding
     finder_provider: str = "claude"  # claude | rules

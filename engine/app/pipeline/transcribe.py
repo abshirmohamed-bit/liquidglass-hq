@@ -1,18 +1,26 @@
 """Speech to words with real timings.
 
-Two providers behind one interface:
-  faster-whisper — the real thing, word-level timestamps, runs on CPU or GPU.
+Three providers behind one interface:
+  groq           — Whisper large-v3-turbo on Groq's hardware. Hundreds of
+                   times real time, and more accurate than the model this
+                   machine can afford to run. Needs GROQ_API_KEY.
+  faster-whisper — the same job on this machine's CPU. Slower, but it needs
+                   nothing but the box it is already paying for, so it is the
+                   fallback whenever Groq is unset or unreachable.
   fake           — deterministic, no model download; used by the test suite so
-                   the rest of the pipeline can be proven without model weights.
+                   the rest of the pipeline can be proven without weights.
 """
 from __future__ import annotations
 
 import difflib
+import logging
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from ..config import settings
+
+log = logging.getLogger("engine.transcribe")
 
 _model_cache: dict[str, object] = {}
 
@@ -162,11 +170,64 @@ def _faster_whisper(audio: Path, vocabulary: list[str], language: str | None) ->
     return Transcription(getattr(info, "language", "") or "en", f"faster-whisper/{cfg.whisper_model}", words, group_sentences(words))
 
 
+def _groq(audio: Path, vocabulary: list[str], language: str | None) -> Transcription:
+    """Whisper on Groq. Word timings come back in the response, not from DTW."""
+    import httpx
+
+    cfg = settings()
+    lang = language.replace("_", "-").split("-")[0].lower() if language and language.lower() != "auto" else None
+    data = {
+        "model": cfg.groq_model,
+        "response_format": "verbose_json",
+        "timestamp_granularities[]": "word",
+    }
+    if lang:
+        data["language"] = lang
+    if vocabulary:
+        # Whisper takes a prompt as a spelling hint, same as the local path.
+        data["prompt"] = ", ".join(vocabulary[:30])
+
+    with audio.open("rb") as fh:
+        r = httpx.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {cfg.groq_api_key}"},
+            files={"file": (audio.name, fh, "audio/wav")},
+            data=data,
+            timeout=cfg.groq_timeout_s,
+        )
+    if r.status_code != 200:
+        raise RuntimeError(f"Groq transcription failed ({r.status_code}): {r.text[:200]}")
+    body = r.json()
+
+    words: list[Word] = []
+    for w in body.get("words") or []:
+        text = str(w.get("word") or "").strip()
+        if not text:
+            continue
+        words.append(Word(int(float(w.get("start", 0)) * 1000), int(float(w.get("end", 0)) * 1000), text))
+    if not words:
+        raise RuntimeError("Groq returned no words for this audio.")
+    words = snap_to_vocabulary(words, vocabulary)
+    return Transcription(str(body.get("language") or lang or "en"), f"groq/{cfg.groq_model}", words, group_sentences(words))
+
+
 def transcribe(audio: Path, duration_s: float, vocabulary: list[str] | None = None,
                language: str | None = None) -> Transcription:
     vocabulary = vocabulary or []
-    if settings().transcribe_provider == "fake":
+    cfg = settings()
+    provider = cfg.resolve_transcriber()
+    if provider == "fake":
         return _fake(audio, duration_s)
+    if provider == "groq":
+        try:
+            return _groq(audio, vocabulary, language)
+        except Exception as e:
+            # Chosen explicitly: the user asked for Groq, so say it failed.
+            if cfg.transcribe_provider == "groq":
+                raise
+            # Chosen automatically: a rate limit or an outage should slow the
+            # job down, not stop it.
+            log.warning("Groq transcription failed, falling back to this machine: %s", e)
     return _faster_whisper(audio, vocabulary, language)
 
 

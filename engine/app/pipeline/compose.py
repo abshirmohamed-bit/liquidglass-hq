@@ -83,8 +83,18 @@ def _font_for(style: Style) -> str:
 
 
 def _escape_drawtext(text: str) -> str:
-    return (text.replace("\\", r"\\").replace(":", r"\:")
-            .replace("'", r"'").replace("%", r"\%"))
+    """Make text safe inside a single-quoted drawtext value.
+
+    The apostrophe is the one that matters. A quote ends the value early, and
+    everything after it is read as filter syntax: a title like "YOU'VE POSTED
+    20, 30" made ffmpeg look for a filter called "30" and fail the whole
+    render. Closing the quote, escaping one, and reopening is the only way
+    to put an apostrophe inside a quoted value.
+    """
+    return (text.replace("\\", r"\\")
+            .replace("%", r"\%")
+            .replace(":", r"\:")
+            .replace("'", r"'\''"))
 
 
 def wrap_title(text: str, max_chars: int, max_lines: int = 2) -> list[str]:

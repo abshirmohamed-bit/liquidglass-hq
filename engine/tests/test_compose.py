@@ -125,3 +125,36 @@ def test_the_tracker_follows_a_moving_subject(tmp_path):
     assert (selected.width, selected.height) == (640, 360)
     assert selected.samples
     assert all(1000 <= ms < 3000 for ms, _ in selected.samples)
+
+
+def test_a_title_with_an_apostrophe_renders(tmp_path):
+    """A quote used to end the drawtext value early and break the whole graph.
+
+    The failure was "No such filter: '30'" on a title reading
+    "WHAT HAPPENS WHEN YOU'VE POSTED 20, 30". This renders it for real.
+    """
+    import subprocess
+
+    from app.pipeline.compose import _escape_drawtext
+
+    title = "WHAT HAPPENS WHEN YOU'VE POSTED 20, 30"
+    out = tmp_path / "frame.png"
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=320x180:d=0.1",
+         "-vf", f"drawtext=text='{_escape_drawtext(title)}':fontcolor=white:fontsize=18:x=4:y=4",
+         "-frames:v", "1", "-y", str(out)],
+        capture_output=True, text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert out.exists() and out.stat().st_size > 0
+
+
+def test_every_character_that_breaks_a_filter_graph_is_escaped():
+    from app.pipeline.compose import _escape_drawtext
+
+    assert _escape_drawtext("it's") == r"it'\''s"
+    assert _escape_drawtext("a:b") == r"a\:b"
+    assert _escape_drawtext("100%") == r"100\%"
+    assert _escape_drawtext("a\\b") == r"a\\b"
+    # A comma is literal inside the quotes and must not be mangled.
+    assert "," in _escape_drawtext("20, 30")

@@ -15,6 +15,20 @@ type Data = Awaited<ReturnType<typeof reviewData>>;
 type Clip = Data["clips"][number];
 type Source = Data["sources"][number];
 const err = (e: unknown) => toast.error(e instanceof Error ? e.message : "Something went wrong");
+
+/**
+ * What a person needs from a failure: what broke and what to do. The engine's
+ * own output is kept on the tooltip for when that is not enough.
+ */
+function readableError(raw: string): string {
+  const m = raw.toLowerCase();
+  if (m.includes("no such filter") || m.includes("avfiltergraph"))
+    return "The render failed on this clip's title text. Edit the title, then export again.";
+  if (m.includes("ffmpeg failed")) return "The render failed. Try exporting again, or trim the clip slightly.";
+  if (m.includes("interrupted")) return "The export was interrupted before it finished. Export again.";
+  if (m.includes("never reached the engine")) return raw;
+  return raw.length > 160 ? `${raw.slice(0, 157)}…` : raw;
+}
 const pill = (s: string) => ({ FOUND: "tone-blue", APPROVED: "tone-green", REJECTED: "tone-red", EXPORTING: "tone-orange", READY: "tone-green", FAILED: "tone-red" } as Record<string, string>)[s] ?? "";
 function save(name: string, body: BlobPart, type = "text/plain") { const u = URL.createObjectURL(new Blob([body], { type })); const a = document.createElement("a"); a.href = u; a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(u), 2000); }
 
@@ -51,6 +65,7 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
     try { const r = await deleteClips({ data: { ids } }); setSel((x) => x.filter((i) => !ids.includes(i))); await refresh(); toast.success(`${r.deleted} clip${r.deleted === 1 ? "" : "s"} deleted`); } catch (e) { err(e); }
   }
   async function exportClips(ids: string[]) {
+    if (!ids.length) { toast.error("Approve a clip first — only approved clips are exported."); return; }
     try {
       const r = await startExport({ data: { ids, resolution: res } });
       await refresh();
@@ -146,7 +161,7 @@ function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTr
     <p className="caption muted">{Math.round(dur / 1000)}s · From {fromLabel(c.start_ms)} {c.alternate_of && <span className="status-pill tone-purple">Alt cut</span>} <span className={`status-pill ${pill(c.status)}`}>{rendering ?? c.status[0] + c.status.slice(1).toLowerCase()}</span></p>
     <button className="review-score" onClick={onScore} aria-label="Score details">{c.score ?? "—"}</button><Grades c={c} />
     {c.reason && <p className="caption">{c.reason}</p>}
-    {c.error && <p className="caption" style={{ color: "var(--destructive)" }}>{c.error}</p>}
+    {c.error && <p className="caption clip-error" title={c.error}>{readableError(c.error)}</p>}
     {(c.edits as { client_feedback?: string } | null)?.client_feedback && <p className="caption">Client: {(c.edits as { client_feedback: string }).client_feedback}</p>}
     {search && (c as { transcriptText?: string }).transcriptText?.toLowerCase().includes(search.toLowerCase()) && <p className="caption">Matches transcript</p>}
     <div className="review-actions">
