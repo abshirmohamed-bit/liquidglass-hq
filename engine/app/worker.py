@@ -27,16 +27,25 @@ def tick() -> int:
     """One pass over everything that might have work. Returns items advanced."""
     from . import webhooks
     from .pipeline import exports as export_pipeline
+    from .pipeline import ingest as ingest_pipeline
     from .pipeline import jobs as job_pipeline
     from .pipeline import imports as import_pipeline
 
     done = 0
+<<<<<<< HEAD
+    for step in (ingest_pipeline.advance_one, job_pipeline.advance_one, export_pipeline.advance_one):
+        try:
+            done += 1 if step() else 0
+        except Exception:
+            log.exception("worker step failed")
+=======
     with _pass:
         for step in (import_pipeline.advance_one, job_pipeline.advance_one, export_pipeline.advance_one):
             try:
                 done += 1 if step() else 0
             except Exception:
                 log.exception("worker step failed")
+>>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
     try:
         webhooks.deliver_due()
     except Exception:
@@ -97,7 +106,7 @@ def recover_stuck() -> int:
     from sqlmodel import select
 
     from .db import session
-    from .models import Export, Job
+    from .models import Asset, Export, Job
 
     moved = 0
     from .pipeline.imports import recover
@@ -109,6 +118,10 @@ def recover_stuck() -> int:
                 row.progress = 0
                 s.add(row)
                 moved += 1
+        for asset in s.exec(select(Asset).where(Asset.status == "downloading")).all():
+            asset.status = "importing"
+            s.add(asset)
+            moved += 1
         if moved:
             s.commit()
     if moved:

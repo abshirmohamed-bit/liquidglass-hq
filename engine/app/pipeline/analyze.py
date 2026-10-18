@@ -19,6 +19,8 @@ from .find import suggest_count
 log = logging.getLogger("engine.analyze")
 
 # Sites whose terms mean the creator must confirm they hold the rights.
+log = logging.getLogger("engine.analyze")
+
 RIGHTS_HOSTS = re.compile(
     r"(youtube\.com|youtu\.be|tiktok\.com|instagram\.com|facebook\.com|twitch\.tv|x\.com|twitter\.com)",
     re.I,
@@ -121,6 +123,24 @@ def _ytdlp(url: str) -> UrlInfo:
     except ImportError as e:  # pragma: no cover - production dependency
         raise EngineError("ENGINE_ERROR", "The link importer is not installed on this Engine.") from e
 
+<<<<<<< HEAD
+    # Metadata only. ignore_no_formats_error matters: YouTube serves a thin or
+    # empty format list to datacenter addresses, and without this yt-dlp fails
+    # the whole extraction on format selection even though we never download here.
+    opts = {
+        "quiet": True, "no_warnings": True, "skip_download": True,
+        "noplaylist": True, "socket_timeout": 20,
+        "ignore_no_formats_error": True,
+        "format": None,
+    }
+    try:
+        with yt_dlp.YoutubeDL(opts) as y:
+            raw = y.extract_info(url, download=False)
+    except Exception as e:
+        # The creator gets one clear line; the operator needs the real thing.
+        log.warning("yt-dlp could not read %s: %s", url, e)
+        raise EngineError("IMPORT_FAILED", _friendly(str(e))) from e
+=======
     from . import ytdlp_opts
 
     # YouTube gates each player client differently, so a refusal for one is
@@ -141,6 +161,7 @@ def _ytdlp(url: str) -> UrlInfo:
                         " via proxy" if via_proxy else "", last)
     if raw is None:
         raise EngineError("IMPORT_FAILED", _friendly(last))
+>>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
     if not raw:
         raise EngineError("IMPORT_FAILED", "Nothing could be read from that link.")
     if raw.get("_type") == "playlist":
@@ -183,17 +204,30 @@ def _friendly(message: str) -> str:
         return "That video is private."
     if "members-only" in m or "join this channel" in m:
         return "That video is for channel members only."
-    if "age" in m and "confirm" in m:
-        return "That video is age-restricted and cannot be read."
-    if "unavailable" in m or "removed" in m:
+    if "age" in m and ("confirm" in m or "restricted" in m):
+        return "That video is age-restricted, so the Engine cannot read it."
+    if "unavailable" in m or "removed" in m or "deleted" in m:
         return "That video is unavailable or has been removed."
-    if "sign in" in m or "cookies" in m or "bot" in m:
-        return "That site is asking the Engine to sign in. Upload the file instead."
+    if "not available in your country" in m or "geo" in m:
+        return "That video is blocked in the region the Engine runs in."
+    if "sign in" in m or "cookies" in m or "bot" in m or "captcha" in m:
+        return ("YouTube is asking the Engine to prove it is not a bot, which it "
+                "cannot do. Download the video and upload it from the Library.")
+    if "429" in m or "too many requests" in m or "rate" in m and "limit" in m:
+        return "YouTube is rate-limiting the Engine. Wait a few minutes and try again."
+    if "requested format is not available" in m or "no video formats" in m:
+        return ("YouTube did not offer this server a usable video format — it often "
+                "limits what datacenter servers can fetch. Download the video and "
+                "upload it from the Library.")
     if "unsupported url" in m or "no suitable" in m:
         return "That link is not from a site the Engine can read."
-    if "proxy" in m or "timed out" in m or "connection" in m:
+    if "proxy" in m or "timed out" in m or "connection" in m or "unable to download" in m:
         return "The Engine could not reach that site."
-    return "That link could not be read."
+    if "live" in m and "not started" in m:
+        return "That is a scheduled stream that has not started."
+    # Nothing matched: say so honestly and point at where the detail lives.
+    return ("That link could not be read. The exact reason is in the Engine log "
+            "(fly logs -a crayzmundo-engine).")
 
 
 def _fake(url: str) -> UrlInfo:

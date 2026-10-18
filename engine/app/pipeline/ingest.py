@@ -95,7 +95,10 @@ def ingest_video(session: Session, asset: Asset, src: Path) -> Asset:
 
 
 def import_url(session: Session, asset: Asset, url: str) -> Asset:
-    """Direct media URL, or a page the Engine resolves with yt-dlp."""
+    """Direct media URL, or a page the Engine resolves with yt-dlp.
+
+    Called by the worker, not by a request handler: this can take minutes.
+    """
     try:
         return _import_url(session, asset, url)
     except Exception as e:
@@ -161,6 +164,26 @@ def _ytdlp(url: str, dest: Path) -> None:
     from . import ytdlp_opts
 
     dest.parent.mkdir(parents=True, exist_ok=True)
+<<<<<<< HEAD
+    cmd = [exe, "--no-playlist", "--quiet", "--no-warnings",
+           # Widening fallbacks: a restricted format list is common from a server.
+           "-f", ("bestvideo[height<=2160]+bestaudio/best[height<=2160]/"
+                  "bv*+ba/b[height<=2160]/b"),
+           "--merge-output-format", "mp4", "-o", str(dest), url]
+    cookies = Path("/data/cookies.txt")
+    if cookies.exists():
+        cmd[1:1] = ["--cookies", str(cookies)]
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    if proc.returncode != 0 or not dest.exists():
+        err = (proc.stderr or "").strip()
+        if "requested format is not available" in err.lower() or "no video formats" in err.lower():
+            raise EngineError(
+                "IMPORT_FAILED",
+                "YouTube did not offer this server a usable video format. Download the "
+                "video and upload it from the Library instead.")
+        tail = err.splitlines()[-2:]
+        raise EngineError("VALIDATION_ERROR", "Could not fetch that link: " + " / ".join(tail))
+=======
     last = ""
     for client, via_proxy in ytdlp_opts.attempts():
         cmd = [exe, "--no-playlist", "--quiet", "--no-warnings",
@@ -193,6 +216,7 @@ def _download_error(stderr: str) -> str:
                 "upload the file instead, or set a residential proxy on the Engine.")
     tail = stderr.strip().splitlines()[-2:]
     return "Could not fetch that link: " + " / ".join(tail)
+>>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
 
 
 def asset_event(asset: Asset) -> dict:
@@ -220,3 +244,33 @@ def asset_payload(asset: Asset) -> dict:
         "size": asset.size_bytes, "quality_warning": asset.quality_warning,
         "created_at": asset.created_at.isoformat(), "error": asset.error,
     }
+
+
+def advance_one() -> bool:
+    """Download one asset that is waiting to be imported. Returns True if it worked on something.
+
+    The HTTP route only records the intent; the fetch happens here so no browser
+    is left holding a connection open for a 30-minute video.
+    """
+    from sqlmodel import select
+
+    from ..db import session
+
+    with session() as s:
+        asset = s.exec(
+            select(Asset)
+            .where(Asset.status == "importing")
+            .where(Asset.source_url != "")
+            .order_by(Asset.created_at)
+        ).first()
+        if not asset:
+            return False
+        url = asset.source_url
+        asset.status = "downloading"
+        s.add(asset)
+        s.commit()
+        try:
+            _import_url(s, asset, url)
+        except Exception as e:
+            mark_failed(s, asset, e)
+        return True

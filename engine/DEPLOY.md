@@ -1,134 +1,61 @@
-# Deploying the crayZmundo Engine to Fly.io
+# Deploying the crayZmundo Engine
 
-The Engine is the part of crayZmundo that actually cuts video. It needs ffmpeg,
-real CPU and jobs that run for tens of seconds, which is why it runs as its own
-container rather than on the web host.
+**You do not need a terminal for this.** Fly is connected to this GitHub repo and
+redeploys the Engine whenever `engine/` changes on `main`. Push, and it ships.
 
-Everything below is run from `engine/`.
+Watch a deploy at https://fly.io/apps/crayzmundo-engine/monitoring
 
----
-
-## Before you start
-
-```bash
-# install flyctl (macOS/Linux)
-curl -L https://fly.io/install.sh | sh
-# Windows PowerShell
-#   pwsh -Command "iwr https://fly.io/install.ps1 -useb | iex"
-
-fly auth signup   # or: fly auth login
-```
+The Engine itself runs continuously — it does not stop when you close your laptop.
+Using crayZmundo day to day means opening the site and pasting a link. Nothing else.
 
 ---
 
-## 1. Create the app
+## If something is wrong
 
-`fly.toml` is already written. Pick your own app name — it becomes part of the
-URL — and edit the first line of `fly.toml` to match.
-
-```bash
-fly apps create crayzmundo-engine        # use your chosen name
-fly config validate --strict             # catches typos; default validation ignores unknown keys
-```
-
-## 2. Create the volume
-
-Holds the database, the Whisper weights and any locally-stored media. It lives
-in the same region as the app.
+Three commands, and only when you are actually debugging:
 
 ```bash
-fly volumes create crayz_data --region syd --size 10
+fly logs -a crayzmundo-engine          # why did that fail?
+fly status -a crayzmundo-engine        # is it running?
+fly deploy ./engine -a crayzmundo-engine   # force a deploy if GitHub did not
 ```
 
-## 3. Create object storage for the finished clips
-
-Rendered clips must be served to the app and the browser, so they belong in
-object storage rather than on the machine's disk. Fly's Tigris is
-S3-compatible and the Engine picks it up with no extra configuration.
+## If you ever need to set a secret
 
 ```bash
-fly storage create --public -a crayzmundo-engine
+fly secrets set NAME="value" -a crayzmundo-engine
 ```
 
-This sets `BUCKET_NAME`, `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY` as secrets. **Save the keys when they are printed —
-flyctl cannot show them again.** The Engine reads those names directly and
-switches itself from local disk to object storage.
+Setting a secret restarts the machine, which is how it takes effect.
 
-Public URLs then look like `https://<bucket>.t3.tigrisfiles.io/<key>`. Tell the
-Engine that base so the links it hands the app are the public ones:
+---
 
-```bash
-fly secrets set S3_PUBLIC_BASE_URL="https://<your-bucket>.t3.tigrisfiles.io" -a crayzmundo-engine
-```
+## What was set up once, and never needs doing again
 
-## 4. Set the secrets
-
-Generate the key and the webhook secret:
-
-```bash
-make keygen
-```
-
-Then set them. `WEBHOOK_URL` points back at your crayZmundo site.
-
-```bash
-fly secrets set \
-  ENGINE_API_KEYS="<the ENGINE_API_KEYS value from keygen>" \
-  WEBHOOK_SECRET="<the WEBHOOK_SECRET value from keygen>" \
-  WEBHOOK_URL="https://crayzmundo.com/api/public/hooks/engine" \
-  PUBLIC_BASE_URL="https://crayzmundo-engine.fly.dev" \
-  -a crayzmundo-engine
-```
-
-Optional — without it the Engine finds moments with its own transcript rules
-instead of Claude, which works but is less smart:
-
-```bash
-fly secrets set ANTHROPIC_API_KEY="sk-ant-..." -a crayzmundo-engine
-```
-
-## 5. Deploy
-
-```bash
-fly deploy
-```
-
-First boot downloads the Whisper model onto the volume, so it takes a few
-minutes. Later deploys reuse it.
-
-## 6. Check it
-
-```bash
-fly status
-curl -s https://crayzmundo-engine.fly.dev/v1/health | jq
-```
-
-A healthy response names the providers actually in use:
-
-```json
-{"success": true, "status": "ok", "ffmpeg": true,
- "storage_backend": "s3", "transcribe_provider": "faster-whisper", "finder": "claude"}
-```
-
-If `finder` says `rules`, the Anthropic key is not set. If `storage_backend`
-says `local`, the bucket secrets did not land.
-
-## 7. Point crayZmundo at it
-
-In the app's own secrets (Lovable → Secrets), set:
-
-| Name | Value |
+| Thing | Value |
 | --- | --- |
-| `ENGINE_URL` | `https://crayzmundo-engine.fly.dev` |
-| `ENGINE_API_KEY` | the same value as `ENGINE_API_KEYS` |
-| `ENGINE_WEBHOOK_SECRET` | the same value as `WEBHOOK_SECRET` |
+| App | `crayzmundo-engine` in `syd` |
+| Machine | performance-2x, 4GB, always on |
+| Volume | `crayz_data`, 10GB at `/data` — database and Whisper weights |
+| Object storage | Tigris bucket `long-glitter-1327` for finished clips |
+| Secrets | `ENGINE_API_KEYS`, `WEBHOOK_SECRET`, `WEBHOOK_URL`, `PUBLIC_BASE_URL`, `S3_PUBLIC_BASE_URL`, plus the five Fly set for Tigris |
 
-`ENGINE_URL` can also be stored in the `app_settings` table under the key
-`ENGINE_URL`; the environment variable wins when both are present.
+The only one still missing is `ANTHROPIC_API_KEY`, which upgrades moment-finding
+from transcript rules to AI judgement. Everything works without it.
 
-Then press **Send test event** on the Settings → Engine card. A 200 means the
-signature matches and the two halves are talking.
+---
+
+## Settings that must not change
+
+**`auto_stop_machines = "off"`** — Fly's proxy cannot see a render in progress, so
+autostop would kill jobs mid-encode.
+
+**`kill_timeout = "300s"`** — must stay above the Engine's `SHUTDOWN_GRACE_S` (120s),
+or a deploy kills work that is already running. Anything interrupted is requeued on
+the next boot, so nothing hangs in "processing" forever.
+
+**These are top-level keys in `fly.toml`.** In TOML a key written after a `[table]`
+header belongs to that table, so keep them above the first `[section]`.
 
 ---
 
@@ -152,6 +79,16 @@ queue on the next boot, so nothing hangs in "processing" forever.
 **These are top-level keys in `fly.toml`.** In TOML, a key written after a
 `[table]` header belongs to that table. Keep `kill_signal` and `kill_timeout`
 above the first `[section]` or Fly silently ignores them.
+
+---
+
+## Optional: run the tests before every deploy
+
+Fly's GitHub integration builds and ships whatever you push. If you would
+rather a red test suite blocked the deploy, use a GitHub Actions workflow
+instead of (not alongside) Fly's integration, or the two will both deploy.
+Ask and I'll add `.github/workflows/fly-engine.yml`, which runs the 62 tests
+first and only then calls `flyctl deploy ./engine --remote-only`.
 
 ---
 
