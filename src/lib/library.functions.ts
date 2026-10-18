@@ -119,6 +119,36 @@ export const engineImport = createServerFn({ method: "POST" }).middleware([requi
   });
 
 /** Polls GET /v1/assets/{id} for link imports still UPLOADING. */
+/**
+ * One source, one check. The Engine downloads links in the background, so the
+ * job form calls this on a timer until the source is READY rather than holding
+ * a request open for the length of a download.
+ */
+export const sourceStatus = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ id: z.string().uuid() }))
+  .handler(async ({ context, data }): Promise<{ status: string; error: string | null }> => {
+    const row = (await context.supabase.from("source_assets")
+      .select("id,status,error,engine_asset_id").eq("id", data.id).maybeSingle()).data;
+    if (!row) throw new Error("That source no longer exists.");
+    if (row.status !== "UPLOADING" || !row.engine_asset_id) {
+      return { status: row.status, error: row.error };
+    }
+    const r = await (await engine())<EngineAsset>(
+      "GET", `/v1/assets/${encodeURIComponent(row.engine_asset_id)}`);
+    if (!r.ok) return { status: row.status, error: null };
+    const x = r.data;
+    if (x.status === "failed" || x.error) {
+      const message = typeof x.error === "string" ? x.error : x.error?.message ?? "Import failed";
+      await context.supabase.from("source_assets").update({ status: "FAILED", error: message }).eq("id", row.id);
+      return { status: "FAILED", error: message };
+    }
+    if (x.url && x.status !== "importing" && x.status !== "downloading" && x.status !== "pending") {
+      await context.supabase.from("source_assets").update(sourceFields(x)).eq("id", row.id);
+      return { status: "READY", error: null };
+    }
+    return { status: "UPLOADING", error: null };
+  });
+
 export const pollImports = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
   const rows = await context.supabase.from("source_assets").select("id,engine_asset_id,subtitle_file_url").eq("status", "UPLOADING").eq("kind", "LINK").not("engine_asset_id", "is", null);
   const ec = await engine(); let changed = 0;

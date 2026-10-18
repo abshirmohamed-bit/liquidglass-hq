@@ -126,8 +126,10 @@ def import_asset(body: ImportBody) -> dict:
                       source_url=body.url)
         s.add(asset)
         s.commit()
-        ingest.import_url(s, asset, body.url)
         s.refresh(asset)
+        # Downloading a long video takes minutes; a browser request dies long
+        # before that. Hand it to the worker and answer now. The caller polls
+        # GET /v1/assets/{id}, or waits for the asset.imported webhook.
         return ok(ingest.asset_payload(asset))
 
 

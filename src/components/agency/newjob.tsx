@@ -5,7 +5,7 @@ import { Link2, Loader2, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { analyzeLink, type LinkDetails } from "@/lib/analyze.functions";
-import { engineImport } from "@/lib/library.functions";
+import { engineImport, sourceStatus } from "@/lib/library.functions";
 import { createClipJob } from "@/lib/clip.functions";
 import { ASPECT_OPTIONS, GENRES, LENGTH_BANDS, bandByValue } from "@/lib/clip-rules";
 
@@ -16,12 +16,15 @@ const MODELS = [
   { value: "SPEECH", label: "Clip talking", hint: "Best for interviews and podcasts" },
 ] as const;
 
+/** These ids must exist in the Engine's style catalogue (GET /v1/subtitle-styles). */
 const CAPTION_PRESETS = [
   { id: "none", name: "No caption" },
-  { id: "karaoke", name: "Karaoke" },
+  { id: "karaoke_highlight", name: "Karaoke" },
   { id: "bold_white", name: "Bold" },
-  { id: "highlight_green", name: "Highlight" },
-  { id: "pop_pink", name: "Pop" },
+  { id: "highlighter", name: "Highlight" },
+  { id: "yellow_pop", name: "Pop" },
+  { id: "word_pop", name: "Word pop" },
+  { id: "uppercase_impact", name: "Impact" },
   { id: "minimal", name: "Minimal" },
 ] as const;
 
@@ -39,7 +42,6 @@ type Options = {
   genre: string;
   band: string;
   autoHeadline: boolean;
-  autoZoom: boolean;
   prompt: string;
   startMs: number;
   endMs: number;
@@ -54,11 +56,10 @@ const defaults = (d: LinkDetails): Options => ({
   genre: "Auto",
   band: LENGTH_BANDS.find((b) => b.label === d.suggested.clip_length)?.value ?? "auto",
   autoHeadline: true,
-  autoZoom: false,
   prompt: "",
   startMs: 0,
   endMs: d.duration_ms,
-  caption: "karaoke",
+  caption: "karaoke_highlight",
   aspect: "9:16",
   coverage: "BEST_MOMENTS",
   rights: false,
@@ -69,6 +70,7 @@ export function NewJob() {
   const [url, setUrl] = useState("");
   const [details, setDetails] = useState<LinkDetails | null>(null);
   const [opts, setOpts] = useState<Options | null>(null);
+  const [stage, setStage] = useState("");
   const set = <K extends keyof Options>(k: K, v: Options[K]) =>
     setOpts((o) => (o ? { ...o, [k]: v } : o));
 
@@ -85,9 +87,26 @@ export function NewJob() {
     mutationFn: async () => {
       if (!details || !opts) throw new Error("Paste a link first.");
       const band = bandByValue(opts.band);
+      setStage("Fetching the video…");
       const imported = await engineImport({
         data: { url: details.url, name: details.title, rightsConfirmed: opts.rights },
       });
+
+      // The Engine downloads in the background; a long video takes minutes.
+      if (!imported.ready) {
+        const deadline = Date.now() + 20 * 60_000;
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 4000));
+          const s = await sourceStatus({ data: { id: imported.id } });
+          if (s.status === "READY") break;
+          if (s.status === "FAILED") throw new Error(s.error ?? "That video could not be downloaded.");
+          if (Date.now() > deadline) {
+            throw new Error("Still downloading. It will appear in the Library when it finishes.");
+          }
+        }
+      }
+
+      setStage("Starting the clip job…");
       return createClipJob({
         data: {
           sourceId: imported.id,
@@ -110,10 +129,12 @@ export function NewJob() {
           framing: "AUTO",
           language: details.language || "auto",
           captionLanguage: "same",
+          captionStyleId: opts.caption === "none" ? "bold_white" : opts.caption,
+          captionsEnabled: opts.caption !== "none",
           extras: {
             removeSilences: false,
             removeFillers: false,
-            zoom: opts.autoZoom ? "Dynamic" : "Balanced",
+            zoom: "Balanced",
             autoTransitions: false,
             soundEffects: false,
             grade: "none",
@@ -127,13 +148,14 @@ export function NewJob() {
       });
     },
     onSuccess: () => {
+      setStage("");
       toast.success("Finding your clips. They'll appear in Review when they're ready.");
       setDetails(null);
       setOpts(null);
       setUrl("");
       navigate({ to: "/clips", search: { source: undefined } });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => { setStage(""); toast.error(e.message); },
   });
 
   const blocked = !!details?.needs_rights && !opts?.rights;
@@ -248,14 +270,6 @@ export function NewJob() {
               />
               <span>Auto headline</span>
             </label>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={opts.autoZoom}
-                onChange={(e) => set("autoZoom", e.target.checked)}
-              />
-              <span>Auto zoom</span>
-            </label>
           </div>
 
           <label className="field">
@@ -328,7 +342,7 @@ export function NewJob() {
             </Button>
             <Button type="button" disabled={blocked || start.isPending} onClick={() => start.mutate()}>
               {start.isPending ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-              {start.isPending ? "Starting" : "Get clips"}
+              {start.isPending ? (stage || "Working") : "Get clips"}
             </Button>
           </div>
         </div>

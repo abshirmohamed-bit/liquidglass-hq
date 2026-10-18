@@ -73,7 +73,10 @@ def test_a_video_over_the_length_limit_is_refused(monkeypatch):
     ("ERROR: Private video. Sign in", "private"),
     ("Video unavailable", "unavailable"),
     ("Unsupported URL: https://nope", "not from a site"),
-    ("Sign in to confirm you're not a bot", "sign in"),
+    ("ERROR: [youtube] abc: Requested format is not available.", "usable video format"),
+    ("Sign in to confirm you're not a bot", "not a bot"),
+    ("HTTP Error 429: Too Many Requests", "rate-limiting"),
+    ("This video is not available in your country", "blocked in the region"),
 ])
 def test_importer_errors_are_rewritten_for_creators(raw, expected):
     assert expected in _friendly(raw).lower()
