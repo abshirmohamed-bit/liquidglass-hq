@@ -1,5 +1,6 @@
 const ZIP_LIB = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X, Scissors, Play, Copy, Star, ThumbsDown, Download, Share2, Merge, FileCode, Captions, ClipboardCheck, Trash2 } from "lucide-react";
 import { EmptyState, LoadingGrid } from "./kit";
@@ -135,7 +136,7 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
         onSelect={(v) => setSel((x) => (v ? [...x, c.id] : x.filter((y) => y !== c.id)))} onAct={(s) => act([c.id], s)} onTrim={() => setTrim(c)} onPreview={() => setPreview(c)} onScore={() => setScoreOf(c)}
         onExport={() => exportClips([c.id])} onDelete={() => remove([c.id])} res={res} setRes={setRes} refresh={refresh} source={c.source_asset_id ? srcById.get(c.source_asset_id) : undefined} search={search} />)}</div>}
     {trim && <TrimModal clip={trim} source={trim.source_asset_id ? srcById.get(trim.source_asset_id) : undefined} onClose={() => setTrim(null)} onSaved={async () => { setTrim(null); await refresh(); }} />}
-    {preview && <PreviewModal clip={preview} source={preview.source_asset_id ? srcById.get(preview.source_asset_id) : undefined} search={search} onClose={() => setPreview(null)} onExport={() => { exportClips([preview.id]); setPreview(null); }} refresh={refresh} />}
+    {preview && <PreviewModal clip={d?.clips.find((x) => x.id === preview.id) ?? preview} source={preview.source_asset_id ? srcById.get(preview.source_asset_id) : undefined} search={search} onClose={() => setPreview(null)} onExport={() => exportClips([preview.id])} onAct={(s) => act([preview.id], s)} refresh={refresh} />}
     {scoreOf && <Modal title="Score details" onClose={() => setScoreOf(null)}><p><strong>Scene analysis:</strong> {scoreOf.scene_analysis || "No scene analysis for this clip."}</p><Transcript clip={scoreOf} source={scoreOf.source_asset_id ? srcById.get(scoreOf.source_asset_id) : undefined} search={search} /></Modal>}
   </div>;
 }
@@ -156,7 +157,12 @@ function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTr
   const timeline = (fmt: TimelineFormat) => { const f = timelineFile(fmt, { title: c.title ?? "clip", sourceName: source?.name ?? "source", sourceUrl: source?.playUrl ?? "", fps, start_ms: c.start_ms ?? 0, end_ms: c.end_ms ?? 0, sourceMs: source?.duration_ms ?? c.end_ms ?? 0 }); save(f.name, f.body, "application/xml"); };
   return <article className={`glass-panel lib-card review-card${focused ? " focused" : ""}`} aria-label={c.title ?? "Clip"}>
     <label className="review-select"><input type="checkbox" aria-label="Select clip" checked={selected} onChange={(e) => onSelect(e.target.checked)} />#{c.index ?? "—"}</label>
-    {c.status === "READY" && c.video_url ? <video src={c.video_url} poster={c.thumbnail_url ?? undefined} controls preload="metadata" /> : (c.thumbnail_url || source?.thumbnail_url) ? <img src={(c.thumbnail_url || source?.thumbnail_url)!} alt="" /> : <div className="lib-thumb"><Play /></div>}
+    <button type="button" className="review-open" onClick={onPreview} aria-label={`Open ${c.title ?? "clip"}`}>
+      {(c.thumbnail_url || source?.thumbnail_url)
+        ? <img src={(c.thumbnail_url || source?.thumbnail_url)!} alt="" />
+        : <div className="lib-thumb"><Play /></div>}
+      <span className="review-open-badge"><Play size={18} /></span>
+    </button>
     <input className="review-title" aria-label="Clip title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title.trim() && title !== c.title && upd({ id: c.id, title: title.trim() })} />
     <p className="caption muted">{Math.round(dur / 1000)}s · From {fromLabel(c.start_ms)} {c.alternate_of && <span className="status-pill tone-purple">Alt cut</span>} <span className={`status-pill ${pill(c.status)}`}>{rendering ?? c.status[0] + c.status.slice(1).toLowerCase()}</span></p>
     <button className="review-score" onClick={onScore} aria-label="Score details">{c.score ?? "—"}</button><Grades c={c} />
@@ -195,7 +201,15 @@ function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTr
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return <div className="review-modal-back" onClick={onClose}><div role="dialog" aria-label={title} className="glass-panel review-modal" onClick={(e) => e.stopPropagation()}><header className="page-header"><h2>{title}</h2><Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}><X /></Button></header>{children}</div></div>;
+  // Escape closes it, and it renders on the body so no ancestor's transform
+  // can decide where "fixed" means.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [onClose]);
+  const node = <div className="review-modal-back" onClick={onClose}><div role="dialog" aria-modal="true" aria-label={title} className="glass-panel review-modal" onClick={(e) => e.stopPropagation()}><header className="page-header"><h2>{title}</h2><Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}><X /></Button></header>{children}</div></div>;
+  return typeof document === "undefined" ? node : createPortal(node, document.body);
 }
 
 function Transcript({ clip, source, search, only }: { clip: Clip; source?: Source | undefined; search: string; only?: boolean }) {
@@ -205,8 +219,9 @@ function Transcript({ clip, source, search, only }: { clip: Clip; source?: Sourc
   return <p className={`prose review-transcript${only ? " only" : ""}`}>{words.map((w, i) => <span key={i} title={fromLabel(w.start_ms)} className={q && w.text.toLowerCase().includes(q) ? "hl" : ""}>{i % 12 === 0 && <small className="muted">[{fromLabel(w.start_ms)}] </small>}{w.text} </span>)}</p>;
 }
 
-function PreviewModal({ clip, source, search, onClose, onExport, refresh }: { clip: Clip; source?: Source | undefined; search: string; onClose: () => void; onExport: () => void; refresh: () => Promise<void> }) {
+function PreviewModal({ clip, source, search, onClose, onExport, onAct, refresh }: { clip: Clip; source?: Source | undefined; search: string; onClose: () => void; onExport: () => void; onAct: (s: "APPROVED" | "REJECTED") => void; refresh: () => Promise<void> }) {
   const [only, setOnly] = useState(false);
+  const [posting, setPosting] = useState(false);
   // Ask the Engine to cut a real preview. Falls back to the exported file if there is one.
   const preview = useQuery({
     queryKey: ["clip-preview", clip.id],
@@ -230,14 +245,22 @@ function PreviewModal({ clip, source, search, onClose, onExport, refresh }: { cl
     <Transcript clip={clip} source={source} search={search} only={only} />
     <p><strong>Scene analysis:</strong> {clip.scene_analysis || "—"}</p>
     <div className="review-actions">
-      <Button size="sm" disabled title="Posting comes next">Publish</Button>
-      <Button size="sm" onClick={onExport} disabled={clip.status !== "APPROVED" && !needsReexport(clip)}>Export</Button>
+      <Button size="sm" onClick={() => setPosting(true)} disabled={clip.status !== "READY"} title={clip.status === "READY" ? "" : "Export the clip first"}>Publish</Button>
+      <Button size="sm" variant="outline" onClick={() => onAct("APPROVED")} disabled={clip.status === "APPROVED" || clip.status === "READY"}>Approve</Button>
+      <Button size="sm" onClick={onExport} disabled={clip.status !== "APPROVED" && !needsReexport(clip)}>{needsReexport(clip) ? "Re-export" : "Export"}</Button>
       {clip.video_url ? <Button size="sm" variant="outline" asChild><a href={clip.video_url} download>Download</a></Button> : <Button size="sm" variant="outline" disabled title="Export first">Download</Button>}
       <Button size="sm" variant="outline" asChild><Link to="/editor/$clipId" params={{ clipId: clip.id }}>Edit</Link></Button>
-      {(["9:16", "1:1", "4:5", "16:9"] as const).map((a) => <Button key={a} size="sm" variant="ghost" disabled title="Comes with Prompt 5">{a}</Button>)}
+      {(["9:16", "1:1", "4:5", "16:9"] as const).map((a) => <Button
+        key={a} size="sm" variant={clip.aspect === a ? "default" : "ghost"} aria-pressed={clip.aspect === a}
+        title={clip.aspect === a ? `Already ${a}` : `Re-shape this clip to ${a}`}
+        onClick={async () => {
+          if (clip.aspect === a) return;
+          try { await updateClip({ data: { id: clip.id, aspect: a } }); await refresh(); toast.success(`Now ${a} — export again to render it`); } catch (e) { err(e); }
+        }}>{a}</Button>)}
       <Button size="sm" variant="outline" onClick={() => { const f = timelineFile("fcpxml", { title: clip.title ?? "clip", sourceName: source?.name ?? "source", sourceUrl: source?.playUrl ?? "", fps: Number(source?.fps) || 30, start_ms: clip.start_ms ?? 0, end_ms: clip.end_ms ?? 0, sourceMs: source?.duration_ms ?? 0 }); save(f.name, f.body, "application/xml"); }}><FileCode />Export timeline XML</Button>
       <Button size="sm" variant="outline" onClick={async () => { await duplicateClip({ data: { id: clip.id } }); await refresh(); toast.success("Duplicated"); }}><Copy />Duplicate</Button>
     </div>
+    {posting && <Distribute clip={clip} onClose={() => { setPosting(false); void refresh(); }} />}
   </Modal>;
 }
 

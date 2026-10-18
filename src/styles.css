@@ -663,6 +663,16 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 #review-search { flex: 1 1 240px; min-width: 0; }
 .review-card { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); }
 .review-card.focused { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* The picture is the way in: click it and the clip opens. */
+.review-open { position: relative; display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; border-radius: var(--r-md); }
+.review-open:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.review-open-badge {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  border-radius: var(--r-md); color: #fff;
+  background: color-mix(in oklab, #000 42%, transparent);
+  opacity: 0; transition: opacity .15s ease;
+}
+.review-open:hover .review-open-badge, .review-open:focus-visible .review-open-badge { opacity: 1; }
 .review-card video, .review-card img { width: 100%; aspect-ratio: 9/16; max-height: 320px; object-fit: cover; border-radius: var(--r-md); background: var(--surface-high); }
 .review-select { display: flex; gap: 6px; align-items: center; font-size: 13px; }
 .review-title { font-size: 15px; font-weight: 600; background: transparent; border: 0; border-bottom: var(--hairline) solid transparent; padding: 2px 0; min-height: 0; border-radius: 0; }

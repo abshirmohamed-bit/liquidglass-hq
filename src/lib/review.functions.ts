@@ -38,10 +38,19 @@ export const reviewData = createServerFn({ method: "GET" }).middleware([requireS
 });
 
 export const updateClip = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ id: z.string().uuid(), title: z.string().trim().min(1).max(200).optional(), favorite: z.boolean().optional(), disliked: z.boolean().optional(), assignee: z.string().uuid().nullable().optional() }))
+  .inputValidator(z.object({ id: z.string().uuid(), title: z.string().trim().min(1).max(200).optional(), favorite: z.boolean().optional(), disliked: z.boolean().optional(), assignee: z.string().uuid().nullable().optional(), aspect: z.enum(["9:16", "1:1", "4:5", "16:9"]).optional() }))
   .handler(async ({ context, data }) => {
     const { id, ...rest } = data;
-    const fields = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as { title?: string; favorite?: boolean; disliked?: boolean; assignee?: string | null };
+    const fields = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as { title?: string; favorite?: boolean; disliked?: boolean; assignee?: string | null; aspect?: string };
+    // A new shape means the rendered file no longer matches the clip, so it
+    // has to be rendered again before it is worth posting.
+    if (fields.aspect) {
+      const cur = (await context.supabase.from("clips").select("status,edits").eq("id", id).maybeSingle()).data;
+      if (cur?.status === "READY") {
+        const e = (cur.edits && typeof cur.edits === "object" ? cur.edits : {}) as Record<string, unknown>;
+        await context.supabase.from("clips").update({ edits: { ...e, finish_dirty: true } as never }).eq("id", id);
+      }
+    }
     must(await context.supabase.from("clips").update(fields).eq("id", id).select("id").single());
     // Dislikes are the finder feedback: the clip engine reads disliked clips when it picks the next moments.
     return true;
