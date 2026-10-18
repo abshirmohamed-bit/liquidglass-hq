@@ -92,6 +92,30 @@ export function Videos({ video }: { video?: string | undefined }) {
       .sort((a, b) => String(b.src.created_at ?? "").localeCompare(String(a.src.created_at ?? "")));
   }, [d]);
 
+  const [sel, setSel] = useState<string[]>([]);
+  const chosen = videos.filter((v) => sel.includes(v.src.id));
+  const allChosen = videos.length > 0 && chosen.length === videos.length;
+
+  /** Clearing out a library full of retries is the job this exists for. */
+  async function removeChosen() {
+    const clips = chosen.reduce((n, v) => n + v.clips.length, 0);
+    const tail = clips ? ` and ${clips} clip${clips === 1 ? "" : "s"}` : "";
+    if (
+      !window.confirm(
+        `Delete ${chosen.length} video${chosen.length === 1 ? "" : "s"}${tail}? This cannot be undone.`,
+      )
+    )
+      return;
+    try {
+      await deleteVideos({ data: { ids: chosen.map((v) => v.src.id) } });
+      toast.success(`${chosen.length} deleted`);
+      setSel([]);
+      await refresh();
+    } catch (e) {
+      err(e);
+    }
+  }
+
   const open = video ? videos.find((v) => v.src.id === video) : undefined;
   if (video && open) return <OneVideo v={open} refresh={refresh} />;
 
@@ -105,6 +129,33 @@ export function Videos({ video }: { video?: string | undefined }) {
       </header>
 
       <NewJob />
+
+      {videos.length > 0 && (
+        <div className="video-bar">
+          <label className="lib-check">
+            <input
+              type="checkbox"
+              checked={allChosen}
+              ref={(el) => {
+                if (el) el.indeterminate = chosen.length > 0 && !allChosen;
+              }}
+              onChange={(e) => setSel(e.target.checked ? videos.map((v) => v.src.id) : [])}
+            />
+            {chosen.length ? `${chosen.length} selected` : `Select all ${videos.length}`}
+          </label>
+          {chosen.length > 0 && (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setSel([])}>
+                Clear
+              </Button>
+              <Button size="sm" variant="outline" onClick={removeChosen}>
+                <Trash2 size={14} />
+                Delete {chosen.length} video{chosen.length === 1 ? "" : "s"}
+              </Button>
+            </>
+          )}
+        </div>
+      )}
 
       {q.isLoading ? (
         <LoadingGrid count={6} className="lib-grid" height={210} />
@@ -125,9 +176,31 @@ export function Videos({ video }: { video?: string | undefined }) {
                 key={v.src.id}
                 to="/videos"
                 search={{ v: v.src.id }}
-                className="glass-panel video-card"
+                className={
+                  sel.includes(v.src.id)
+                    ? "glass-panel video-card is-picked"
+                    : "glass-panel video-card"
+                }
                 aria-label={v.src.name}
               >
+                <label
+                  className="video-pick"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${v.src.name}`}
+                    checked={sel.includes(v.src.id)}
+                    onChange={(e) =>
+                      setSel((x) =>
+                        e.target.checked ? [...x, v.src.id] : x.filter((y) => y !== v.src.id),
+                      )
+                    }
+                  />
+                </label>
                 <div className="video-thumb">
                   {v.src.thumbnail_url ? (
                     <img src={v.src.thumbnail_url} alt="" />
