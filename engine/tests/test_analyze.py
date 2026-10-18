@@ -19,6 +19,29 @@ def test_a_link_is_read_without_downloading_it():
     assert info.thumbnail_url, "the dashboard shows a thumbnail before any work starts"
 
 
+def test_metadata_lookup_does_not_require_a_downloadable_format(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from app.pipeline.analyze import _ytdlp
+    seen = {}
+
+    class Reader:
+        def __init__(self, opts):
+            seen.update(opts)
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def extract_info(self, url, download):
+            assert download is False
+            return {"title": "Saved video", "duration": 830, "formats": []}
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", SimpleNamespace(YoutubeDL=Reader))
+    info = _ytdlp("https://youtu.be/fRVNp0AYoPA")
+    assert seen["ignore_no_formats_error"] is True
+    assert info.duration_ms == 830000
+
+
 @pytest.mark.parametrize("height,label", [(2160, "4K"), (1440, "1440p"), (1080, "1080p"),
                                           (720, "720p"), (480, "480p"), (0, "unknown")])
 def test_the_badge_over_the_thumbnail(height, label):

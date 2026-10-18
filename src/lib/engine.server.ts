@@ -1,6 +1,6 @@
 /**
  * engineClient — the ONE place every crayZmundo Engine call goes through (Build Pack Prompt 1).
- * Adds the Bearer key, retries once on 429 after Retry-After, maps failures to { code, message }.
+ * Adds the Bearer key, retries on 429 and on a sleeping Engine, maps failures to { code, message }.
  * Server-only: the key never reaches the browser.
  */
 export type EngineError = { code: string; message: string };
@@ -29,7 +29,7 @@ export async function engineClient<T = unknown>(method: Method, path: string, bo
     body: body !== undefined ? JSON.stringify(body) : null,
   });
   try {
-    let res = await send();
+    let res = await sendWaking(send);
     if (res.status === 429) {
       const wait = Math.min(Number(res.headers.get("Retry-After")) || 1, 30);
       await new Promise((r) => setTimeout(r, wait * 1000));
@@ -47,3 +47,26 @@ export async function engineClient<T = unknown>(method: Method, path: string, bo
     return { ok: false, error: { code: "ENGINE_UNREACHABLE", message: e instanceof Error ? e.message : "Engine unreachable" } };
   }
 }
+
+/**
+ * The Engine sleeps when idle and its host starts it again on the next
+ * request — which can mean one refused connection or a 502 while it boots.
+ * That is a cold start, not a failure, so wait and ask again rather than
+ * telling the person their Engine is down.
+ */
+const WAKE_WAITS_MS = [2000, 4000, 8000];
+
+async function sendWaking(send: () => Promise<Response>): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await send();
+      if (!COLD_START.has(res.status) || attempt >= WAKE_WAITS_MS.length) return res;
+    } catch (e) {
+      if (attempt >= WAKE_WAITS_MS.length) throw e;
+    }
+    await new Promise((r) => setTimeout(r, WAKE_WAITS_MS[attempt]));
+  }
+}
+
+// 502/503/504 from the host's proxy while it brings the machine up.
+const COLD_START = new Set([502, 503, 504]);

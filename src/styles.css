@@ -317,6 +317,8 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .loading-row { display: flex; align-items: center; gap: var(--s2); color: var(--muted-foreground); font-size: 13px; padding: var(--s5) 0; }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .55 } }
 .skeleton { background: var(--surface-high); border-radius: var(--r-sm); animation: pulse 1.6s ease-in-out infinite; }
+.account-pending { display: inline-block; width: 104px; height: 28px; border-radius: var(--r-pill); }
+.page-pending-head { display: grid; gap: var(--s2); min-width: 0; }
 
 /* ---------- kit: pills, chips, badges ---------- */
 .status-pill {
@@ -355,7 +357,10 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .field-hint { font-size: 12px; color: var(--muted-foreground); }
 .filter-bar { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; margin-bottom: var(--s4); }
 .filter-bar > * { flex: 0 1 auto; width: auto; }
-.filter-bar input, .filter-bar select { min-width: 150px; }
+.filter-bar input:not([type=checkbox]):not([type=radio]),
+.filter-bar select { min-width: 150px; }
+.filter-bar input[type=checkbox], .filter-bar input[type=radio],
+.review-filters input[type=checkbox], .review-filters input[type=radio] { min-width: 0; width: auto; flex: none; }
 .filter-bar input[type=search], .filter-bar .grow { flex: 1 1 220px; }
 .seg { display: inline-flex; gap: 2px; background: var(--surface-high); border: var(--hairline) solid var(--border); border-radius: var(--r-sm); padding: 2px; }
 .seg.wrap { flex-wrap: wrap; }
@@ -613,11 +618,14 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .lib-filters { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; margin-bottom: var(--s4); }
 .lib-filters input, .lib-filters select { min-width: 160px; width: auto; }
 .lib-filters .seg { flex: none; }
-.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--s3); }
-.lib-card { padding: var(--s3); display: grid; gap: var(--s2); align-content: start; }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)); gap: var(--s3); }
+.lib-card { padding: var(--s3); display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; overflow: hidden; gap: var(--s2); align-content: start; }
 .lib-card img, .lib-card video, .lib-thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; border-radius: var(--r-md); background: var(--surface-high); display: grid; place-items: center; color: var(--muted-foreground); }
 .lib-card h3 { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lib-card-head { display: flex; justify-content: space-between; gap: var(--s2); align-items: center; }
+.lib-card-head { display: flex; justify-content: space-between; gap: var(--s2); align-items: center; min-width: 0; }
+.lib-card-head h3 { min-width: 0; flex: 1; }
+.lib-card-head > span { flex-shrink: 0; }
+.lib-card p, .clip-job-body p { overflow-wrap: anywhere; min-width: 0; }
 .lib-note { display: none; color: var(--muted-foreground); font-size: 12px; line-height: 1.5; }
 .lib-card:hover .lib-note { display: block; }
 .lib-actions { display: flex; flex-wrap: wrap; gap: var(--s1); }
@@ -649,10 +657,22 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 /* ---------- review ---------- */
 .review-filters { display: flex; flex-wrap: wrap; gap: var(--s2); align-items: center; padding: var(--s3); margin-bottom: var(--s3); }
 .review-filters select { width: auto; min-width: 140px; }
+/* The full error belongs in the tooltip; the card shows a line a person can read. */
+.clip-error { color: var(--destructive); cursor: help; }
 .review-flags { display: flex; flex-wrap: wrap; gap: var(--s1); }
 #review-search { flex: 1 1 240px; min-width: 0; }
 .review-card { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); }
 .review-card.focused { outline: 2px solid var(--primary); outline-offset: 1px; }
+/* The picture is the way in: click it and the clip opens. */
+.review-open { position: relative; display: block; width: 100%; padding: 0; border: 0; background: none; cursor: pointer; border-radius: var(--r-md); }
+.review-open:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.review-open-badge {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  border-radius: var(--r-md); color: #fff;
+  background: color-mix(in oklab, #000 42%, transparent);
+  opacity: 0; transition: opacity .15s ease;
+}
+.review-open:hover .review-open-badge, .review-open:focus-visible .review-open-badge { opacity: 1; }
 .review-card video, .review-card img { width: 100%; aspect-ratio: 9/16; max-height: 320px; object-fit: cover; border-radius: var(--r-md); background: var(--surface-high); }
 .review-select { display: flex; gap: 6px; align-items: center; font-size: 13px; }
 .review-title { font-size: 15px; font-weight: 600; background: transparent; border: 0; border-bottom: var(--hairline) solid transparent; padding: 2px 0; min-height: 0; border-radius: 0; }
@@ -700,7 +720,7 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .ed-bottom-left { top: 95%; left: 18%; } .ed-bottom-right { top: 95%; left: 82%; }
 
 /* ---------- posts ---------- */
-.posts-board { display: grid; grid-template-columns: repeat(5, minmax(210px, 1fr)); gap: var(--s3); overflow-x: auto; padding-bottom: var(--s2); }
+.posts-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: var(--s3); padding-bottom: var(--s2); }
 .posts-col { display: flex; flex-direction: column; gap: var(--s2); min-height: 180px; padding: var(--s3); }
 .posts-col > header { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: 2px 2px var(--s1); }
 .posts-col h3 { font-size: 13px; font-weight: 600; letter-spacing: 0; color: var(--muted-foreground); }
@@ -808,15 +828,110 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .preset.is-on { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 22%, transparent); }
 .preset-sample { font-size: .8rem; font-weight: 800; letter-spacing: -.01em; }
 .sample-none { opacity: .45; font-weight: 500; text-decoration: line-through; }
-.sample-karaoke { color: #facc15; }
-.sample-highlight_green { color: #4ade80; }
-.sample-pop_pink { color: #f472b6; }
+.sample-karaoke_highlight { color: #facc15; }
+.sample-bold_white { color: #fff; }
+.sample-highlighter { color: #111; background: #4ade80; padding: 0 4px; border-radius: 3px; }
+.sample-yellow_pop { color: #facc15; -webkit-text-stroke: .6px #000; }
+.sample-word_pop { color: #f472b6; }
+.sample-uppercase_impact { text-transform: uppercase; letter-spacing: .02em; }
 .sample-minimal { font-weight: 500; opacity: .8; }
 .preset-name { font-size: .75rem; color: var(--muted-foreground); }
 
 .switch { display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer; }
 .switch.rights { font-size: .9rem; color: var(--muted-foreground); }
 .job-actions { display: flex; justify-content: flex-end; gap: var(--s3); }
+
+/* ---------- Videos: one screen for a video and its clips ---------- */
+.video-grid { margin-top: var(--s4); }
+.video-card {
+  display: grid; gap: var(--s2); padding: var(--s3);
+  text-decoration: none; color: inherit;
+  transition: transform .18s ease, border-color .18s ease;
+}
+.video-card:hover { transform: translateY(-2px); border-color: color-mix(in oklab, var(--primary) 32%, var(--border)); }
+.video-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.video-thumb {
+  position: relative; aspect-ratio: 16 / 9; border-radius: var(--r-md); overflow: hidden;
+  background: var(--surface-high); display: grid; place-items: center; color: var(--muted-foreground);
+}
+.video-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video-thumb.is-wide { width: 200px; flex: none; }
+.video-name {
+  font-size: .95rem; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.video-card { position: relative; }
+.video-bar {
+  display: flex; align-items: center; gap: var(--s3); flex-wrap: wrap;
+  margin-top: var(--s4); padding: var(--s2) var(--s3);
+  border-radius: var(--r-md); border: var(--hairline) solid var(--border);
+  background: var(--surface-high);
+}
+.video-bar .lib-check { font-size: 13px; }
+.video-pick {
+  position: absolute; top: 10px; left: 10px; z-index: 1;
+  display: grid; place-items: center; width: 26px; height: 26px;
+  border-radius: 7px; background: color-mix(in oklab, #000 55%, transparent);
+  border: var(--hairline) solid color-mix(in oklab, #fff 22%, transparent);
+  opacity: 0; transition: opacity .15s ease;
+}
+.video-pick input { width: 15px; height: 15px; min-width: 0; margin: 0; cursor: pointer; }
+.video-card:hover .video-pick, .video-pick:focus-within, .video-card.is-picked .video-pick { opacity: 1; }
+.video-card.is-picked { border-color: var(--primary); }
+.video-remove {
+  position: absolute; top: 10px; right: 10px;
+  width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: color-mix(in oklab, #000 55%, transparent); color: #fff;
+  border: var(--hairline) solid color-mix(in oklab, #fff 22%, transparent);
+  opacity: 0; transition: opacity .15s ease, background .15s ease;
+}
+.video-card:hover .video-remove, .video-remove:focus-visible { opacity: 1; }
+.video-remove:hover { background: var(--destructive); }
+.video-back { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; margin-bottom: var(--s2); }
+.video-head { align-items: flex-start; gap: var(--s4); }
+
+@media (max-width: 720px) {
+  .video-head { flex-direction: column; }
+  .video-thumb.is-wide { width: 100%; }
+}
+
+/* ---------- the card that replaces the options while a job runs ---------- */
+.job-run { margin-top: var(--s4); display: grid; gap: var(--s4); }
+.job-run-state { margin: var(--s2) 0 0; font-size: .9rem; font-weight: 500; }
+.job-run-state.is-failed { color: var(--destructive); }
+.job-run-error {
+  margin: 0; font-size: .875rem; color: var(--foreground);
+  padding: var(--s3); border-radius: var(--r-md);
+  background: color-mix(in oklab, var(--destructive) 10%, transparent);
+  border: var(--hairline) solid color-mix(in oklab, var(--destructive) 28%, transparent);
+}
+.job-bar { height: 6px; border-radius: var(--r-pill); background: var(--surface-high); overflow: hidden; }
+.job-bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--primary); transition: width .6s ease; }
+/* Before the Engine reports a number there is nothing honest to fill, so the
+   bar paces instead of pretending to a percentage. */
+.job-bar i.is-waiting { width: 34%; animation: job-pace 1.6s ease-in-out infinite; }
+@keyframes job-pace { 0% { margin-left: -34% } 100% { margin-left: 100% } }
+
+.job-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s2); }
+.job-steps li {
+  display: flex; align-items: center; gap: var(--s2);
+  font-size: .875rem; color: var(--muted-foreground);
+}
+.job-steps li.is-now { color: var(--foreground); font-weight: 500; }
+.job-steps li.is-done { color: var(--muted-foreground); }
+.job-step-dot {
+  flex: none; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: var(--hairline) solid var(--border); background: var(--surface-high);
+  color: var(--muted-foreground);
+}
+.job-steps li.is-now .job-step-dot { border-color: color-mix(in oklab, var(--primary) 55%, transparent); color: var(--primary); }
+.job-steps li.is-done .job-step-dot { background: color-mix(in oklab, var(--success) 18%, transparent); border-color: color-mix(in oklab, var(--success) 40%, transparent); color: var(--success); }
+
+@media (prefers-reduced-motion: reduce) {
+  .job-bar i.is-waiting { animation: none; width: 100%; opacity: .45; }
+}
 
 .spin { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

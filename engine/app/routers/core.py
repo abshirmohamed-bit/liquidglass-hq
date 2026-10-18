@@ -23,7 +23,8 @@ def health() -> dict:
         status="ok", version="0.1.0",
         ffmpeg=bool(shutil.which("ffmpeg")), whisper_model=cfg.whisper_model,
         storage_backend=cfg.storage_backend,
-        transcribe_provider=cfg.transcribe_provider, finder=cfg.resolve_finder(),
+        # The resolved provider, not the setting: "auto" tells nobody anything.
+        transcribe_provider=cfg.resolve_transcriber(), finder=cfg.resolve_finder(),
     )
 
 

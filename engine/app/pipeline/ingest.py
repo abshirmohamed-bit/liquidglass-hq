@@ -1,6 +1,7 @@
 """Getting a video into the Engine: uploads and link imports."""
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from .. import media, storage, webhooks
 from ..config import settings
 from ..errors import EngineError
 from ..models import Asset, utcnow
+
+log = logging.getLogger("engine.ingest")
 
 VIDEO_TYPES = {"video/mp4", "video/quicktime", "video/webm", "video/x-matroska", "video/x-msvideo",
                "video/x-m4v", "video/mpeg", "video/x-ms-wmv", "video/x-flv", "video/3gpp"}
@@ -66,7 +69,10 @@ def ingest_video(session: Session, asset: Asset, src: Path) -> Asset:
     storage.put_file(storage.open_write(thumb_key), thumb_key, "image/jpeg")
 
     mezz_key = f"mezzanine/{asset.id}.mp4"
-    if info.needs_mezzanine:
+    if info.vcodec in media.COPYABLE:
+        media.remux_copy(src, storage.open_write(mezz_key))
+        storage.put_file(storage.open_write(mezz_key), mezz_key, "video/mp4")
+    elif info.needs_mezzanine:
         media.make_mezzanine(src, storage.open_write(mezz_key))
         storage.put_file(storage.open_write(mezz_key), mezz_key, "video/mp4")
     else:
@@ -111,12 +117,23 @@ def mark_failed(session: Session, asset: Asset, exc: Exception) -> None:
 
 def _import_url(session: Session, asset: Asset, url: str) -> Asset:
     dest = storage.open_write(f"sources/{asset.id}/download.mp4")
+    # A killed encode can leave a complete download. Validate before reusing;
+    # never treat a partial download as a successful source.
+    downloaded = False
+    if dest.exists():
+        try:
+            media.probe(dest)
+            downloaded = True
+        except Exception:
+            dest.unlink(missing_ok=True)
     if needs_rights(url):
         if not asset.rights_confirmed:
             raise EngineError("RIGHTS_REQUIRED", "Confirm you own this footage or have the rights to clip it.")
-        _ytdlp(url, dest)
+        if not downloaded:
+            _ytdlp(url, dest)
     else:
-        _download(url, dest)
+        if not downloaded:
+            _download(url, dest)
     asset.storage_key = f"sources/{asset.id}/download.mp4"
     asset.source_url = url
     return ingest_video(session, asset, dest)
@@ -144,7 +161,10 @@ def _ytdlp(url: str, dest: Path) -> None:
     exe = shutil.which("yt-dlp")
     if not exe:
         raise EngineError("NOT_CONFIGURED", "yt-dlp is not installed, so page links cannot be resolved.")
+    from . import ytdlp_opts
+
     dest.parent.mkdir(parents=True, exist_ok=True)
+<<<<<<< HEAD
     cmd = [exe, "--no-playlist", "--quiet", "--no-warnings",
            # Widening fallbacks: a restricted format list is common from a server.
            "-f", ("bestvideo[height<=2160]+bestaudio/best[height<=2160]/"
@@ -163,6 +183,34 @@ def _ytdlp(url: str, dest: Path) -> None:
                 "video and upload it from the Library instead.")
         tail = err.splitlines()[-2:]
         raise EngineError("VALIDATION_ERROR", "Could not fetch that link: " + " / ".join(tail))
+=======
+    last = ""
+    for client in ytdlp_opts.PLAYER_CLIENTS:
+        cmd = [exe, "--no-playlist", "--quiet", "--no-warnings",
+               *ytdlp_opts.cli_args(client),
+               "-f", "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best",
+               "--merge-output-format", "mp4", "-o", str(dest), url]
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        if proc.returncode == 0 and dest.exists():
+            return
+        last = (proc.stderr or "").strip()
+        log.warning("yt-dlp could not fetch %s as %s: %s", url, client, last[-300:])
+        if not ytdlp_opts.looks_blocked(last):
+            break
+    raise EngineError("VALIDATION_ERROR", _download_error(last))
+
+
+def _download_error(stderr: str) -> str:
+    """yt-dlp writes for maintainers. The person pasting a link needs one line."""
+    from . import ytdlp_opts
+
+    if ytdlp_opts.looks_blocked(stderr):
+        return ("YouTube would not serve this video to the Engine — it asks a "
+                "cloud server to prove it is not a bot. Download the video and "
+                "upload the file instead, or set a residential proxy on the Engine.")
+    tail = stderr.strip().splitlines()[-2:]
+    return "Could not fetch that link: " + " / ".join(tail)
+>>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
 
 
 def asset_event(asset: Asset) -> dict:

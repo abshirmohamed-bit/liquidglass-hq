@@ -6,6 +6,7 @@ are swapped for deterministic providers so the test needs no weights or keys.
 from __future__ import annotations
 
 import subprocess
+import time
 from pathlib import Path
 
 from app import worker
@@ -95,11 +96,13 @@ def test_export_produces_a_real_vertical_mp4(api, uploaded_asset):
     })
     export_id = api.post(f"/v1/projects/{project_id}/export", json={}).json()["id"]
 
-    for _ in range(30):
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
         worker.tick()
         got = api.get(f"/v1/exports/{export_id}").json()
         if got["status"] in {"completed", "failed"}:
             break
+        time.sleep(0.1)
     assert got["status"] == "completed", got.get("error")
 
     key = f"exports/{export_id}.mp4"
@@ -201,3 +204,78 @@ def test_a_short_video_returns_what_actually_fits_rather_than_overlapping():
     assert 0 < len(got) < 20
     for a, b in zip(got, got[1:]):
         assert a.end_ms <= b.start_ms
+
+
+def test_auto_sparse_speech_falls_back_to_actual_audio_peaks(api, uploaded_asset, monkeypatch):
+    from app.db import session
+    from app.models import Asset, Job, Transcript
+    from app.pipeline import jobs
+    from app.ids import new_id
+
+    envelope = [0.1] * 40
+    envelope[6], envelope[18] = 1.0, 0.9
+    monkeypatch.setattr(jobs.media, "loudness_envelope", lambda path: envelope)
+    with session() as s:
+        asset = s.get(Asset, uploaded_asset)
+        assert asset is not None
+        transcript = s.exec(__import__('sqlmodel').select(Transcript).where(Transcript.asset_id == asset.id)).first()
+        assert transcript is not None
+        transcript.sentences = [{"start_ms": 1000, "end_ms": 2000, "text": "Hello."}]
+        s.add(transcript)
+        s.commit()
+        got = jobs._find(s, Job(id=new_id("job"), asset_id=asset.id), asset,
+                        {"mode": "auto", "clip_length": 6, "clip_count": 2})
+        assert got and len(got) == 2
+        assert all(m.reason == "Audio peak." for m in got)
+        assert all(0 <= m.start_ms < m.end_ms <= 20000 for m in got)
+
+
+def test_finalizing_without_projects_is_not_success(api, uploaded_asset):
+    from app.db import session
+    from app.models import Job
+    from app.pipeline import jobs
+    from app.ids import new_id
+
+    with session() as s:
+        job = Job(id=new_id("job"), asset_id=uploaded_asset, status="processing", stage="finalizing")
+        s.add(job)
+        s.commit()
+        with pytest.raises(RuntimeError, match="No usable moments"):
+            jobs._step(s, job)
+        assert job.status != "completed"
+
+
+def test_the_finished_job_hands_over_everything_the_editor_needs(api, uploaded_asset):
+    """The app should never ask a person to transcribe a clip twice.
+
+    Everything here was computed while the source was being processed. If it
+    does not travel with the finished job, the editor opens empty and offers
+    to do the work again.
+    """
+    from sqlmodel import select
+
+    from app.db import session
+    from app.models import WebhookEvent
+
+    with session() as s:
+        events = s.exec(select(WebhookEvent).where(WebhookEvent.event == "autoclip.completed")).all()
+        assert events, "a completed job should announce itself"
+        clips = events[-1].data["clips"]
+
+    assert clips, "the event should carry the clips"
+    finish = clips[0]["finish"]
+    assert finish["captions"], "the words the Engine already transcribed"
+    assert {"text", "start_ms", "end_ms"} <= set(finish["captions"][0])
+    assert finish["caption_style_id"], "a style to draw them in"
+    assert finish["title_text"], "the hook the finder wrote"
+    assert finish["title_style"]
+    assert finish["aspect"] and finish["layout"]
+    assert "framing" in finish and "watermark" in finish
+
+
+def test_polling_a_running_job_stays_light(api, uploaded_asset):
+    """The app polls this shape every second; the words do not belong in it."""
+    jobs = api.get("/v1/autoclip").json()["autoclips"]
+    job = next(j for j in jobs if j["clips"])
+    assert "finish" not in job["clips"][0]
+    assert job["clips"][0]["title"], "the summary still names the clip"

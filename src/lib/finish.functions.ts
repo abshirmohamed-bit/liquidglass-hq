@@ -2,13 +2,43 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { sign, editsOf, must } from "./review-helpers";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/integrations/supabase/types";
 
+/**
+ * Clips made before the Engine started handing its finish data over have no
+ * captions on the row, and clips whose webhook went astray have none either.
+ * Both cases are repairable without transcribing anything: the Engine still
+ * holds the words it made while the source was processing. Fetch them once,
+ * write them to the row, and the clip is never short again.
+ */
+async function backfillFinish(db: SupabaseClient<Database>, clip: Record<string, unknown>) {
+  const pid = clip["engine_project_id"];
+  if (typeof pid !== "string" || !pid) return clip;
+  if (Array.isArray(clip["captions"]) && clip["captions"].length) return clip;
+  const { engineClient } = await import("./engine.server");
+  const r = await engineClient<Record<string, unknown>>("GET", `/v1/projects/${pid}`);
+  if (!r.ok) return clip;
+  const { finishColumns } = await import("./engine-events.server");
+  const patch = finishColumns(r.data);
+  if (!patch["captions"]) return clip;
+  const saved = await db
+    .from("clips")
+    .update(patch as never)
+    .eq("id", clip["id"] as string)
+    .select("*")
+    .maybeSingle();
+  return (saved.data as Record<string, unknown> | null) ?? { ...clip, ...patch };
+}
 /** Simple Editor data: the clip, its playable source and sibling clips for "apply to several". */
 export const editorData = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ id: z.string().uuid() }))
   .handler(async ({ context, data }) => {
     const db = context.supabase;
-    const c = must(await db.from("clips").select("*").eq("id", data.id).single());
+    const row = must(await db.from("clips").select("*").eq("id", data.id).single());
+    const c = (await backfillFinish(db, row as unknown as Record<string, unknown>).catch(
+      () => row,
+    )) as typeof row;
     const src = c.source_asset_id ? (await db.from("source_assets").select("id,name,public_url,duration_ms,width,height").eq("id", c.source_asset_id).maybeSingle()).data : null;
     const others = must(await db.from("clips").select("id,title,status,start_ms,end_ms").neq("id", c.id).in("status", ["FOUND", "APPROVED", "READY"]).order("created_at", { ascending: false }).limit(200));
     const brand = (await db.from("brand_kits").select("handle,caption_style_id,caption_style").eq("user_id", context.userId).maybeSingle()).data;

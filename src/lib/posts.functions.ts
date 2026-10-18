@@ -83,21 +83,33 @@ export const reschedulePost = createServerFn({ method: "POST" }).middleware([req
   .handler(async ({ context, data }) => { must(await context.supabase.from("posts").update({ scheduled_at: data.scheduledAt }).eq("id", data.id).eq("status", "QUEUED").select("id").single()); return true; });
 
 /** AI copy per platform from the clip title and transcript text, within each platform's limit. */
+/**
+ * Write the copy for one clip on the given platforms and store it on the clip.
+ * Autopilot calls this directly; the server function below is the same thing
+ * with the signed-in user's client.
+ */
+export async function writeCopyFor(
+  db: SupabaseClient<Database>,
+  clipId: string,
+  platforms: Platform[],
+  tone?: string,
+): Promise<Record<string, string>> {
+  const c = must(await db.from("clips").select("title,captions,watermark_text,copy").eq("id", clipId).single());
+  const words = Array.isArray(c.captions) ? (c.captions as { text: string }[]).map((x) => x.text).join(" ").slice(0, 4000) : "";
+  const { gatewayText } = await import("./training.server");
+  const rules = platforms.map((p) => `${p}: max ${COPY_LIMITS[p]} chars${p === "YOUTUBE" ? " (title ending with #Shorts)" : p === "X" ? ", 1-2 hashtags, no links" : ", hook first, then 2 short lines, hashtags on the last line"}`).join("\n");
+  const raw = await gatewayText(
+    "You write short-form social captions. Reply with JSON only: an object whose keys are the platform names given and whose values are the caption strings.",
+    `Clip title: ${c.title ?? ""}\nHandle: ${c.watermark_text ?? ""}\nTone: ${tone || "punchy, natural"}\nWhat is said: ${words || "(no transcript)"}\nPlatforms and rules:\n${rules}`,
+  );
+  let out: Record<string, string> = {};
+  try { out = JSON.parse(raw.replace(/^```(json)?|```$/g, "").trim()) as Record<string, string>; } catch { throw new Error("The AI reply couldn't be read. Try again."); }
+  const copy: Record<string, string> = {};
+  for (const p of platforms) if (typeof out[p] === "string") copy[p] = out[p]!.slice(0, COPY_LIMITS[p]);
+  await db.from("clips").update({ copy: { ...((c.copy as object) ?? {}), ...copy } as never }).eq("id", clipId);
+  return copy;
+}
+
 export const writeCopy = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ clipId: z.string().uuid(), platforms: z.array(z.enum(PLATFORMS)).min(1).max(6), tone: z.string().max(200).optional() }))
-  .handler(async ({ context, data }) => {
-    const c = must(await context.supabase.from("clips").select("title,captions,watermark_text,copy").eq("id", data.clipId).single());
-    const words = Array.isArray(c.captions) ? (c.captions as { text: string }[]).map((x) => x.text).join(" ").slice(0, 4000) : "";
-    const { gatewayText } = await import("./training.server");
-    const rules = data.platforms.map((p) => `${p}: max ${COPY_LIMITS[p]} chars${p === "YOUTUBE" ? " (title ending with #Shorts)" : p === "X" ? ", 1-2 hashtags, no links" : ", hook first, then 2 short lines, hashtags on the last line"}`).join("\n");
-    const raw = await gatewayText(
-      "You write short-form social captions. Reply with JSON only: an object whose keys are the platform names given and whose values are the caption strings.",
-      `Clip title: ${c.title ?? ""}\nHandle: ${c.watermark_text ?? ""}\nTone: ${data.tone || "punchy, natural"}\nWhat is said: ${words || "(no transcript)"}\nPlatforms and rules:\n${rules}`,
-    );
-    let out: Record<string, string> = {};
-    try { out = JSON.parse(raw.replace(/^```(json)?|```$/g, "").trim()) as Record<string, string>; } catch { throw new Error("The AI reply couldn't be read. Try again."); }
-    const copy: Record<string, string> = {};
-    for (const p of data.platforms) if (typeof out[p] === "string") copy[p] = out[p]!.slice(0, COPY_LIMITS[p]);
-    await context.supabase.from("clips").update({ copy: { ...((c.copy as object) ?? {}), ...copy } as never }).eq("id", data.clipId);
-    return copy;
-  });
+  .handler(async ({ context, data }) => writeCopyFor(context.supabase, data.clipId, data.platforms as Platform[], data.tone));

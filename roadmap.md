@@ -1,4 +1,8 @@
 # Agency Admin first pass
+- [x] Current Get clips repair: deployed PCM transcription, sparse-speech fallback, selected-range framing, and duplicate-delivery protection; Fly restarted/healthy. Fresh signed-in TON 618 retry completed in 21 seconds with five unique READY clips in Library/Projects, Finished clips and Review, completed job on Clips. All five exports downloaded and fully decoded; 33 Engine and 16 app checks passed. Screenshots inspected. Sandbox inline playback still reports unsupported source (code 4); do not claim browser playback verified.
+- [x] Captured and visually inspected Clips, Review and Library; fixed overlapping Library cards and signed thumbnails.
+- [x] Resolved private thumbnail markers with signed URLs; no raw storage images on Library, Clips or Review, CSP unchanged.
+- [x] Exact supplied YouTube URL completed: seven real projects in Library/Projects and Review, completed job on Clips; one real 71.7s 1080×1920 H.264/AAC export in Finished clips, downloaded and fully decoded. Fixed PCM/locale transcription failures and Docker Git LFS face-model download. Browser inline playback remains unverified (sandbox Chromium reports unsupported source despite HTTP 200 and clean full-file decode).
 - [x] Restore Engine visibility in Settings and welcome setup; preserved engine/ and clip-engine.server.ts; signed-in card/guide verified, 9 tests passed (live processor test skipped without deployment configuration).
 - [x] Confirmed prompt-only scope: no unrelated features; test each original prompt before the extension document.
 - [x] Match the supplied Base44 screenshot’s dashboard appearance; presentation-only shell, both themes and setup navigation verified. Live dashboard totals and objectives remain part of Prompt 9.
@@ -27,4 +31,4 @@
 - [x] Clip editor: transcribe captions, fix words, 20 styles, drag position, title, handle, aspect; export burns them in (tested end-to-end)
 - [ ] Review page full export/share test (Prompt 4)
 - [ ] Posts: manual scheduling built, not yet tested; automatic posting blocked on each platform's developer approval
-- [ ] Paste-a-YouTube-link clipping: blocked, no reliable rights-compliant way to fetch YouTube videos
+- [x] Rights-confirmed supplied YouTube URL imported and produced seven real Engine clip projects, with one export verified.

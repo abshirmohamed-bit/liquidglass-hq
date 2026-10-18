@@ -6,6 +6,18 @@ import { EXPORT_SIZES, EXPORT_STALE_MS, STORAGE_PREFIX, makeShareToken, mergeIss
 
 export const reviewData = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
   const db = context.supabase;
+  const active = must(await db.from("clips").select("id,engine_export_id").eq("status", "EXPORTING"));
+  const { engineClient } = await import("./engine.server");
+  const { applyEngineEvent } = await import("./engine-events.server");
+  for (const clip of active.slice(0, 3)) {
+    if (!clip.engine_export_id || clip.engine_export_id.startsWith("exp_") && clip.engine_export_id.includes("-")) continue;
+    const result = await engineClient<{ status: string; asset?: Record<string, unknown>; error?: string }>("GET", `/v1/exports/${encodeURIComponent(clip.engine_export_id)}`);
+    if (!result.ok) continue;
+    if (result.data.status === "completed" || result.data.status === "failed") await applyEngineEvent(db, {
+      id: `poll_${clip.engine_export_id}_${result.data.status}`, type: `export.${result.data.status}`,
+      data: { export_id: clip.engine_export_id, asset: result.data.asset, error: result.data.error },
+    });
+  }
   // Fallback: an export left EXPORTING past the stale window (browser closed mid-render) is marked failed.
   const stale = must(await db.from("clips").select("id,edits").eq("status", "EXPORTING"));
   for (const c of stale) {
@@ -15,7 +27,7 @@ export const reviewData = createServerFn({ method: "GET" }).middleware([requireS
   const [clips, jobs, sources, members] = await Promise.all([
     db.from("clips").select("*").order("created_at", { ascending: false }),
     db.from("clip_jobs").select("id,status,created_at,aspect,source_asset_id").order("created_at", { ascending: false }),
-    db.from("source_assets").select("id,name,duration_ms,fps,width,height,transcript,public_url,thumbnail_url"),
+    db.from("source_assets").select("id,name,status,error,kind,size_bytes,created_at,duration_ms,fps,width,height,transcript,public_url,thumbnail_url"),
     db.from("team_logins").select("user_id,name"),
   ]);
   const me = (await db.from("profiles").select("display_name").eq("id", context.userId).maybeSingle()).data;
@@ -26,10 +38,19 @@ export const reviewData = createServerFn({ method: "GET" }).middleware([requireS
 });
 
 export const updateClip = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ id: z.string().uuid(), title: z.string().trim().min(1).max(200).optional(), favorite: z.boolean().optional(), disliked: z.boolean().optional(), assignee: z.string().uuid().nullable().optional() }))
+  .inputValidator(z.object({ id: z.string().uuid(), title: z.string().trim().min(1).max(200).optional(), favorite: z.boolean().optional(), disliked: z.boolean().optional(), assignee: z.string().uuid().nullable().optional(), aspect: z.enum(["9:16", "1:1", "4:5", "16:9"]).optional() }))
   .handler(async ({ context, data }) => {
     const { id, ...rest } = data;
-    const fields = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as { title?: string; favorite?: boolean; disliked?: boolean; assignee?: string | null };
+    const fields = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as { title?: string; favorite?: boolean; disliked?: boolean; assignee?: string | null; aspect?: string };
+    // A new shape means the rendered file no longer matches the clip, so it
+    // has to be rendered again before it is worth posting.
+    if (fields.aspect) {
+      const cur = (await context.supabase.from("clips").select("status,edits").eq("id", id).maybeSingle()).data;
+      if (cur?.status === "READY") {
+        const e = (cur.edits && typeof cur.edits === "object" ? cur.edits : {}) as Record<string, unknown>;
+        await context.supabase.from("clips").update({ edits: { ...e, finish_dirty: true } as never }).eq("id", id);
+      }
+    }
     must(await context.supabase.from("clips").update(fields).eq("id", id).select("id").single());
     // Dislikes are the finder feedback: the clip engine reads disliked clips when it picks the next moments.
     return true;
@@ -83,14 +104,27 @@ export const mergeClips = createServerFn({ method: "POST" }).middleware([require
     return ins.id;
   });
 
-/** engineExport: only APPROVED clips (or READY ones being re-exported). Renders run in the browser. */
+/**
+ * Clips that live on the Engine render there, and the tab is free to close.
+ * Older clips, with no Engine project behind them, still render in the
+ * browser — there is nothing on the Engine for those to render from.
+ */
 export const startExport = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ ids: z.array(z.string().uuid()).min(1).max(100), resolution: z.enum(["HD", "UHD"]) }))
   .handler(async ({ context, data }) => {
     const db = context.supabase;
-    const rows = must(await db.from("clips").select("id,status,start_ms,end_ms,aspect,edits,title,source_asset_id,source_assets(public_url,name)").in("id", data.ids).in("status", ["APPROVED", "READY"]));
+    const rows = must(await db.from("clips").select("id,status,start_ms,end_ms,aspect,edits,title,engine_project_id,source_asset_id,source_assets(public_url,name)").in("id", data.ids).in("status", ["APPROVED", "READY"]));
+    const onEngine = rows.filter((c) => !!c.engine_project_id).map((c) => c.id);
+    let engineQueued = 0;
+    let engineFailed: { id: string; error: string }[] = [];
+    if (onEngine.length) {
+      const { exportClipsOnEngine } = await import("./export.server");
+      const r = await exportClipsOnEngine(db, onEngine, data.resolution);
+      engineQueued = r.started.length;
+      engineFailed = r.failed;
+    }
     const out = [];
-    for (const c of rows) {
+    for (const c of rows.filter((x) => !x.engine_project_id)) {
       const src = c.source_assets as { public_url: string | null; name: string } | null;
       if (!src?.public_url) { await db.from("clips").update({ status: "FAILED", error: "The source video file isn't stored in the app, so it can't be rendered." }).eq("id", c.id); continue; }
       const exportId = `exp_${crypto.randomUUID()}`;
@@ -98,7 +132,7 @@ export const startExport = createServerFn({ method: "POST" }).middleware([requir
       await db.from("clips").update({ status: "EXPORTING", engine_export_id: exportId, resolution: data.resolution, error: null, edits: { ...e, finish_dirty: undefined, export_started_at: new Date().toISOString() } as never }).eq("id", c.id);
       out.push({ clipId: c.id, exportId, title: c.title ?? "clip", aspect: c.aspect, sourceUrl: await sign(db, src.public_url), segments: e.segments ?? [{ start_ms: c.start_ms ?? 0, end_ms: c.end_ms ?? 0 }], size: EXPORT_SIZES[data.resolution] });
     }
-    return { workspace: (await db.rpc("workspace_of", { _uid: context.userId })).data as string, jobs: out };
+    return { workspace: (await db.rpc("workspace_of", { _uid: context.userId })).data as string, jobs: out, engineQueued, engineFailed };
   });
 
 export const finishExport = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth]).inputValidator(z.object({ exportId: z.string().min(5).max(80), path: z.string().max(400).nullable(), thumbPath: z.string().max(400).nullable(), width: z.number().int().nullable(), height: z.number().int().nullable(), size: z.number().int().nullable(), lengthSec: z.number().nullable(), error: z.string().max(500).optional() }))
@@ -108,6 +142,27 @@ export const finishExport = createServerFn({ method: "POST" }).middleware([requi
       ? { id: `evt_${data.exportId}_failed`, type: "export.failed", data: { export_id: data.exportId, error: data.error ?? "Render failed" } }
       : { id: `evt_${data.exportId}_done`, type: "export.completed", data: { export_id: data.exportId, asset: { url: STORAGE_PREFIX + data.path, size: data.size, length: data.lengthSec, width: data.width, height: data.height, thumbnail_url: data.thumbPath ? STORAGE_PREFIX + data.thumbPath : null } } };
     return applyEngineEvent(context.supabase, ev);
+  });
+
+/**
+ * Delete clips for good — the Engine's copy and ours. Rejecting a clip hides
+ * it; this removes it, which is what you want when a run was simply wrong.
+ */
+export const deleteClips = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ ids: z.array(z.string().uuid()).min(1).max(200) }))
+  .handler(async ({ context, data }) => {
+    const db = context.supabase;
+    const rows = must(await db.from("clips").select("id,engine_project_id").in("id", data.ids));
+    const { engineClient } = await import("./engine.server");
+    for (const c of rows) {
+      if (!c.engine_project_id) continue;
+      // A clip the Engine has already forgotten is still a clip we can drop.
+      const r = await engineClient("DELETE", `/v1/projects/${encodeURIComponent(c.engine_project_id)}`);
+      if (!r.ok && r.error.code !== "NOT_FOUND" && r.error.code !== "HTTP_404") throw new Error(r.error.message);
+    }
+    const d = await db.from("clips").delete().in("id", data.ids);
+    if (d.error) throw new Error(d.error.message);
+    return { deleted: rows.length };
   });
 
 export const shareJob = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
@@ -161,4 +216,31 @@ export const decideShared = createServerFn({ method: "POST" })
       title: data.decision === "APPROVE" ? "Client approved a clip" : "Client requested changes",
       body: `${c.title ?? "A clip"}${data.note ? ` — ${data.note}` : ""}`, link: c.job_id ? `/review?job=${c.job_id}` : "/review" });
     return true;
+  });
+
+/**
+ * A real trimmed preview from the Engine.
+ *
+ * The Review modal used to play the whole source video with a `#t=start,end`
+ * marker on the URL — the browser seeks, but it is still the full file, and most
+ * browsers ignore the end time, which is why the player showed the full length.
+ * This renders an actual cut-down clip with its captions, crop and title burned
+ * in, so what you watch is what you will export.
+ */
+export const clipPreview = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ clipId: z.string().uuid() }))
+  .handler(async ({ context, data }): Promise<{ url: string }> => {
+    const clip = (await context.supabase.from("clips")
+      .select("id,engine_project_id,video_url").eq("id", data.clipId).maybeSingle()).data;
+    if (!clip) throw new Error("That clip no longer exists.");
+    // Already exported: the finished file beats a preview render.
+    if (clip.video_url) return { url: clip.video_url };
+    if (!clip.engine_project_id) {
+      throw new Error("This clip has not reached the Engine yet, so it cannot be previewed.");
+    }
+    const { engineClient } = await import("./engine.server");
+    const r = await engineClient<{ preview_url: string }>(
+      "POST", `/v1/projects/${encodeURIComponent(clip.engine_project_id)}/preview`);
+    if (!r.ok) throw new Error(r.error.message);
+    return { url: r.data.preview_url };
   });

@@ -19,13 +19,16 @@ export const engineAccount = createServerFn({ method: "GET" }).middleware([requi
 });
 
 export const listLibrary = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
-  const [s, a, c] = await Promise.all([
+  const [s, a, c, p] = await Promise.all([
     context.supabase.from("source_assets").select("*").order("created_at", { ascending: false }),
     context.supabase.from("assets").select("*").order("created_at", { ascending: false }),
     context.supabase.from("clips").select("id,title,thumbnail_url,video_url,duration_ms,status,created_at").eq("status", "READY").order("created_at", { ascending: false }),
+    context.supabase.from("clips").select("id,title,thumbnail_url,duration_ms,status,job_id").neq("status", "REJECTED").order("created_at", { ascending: false }),
   ]);
   if (s.error) throw new Error(s.error.message);
   if (a.error) throw new Error(a.error.message);
+  if (c.error) throw new Error(c.error.message);
+  if (p.error) throw new Error(p.error.message);
   const sign = async (u: string | null) => {
     if (!u?.startsWith("storage://media/")) return u;
     return (await context.supabase.storage.from("media").createSignedUrl(u.slice(16), 7 * 86400)).data?.signedUrl ?? null;
@@ -33,7 +36,8 @@ export const listLibrary = createServerFn({ method: "GET" }).middleware([require
   const sources = await Promise.all(s.data.map(async (x) => ({ ...x, thumbnail_url: await sign(x.thumbnail_url) })));
   const clips = await Promise.all((c.data ?? []).map(async (x) => ({ ...x, thumbnail_url: await sign(x.thumbnail_url), video_url: await sign(x.video_url) })));
   const assets = await Promise.all(a.data.map(async (x) => ({ ...x, url: await sign(x.url) })));
-  return { sources, assets, clips };
+  const projects = await Promise.all(p.data.map(async (x) => ({ ...x, thumbnail_url: await sign(x.thumbnail_url) })));
+  return { sources, assets, clips, projects };
 });
 
 const sourceFields = (x: EngineAsset) => ({ engine_asset_id: x.id, public_url: x.url ?? null, duration_ms: x.length != null ? Math.round(x.length * 1000) : null, size_bytes: x.size ?? null, width: x.width ?? null, height: x.height ?? null, fps: x.fps ?? null, source_height: x.height ?? null, quality_warning: !!x.quality_warning, thumbnail_url: x.thumbnail_url ?? null, status: "READY", error: null });
@@ -112,10 +116,46 @@ export const engineImport = createServerFn({ method: "POST" }).middleware([requi
     const r = await (await engine())<EngineAsset>("POST", "/v1/assets", direct ? { url: data.url, name } : { url: data.url, name, rights_confirmed: true });
     if (!r.ok) fail(r.error);
     const x = (r as { data: EngineAsset }).data;
-    const ready = !!x.url && x.status !== "importing" && x.status !== "pending";
+    if (x.status === "failed") throw new Error(typeof x.error === "string" ? x.error : x.error?.message || "Import failed");
+    const ready = !!x.url && x.status === "ready";
+    const existing = await context.supabase.from("source_assets").select("id").eq("engine_asset_id", x.id).neq("status", "TRASHED").order("created_at", { ascending: true }).limit(1).maybeSingle();
+    if (existing.error) throw new Error(existing.error.message);
+    if (existing.data) {
+      if (ready) {
+        const updated = await context.supabase.from("source_assets").update(sourceFields(x)).eq("id", existing.data.id);
+        if (updated.error) throw new Error(updated.error.message);
+      }
+      return { id: existing.data.id, ready };
+    }
     const ins = await context.supabase.from("source_assets").insert({ name, kind: "LINK", source_url: data.url, ...(ready ? sourceFields(x) : { engine_asset_id: x.id, status: "UPLOADING" }) }).select("id").single();
     if (ins.error) throw new Error(ins.error.message);
     return { id: ins.data.id, ready };
+  });
+
+/** Refresh only this owner's requested source, without polling unrelated imports. */
+export const importedSourceStatus = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ id: z.string().uuid() }))
+  .handler(async ({ context, data }) => {
+    const row = await context.supabase.from("source_assets").select("status,error,engine_asset_id").eq("id", data.id).maybeSingle();
+    if (row.error) throw new Error(row.error.message);
+    if (!row.data) throw new Error("That video is no longer in your library — it may have been deleted while it was importing.");
+    if (row.data.status !== "UPLOADING" || !row.data.engine_asset_id) return { status: row.data.status, error: row.data.error };
+    const r = await (await engine())<EngineAsset>("GET", `/v1/assets/${encodeURIComponent(row.data.engine_asset_id)}`);
+    if (!r.ok) throw new Error(r.error.message);
+    const x = r.data;
+    const fields = x.status === "failed"
+      ? { status: "FAILED", error: typeof x.error === "string" ? x.error : x.error?.message || "Import failed" }
+      : x.status === "ready" && x.url ? sourceFields(x) : null;
+    if (!fields) return { status: "UPLOADING", error: null };
+    // This runs on a poll, so it must not be the thing that kills a job. A
+    // write that returns no row is not proof the write failed — read the row
+    // back and report what is actually there.
+    const updated = await context.supabase.from("source_assets").update(fields).eq("id", data.id).select("status,error").maybeSingle();
+    if (updated.error) throw new Error(updated.error.message);
+    if (updated.data) return updated.data;
+    const after = await context.supabase.from("source_assets").select("status,error").eq("id", data.id).maybeSingle();
+    if (after.data) return after.data;
+    return { status: String(fields.status ?? "UPLOADING"), error: null };
   });
 
 /** Polls GET /v1/assets/{id} for link imports still UPLOADING. */
@@ -186,6 +226,15 @@ export const deleteForever = createServerFn({ method: "POST" }).middleware([requ
     const { deleteLibraryRow } = await import("./library.server");
     for (const i of data.ids) await deleteLibraryRow(context.supabase, i.table, i.id);
     return true;
+  });
+
+/** Delete whole videos for good, with every clip and job that came from them. */
+export const deleteVideos = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ ids: z.array(z.string().uuid()).min(1).max(100) }))
+  .handler(async ({ context, data }) => {
+    const { deleteLibraryRow } = await import("./library.server");
+    for (const id of data.ids) await deleteLibraryRow(context.supabase, "source_assets", id);
+    return { deleted: data.ids.length };
   });
 
 export const setBrollMeta = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])

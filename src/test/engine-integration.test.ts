@@ -47,12 +47,32 @@ function fakeDb(tables: Record<string, Row[]>) {
           (Array.isArray(row) ? row : [row]).forEach((r) => rows.push({ id: `row_${rows.length + 1}`, ...r }));
           return Promise.resolve({ error: null });
         },
+        upsert(row: Row, options: { ignoreDuplicates: boolean }) {
+          const duplicate = rows.some((r) => r["job_id"] === row["job_id"] && r["engine_project_id"] === row["engine_project_id"]);
+          const data = duplicate && options.ignoreDuplicates ? [] : [{ id: `row_${rows.length + 1}`, ...row }];
+          rows.push(...data);
+          return { select: async () => ({ data, error: null }) };
+        },
         then(res: any) { return Promise.resolve({ data: rows.filter((r) => match(r, filters)), error: null }).then(res); },
       };
       return api;
     },
   } as any;
 }
+
+describe("clip completion delivery", () => {
+  it("stores each Engine project once across webhook and polling deliveries", async () => {
+    const { applyEngineEvent } = await import("@/lib/engine-events.server");
+    const db = fakeDb({ clip_jobs: [{ id: "j", owner_id: "u", created_by: "u", engine_job_id: "ej", edits: {}, aspect: "9:16" }], clips: [] });
+    const data = { autoclip_id: "ej", clips: [{ project_id: "prj_real", start_ms: 0, end_ms: 45000 }] };
+    await Promise.all([
+      applyEngineEvent(db, { id: "webhook", type: "autoclip.completed", data }),
+      applyEngineEvent(db, { id: "poll", type: "autoclip.completed", data }),
+    ]);
+    expect(db.tables.clips).toHaveLength(1);
+    expect(db.tables.clips[0].engine_project_id).toBe("prj_real");
+  });
+});
 
 describe.skipIf(!LIVE)("the app drives the Engine and gets real clips", () => {
   it("submits a queued job, follows it, and stores the clips it cut", async () => {

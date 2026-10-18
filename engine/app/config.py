@@ -33,14 +33,48 @@ class Settings(BaseSettings):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
 
+    # Stop the machine once it has been this many seconds without a request
+    # and has nothing in flight; Fly starts it again on the next one, so an
+    # Engine used an hour a day is billed for an hour a day.
+    #
+    # Off by default so `uvicorn app.main:app` in development never walks out
+    # mid-session. fly.toml turns it on, because that is where paying for a
+    # machine is decided. Keep it well above how long a page sits open idle.
+    idle_shutdown_s: float = 0.0
+
     # How long to let an in-flight render finish when asked to shut down.
     # Fly sends SIGTERM then SIGKILL after kill_timeout; keep this under it.
     shutdown_grace_s: float = 120.0
+    # 0 means "use every core this machine has". A fixed number here caps the
+    # work no matter how large the machine is, so scaling up buys nothing.
+    processing_threads: int = 0
+
+    def worker_threads(self) -> int:
+        """How many threads the heavy work may use: ffmpeg, OpenCV, Whisper."""
+        import os
+
+        cores = os.cpu_count() or 2
+        return max(1, min(cores, self.processing_threads or cores))
 
     # transcription
-    transcribe_provider: str = "faster-whisper"  # faster-whisper | fake
+    #   auto           — Groq when a key is set, this machine otherwise
+    #   groq           — always Groq, and fail loudly if it is unreachable
+    #   faster-whisper — always this machine
+    #   fake           — deterministic, for the test suite
+    transcribe_provider: str = "auto"
     whisper_model: str = "small"
     whisper_device: str = "auto"
+    # Groq runs Whisper on their hardware at a couple of hundred times real
+    # time. Without a key nothing changes and the local model is used.
+    groq_api_key: str = ""
+    groq_model: str = "whisper-large-v3-turbo"
+    groq_timeout_s: float = 180.0
+
+    def resolve_transcriber(self) -> str:
+        """The provider actually used, once the key situation is known."""
+        if self.transcribe_provider != "auto":
+            return self.transcribe_provider
+        return "groq" if self.groq_api_key else "faster-whisper"
 
     # moment finding
     finder_provider: str = "claude"  # claude | rules

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { cuesFromWords, styleFor } from "@/lib/finish-rules";
 
 /**
  * Shared Engine event applier. The signed webhook route and the internal
@@ -11,6 +12,66 @@ export type EngineEvent = { id: string; type: string; data?: Record<string, unkn
 export type EventResult = "processed" | "ignored" | "duplicate";
 
 const d = (ev: EngineEvent) => (ev.data ?? {}) as Record<string, unknown>;
+
+/**
+ * The Engine transcribes the source, picks the titles and settles the framing
+ * while the video is still being processed. This turns that work into the
+ * columns the editor reads, so a finished clip opens with its captions, title,
+ * watermark and layout already in place instead of a "transcribe first" button
+ * over work that was done minutes ago.
+ */
+export function finishColumns(raw: unknown): Record<string, unknown> {
+  const f = (raw ?? {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  // Two callers, two shapes: the webhook sends title_text/title_style flat,
+  // a project read sends title as { text, style }. Accept both.
+  const title = (f["title"] ?? {}) as Record<string, unknown>;
+  const titleText =
+    typeof f["title_text"] === "string"
+      ? f["title_text"]
+      : typeof title["text"] === "string"
+        ? title["text"]
+        : "";
+  const titleStyle =
+    typeof f["title_style"] === "string" && f["title_style"]
+      ? f["title_style"]
+      : typeof title["style"] === "string"
+        ? title["style"]
+        : "";
+
+  // Word-level timings from the Engine, grouped into lines at the length the
+  // chosen caption style asks for — the same grouping the editor would do.
+  const words = (Array.isArray(f["captions"]) ? f["captions"] : [])
+    .map((w) => (w ?? {}) as Record<string, unknown>)
+    .filter(
+      (w) =>
+        typeof w["text"] === "string" &&
+        typeof w["start_ms"] === "number" &&
+        typeof w["end_ms"] === "number",
+    )
+    .map((w) => ({
+      text: String(w["text"]),
+      start_ms: Math.round(w["start_ms"] as number),
+      end_ms: Math.round(w["end_ms"] as number),
+    }));
+  const styleId = typeof f["caption_style_id"] === "string" ? f["caption_style_id"] : "";
+  if (words.length) out["captions"] = cuesFromWords(words, styleFor(styleId).maxWords) as never;
+  if (styleId) out["caption_style_id"] = styleId;
+  if (f["caption_options"] && typeof f["caption_options"] === "object")
+    out["caption_options"] = f["caption_options"] as never;
+
+  if (titleText.trim()) out["title_text"] = titleText.trim();
+  if (titleStyle) out["title_style"] = titleStyle;
+
+  const mark = (f["watermark"] ?? {}) as Record<string, unknown>;
+  if (typeof mark["text"] === "string" && mark["text"].trim())
+    out["watermark_text"] = mark["text"].trim();
+
+  if (typeof f["aspect"] === "string" && f["aspect"]) out["aspect"] = f["aspect"];
+  if (typeof f["layout"] === "string" && f["layout"]) out["layout"] = f["layout"];
+  if (f["framing"] && typeof f["framing"] === "object") out["framing"] = f["framing"] as never;
+  return out;
+}
 
 async function audit(db: Db, ownerId: string | null, action: string, entity: string, entityId: string, details: unknown) {
   await db.from("audit_logs").insert({
@@ -62,7 +123,7 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
     let inserted = 0;
     for (const [i, raw] of clips.entries()) {
       const c = (raw ?? {}) as Record<string, unknown>;
-      const ins = await db.from("clips").insert({
+      const ins = await db.from("clips").upsert({
         owner_id: job.owner_id, created_by: job.created_by, job_id: job.id, source_asset_id: job.source_asset_id,
         engine_project_id: typeof c["project_id"] === "string" ? c["project_id"] : null,
         index: typeof c["index"] === "number" ? c["index"] : i + 1,
@@ -77,12 +138,22 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
         reason: typeof c["reason"] === "string" ? c["reason"] : null,
         alternate_of: typeof c["alternate_of"] === "string" ? c["alternate_of"] : null,
         aspect: job.aspect, layout: firstLayout, status: "FOUND", last_event_id: ev.id,
-      });
-      if (!ins.error) inserted++;
+        // Last, so the Engine's own aspect/layout win over the job defaults.
+        ...finishColumns(c["finish"]),
+      }, { onConflict: "job_id,engine_project_id", ignoreDuplicates: true }).select("id");
+      if (ins.error) throw new Error(ins.error.message);
+      inserted += ins.data?.length ?? 0;
     }
+    if (!inserted) return "duplicate";
+    // Autopilot takes it from here: approve what clears the bar and render it.
+    const { autoExportJobClips } = await import("./autopilot.server");
+    const rendering = await autoExportJobClips(db, job);
     await notify(db, job.owner_id, "CLIPS_READY", "Clips are ready",
-      `${inserted} clip${inserted === 1 ? "" : "s"} from ${String(data["source_name"] ?? "your video")} are waiting in Review.`, "/review");
-    await audit(db, job.owner_id, "engine.autoclip.completed", "clip_jobs", job.id, { clips: inserted, event_id: ev.id });
+      rendering
+        ? `${inserted} clip${inserted === 1 ? "" : "s"} from ${String(data["source_name"] ?? "your video")}. ${rendering} are rendering now.`
+        : `${inserted} clip${inserted === 1 ? "" : "s"} from ${String(data["source_name"] ?? "your video")} are waiting in Review.`,
+      "/review");
+    await audit(db, job.owner_id, "engine.autoclip.completed", "clip_jobs", job.id, { clips: inserted, auto_rendering: rendering, event_id: ev.id });
     return "processed";
   }
 
@@ -134,7 +205,10 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
         thumbnail_url: typeof a["thumbnail_url"] === "string" ? a["thumbnail_url"] : clip.thumbnail_url, error: null, edits: edits as never, last_event_id: ev.id,
       }).eq("id", clip.id);
       await db.from("assets").insert({ owner_id: clip.owner_id, created_by: clip.created_by, type: "VIDEO", source: "EXPORT", name: clip.title ?? "Clip", url, size_bytes: num("size"), duration_ms: typeof a["length"] === "number" ? Math.round((a["length"] as number) * 1000) : null, status: "READY", tags: [] as never });
-      for (const u of people) await db.from("notifications").insert({ owner_id: clip.owner_id, user_id: u, type: "EXPORT_READY", title: "Clip exported", body: `${clip.title ?? "A clip"} is ready to download.`, link, read: false });
+      // Autopilot writes the copy and queues the post to every channel.
+      const { autoQueueClip } = await import("./autopilot.server");
+      const queued = await autoQueueClip(db, clip);
+      for (const u of people) await db.from("notifications").insert({ owner_id: clip.owner_id, user_id: u, type: "EXPORT_READY", title: queued ? "Clip queued to post" : "Clip exported", body: queued ? `${clip.title ?? "A clip"} is written up and queued to ${queued} channel${queued === 1 ? "" : "s"}.` : `${clip.title ?? "A clip"} is ready to download.`, link: queued ? "/posts" : link, read: false });
     }
     await audit(db, clip.owner_id, `engine.${ev.type}`, "clips", clip.id, { event_id: ev.id });
     return "processed";

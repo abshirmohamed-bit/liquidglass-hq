@@ -16,6 +16,12 @@ log = logging.getLogger("engine.worker")
 _stop = threading.Event()
 _thread: threading.Thread | None = None
 
+# The pipelines advance a job one stage per pass and nothing claims the row
+# while that stage runs. Two passes at once — the loop and a direct tick, or
+# two ticks — would both pick the same job and run the stage twice, which cuts
+# every clip twice. One pass at a time is the whole guarantee.
+_pass = threading.Lock()
+
 
 def tick() -> int:
     """One pass over everything that might have work. Returns items advanced."""
@@ -23,13 +29,23 @@ def tick() -> int:
     from .pipeline import exports as export_pipeline
     from .pipeline import ingest as ingest_pipeline
     from .pipeline import jobs as job_pipeline
+    from .pipeline import imports as import_pipeline
 
     done = 0
+<<<<<<< HEAD
     for step in (ingest_pipeline.advance_one, job_pipeline.advance_one, export_pipeline.advance_one):
         try:
             done += 1 if step() else 0
         except Exception:
             log.exception("worker step failed")
+=======
+    with _pass:
+        for step in (import_pipeline.advance_one, job_pipeline.advance_one, export_pipeline.advance_one):
+            try:
+                done += 1 if step() else 0
+            except Exception:
+                log.exception("worker step failed")
+>>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
     try:
         webhooks.deliver_due()
     except Exception:
@@ -38,12 +54,21 @@ def tick() -> int:
 
 
 def _loop(interval: float) -> None:
+    from . import idle
+
     while not _stop.is_set():
         try:
             busy = tick()
         except Exception:
             log.exception("worker tick failed")
             busy = 0
+        if not busy:
+            # The only thread that knows the queues are empty. Checked here so
+            # the machine can never be stopped in the middle of a pass.
+            try:
+                idle.sleep_if_idle()
+            except Exception:
+                log.exception("idle check failed")
         _stop.wait(0.1 if busy else interval)
 
 
@@ -84,6 +109,8 @@ def recover_stuck() -> int:
     from .models import Asset, Export, Job
 
     moved = 0
+    from .pipeline.imports import recover
+    moved += recover()
     with session() as s:
         for model in (Job, Export):
             for row in s.exec(select(model).where(model.status == "processing")).all():

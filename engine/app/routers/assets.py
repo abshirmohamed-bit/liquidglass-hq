@@ -13,7 +13,7 @@ from ..db import session
 from ..errors import EngineError
 from ..responses import ok
 from ..ids import new_id
-from ..models import Asset, Upload, utcnow
+from ..models import Asset, ImportTask, Upload, utcnow
 from ..pipeline import analyze as url_analyze
 from ..pipeline import ingest
 
@@ -120,16 +120,27 @@ class ImportBody(BaseModel):
 
 @router.post("/v1/assets")
 def import_asset(body: ImportBody) -> dict:
+    if ingest.needs_rights(body.url) and not body.rights_confirmed:
+        raise EngineError("RIGHTS_REQUIRED", "Confirm you own this footage or have the rights to clip it.")
     with session() as s:
+        existing = s.exec(select(Asset).where(Asset.source_url == body.url,
+                          Asset.deleted_at == None, Asset.status.in_(["importing", "ready"]))
+                          .order_by(Asset.created_at.desc())).first()
+        if existing:
+            return ok(ingest.asset_payload(existing))
         asset = Asset(id=new_id("ast"), name=body.name or body.url.rsplit("/", 1)[-1][:120],
                       type="video", status="importing", rights_confirmed=body.rights_confirmed,
                       source_url=body.url)
         s.add(asset)
+        s.add(ImportTask(asset_id=asset.id))
         s.commit()
+<<<<<<< HEAD
         s.refresh(asset)
         # Downloading a long video takes minutes; a browser request dies long
         # before that. Hand it to the worker and answer now. The caller polls
         # GET /v1/assets/{id}, or waits for the asset.imported webhook.
+=======
+>>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
         return ok(ingest.asset_payload(asset))
 
 

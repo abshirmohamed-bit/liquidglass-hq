@@ -15,7 +15,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SAMPLE_MS = 500
-EMA_ALPHA = 0.2
+EMA_ALPHA = 0.35
+#: How far the subject may drift from the middle of the window before the pan
+#: stops easing and simply keeps up. Measured as a share of the SOURCE width,
+#: and sized against the 9:16 window, which is about a third of a 16:9 frame:
+#: 0.05 of the source is roughly 15% off centre inside the window. Smoothing
+#: is there to stop jitter, not to let someone walk out of their own clip.
+MAX_DRIFT = 0.05
 
 
 @dataclass
@@ -74,12 +80,31 @@ def _detector():
     return None, None
 
 
-def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS) -> Track:
+def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
+          in_ms: int = 0, out_ms: int | None = None) -> Track:
     """Walk the clip and work out where the subject is over time."""
+    if out_ms is not None:
+        from tempfile import TemporaryDirectory
+        from .. import media
+        info = media.probe(video)
+        # Decode only the selected range, not the full retained AV1 source.
+        with TemporaryDirectory(prefix="tracking-") as directory:
+            proxy = Path(directory) / "proxy.mp4"
+            media.ffmpeg([
+                "-ss", f"{in_ms / 1000:.3f}", "-t", f"{max(1, out_ms - in_ms) / 1000:.3f}",
+                "-i", str(video), "-an", "-vf", "scale=480:-2,fps=4",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", str(proxy),
+            ], timeout=300)
+            result = track(proxy, mode=mode, sample_ms=sample_ms)
+        return Track(result.strategy, info.width, info.height,
+                     [(ms + in_ms, x) for ms, x in result.samples], result.faces)
     import cv2
     import numpy as np
 
-    cap = cv2.VideoCapture(str(video))
+    from ..config import settings
+    threads = settings().worker_threads()
+    cv2.setNumThreads(threads)
+    cap = cv2.VideoCapture(str(video), cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, threads])
     if not cap.isOpened():
         return Track("none", 0, 0, [], [])
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1
@@ -93,6 +118,9 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS) -> Tra
 
     raw: list[tuple[int, float]] = []
     boxes: list[tuple[int, tuple[float, float, float, float]]] = []
+    # (ms, [(centre_x, width) for every face seen]) — what the crop needs in
+    # order to decide between holding everyone and choosing one.
+    spread: list[tuple[int, list[tuple[float, float]]]] = []
     prev_grey = None
     # Walk the file in order and keep every Nth frame. Seeking per sample with
     # CAP_PROP_POS_MSEC hands back the same frame on many builds and codecs,
@@ -117,10 +145,14 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS) -> Tra
         if detect:
             found = detect(small)
             if found:
-                x, y, w, h = max(found, key=lambda f: f[2] * f[3])
-                centre = (x + w / 2) / small.shape[1]
-                boxes.append((ms, ((x + w / 2) / small.shape[1], (y + h / 2) / small.shape[0],
-                                   w / small.shape[1], h / small.shape[0])))
+                sw_, sh_ = small.shape[1], small.shape[0]
+                norm = [((x + w / 2) / sw_, (y + h / 2) / sh_, w / sw_, h / sh_) for x, y, w, h in found]
+                # Every face counts: an interview has two, and holding only the
+                # larger one swings the crop away from whoever is answering.
+                for box in norm:
+                    boxes.append((ms, box))
+                spread.append((ms, [(b[0], b[2]) for b in norm]))
+                centre = sum(b[0] for b in norm) / len(norm)
         if centre is None and strategy == "motion":
             grey = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
             if prev_grey is not None and prev_grey.shape == grey.shape:
@@ -134,16 +166,56 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS) -> Tra
             raw.append((ms, min(1.0, max(0.0, centre))))
     cap.release()
 
-    smoothed = _smooth(raw)
+    smoothed = _smooth(_aim(spread, raw))
     return Track(strategy, width, height, smoothed, _faces_from(boxes))
 
 
-def _smooth(raw: list[tuple[int, float]], alpha: float = EMA_ALPHA) -> list[tuple[int, float]]:
-    """An exponential moving average: the window drifts, it never snaps."""
+#: How much of a 16:9 frame a 9:16 window covers. Faces spread wider than
+#: this cannot all be held, and something has to be chosen.
+WINDOW_SHARE = 9 / 16 / (16 / 9)
+
+
+def _aim(spread: list[tuple[int, list[tuple[float, float]]]],
+         fallback: list[tuple[int, float]]) -> list[tuple[int, float]]:
+    """Where to point the crop at each moment.
+
+    One face: that face. Several: hold them all when the window is wide
+    enough, and otherwise follow the biggest — the person nearest the camera,
+    who is almost always the one talking. Splitting the difference between two
+    faces that cannot both fit frames neither of them, which is the single
+    ugliest thing an auto-crop does.
+    """
+    if not spread:
+        return fallback
+    out: list[tuple[int, float]] = []
+    for ms, faces in spread:
+        if len(faces) == 1:
+            out.append((ms, faces[0][0]))
+            continue
+        lo = min(c - w / 2 for c, w in faces)
+        hi = max(c + w / 2 for c, w in faces)
+        if hi - lo <= WINDOW_SHARE:
+            out.append((ms, (lo + hi) / 2))
+        else:
+            biggest = max(faces, key=lambda f: f[1])
+            out.append((ms, biggest[0]))
+    return out
+
+
+def _smooth(raw: list[tuple[int, float]], alpha: float = EMA_ALPHA,
+            max_drift: float = MAX_DRIFT) -> list[tuple[int, float]]:
+    """An exponential moving average, on a leash.
+
+    The average alone makes the window drift rather than snap, which is what
+    makes a pan watchable. On its own it also lets a subject who moves quickly
+    outrun the window and leave the frame, so the result is clamped: the
+    window may lag, but never by more than `max_drift` of the width.
+    """
     out: list[tuple[int, float]] = []
     value: float | None = None
     for ms, x in raw:
         value = x if value is None else value + alpha * (x - value)
+        value = min(x + max_drift, max(x - max_drift, value))
         out.append((ms, round(value, 4)))
     return out
 
@@ -169,11 +241,16 @@ def _faces_from(boxes: list[tuple[int, tuple[float, float, float, float]]]) -> l
     return sorted(faces, key=lambda f: -f.share)[:4]
 
 
-def crop_filter(track: Track, out_w: int, out_h: int, duration_ms: int) -> tuple[str, str | None]:
+def crop_filter(track: Track, out_w: int, out_h: int, duration_ms: int,
+                name: str = "subject") -> tuple[str, str | None]:
     """An ffmpeg crop that follows the subject.
 
     Returns (filter string, sendcmd file contents). The crop box is the largest
     one of the target shape that fits the source, panned horizontally over time.
+
+    The filter is named, because sendcmd addresses filters by name and a graph
+    can hold more than one crop. Unnamed, the pan lands on whichever crop
+    ffmpeg sees first.
     """
     sw, sh = track.width or out_w, track.height or out_h
     target = out_w / out_h
@@ -188,13 +265,13 @@ def crop_filter(track: Track, out_w: int, out_h: int, duration_ms: int) -> tuple
 
     if not track.samples or max_x == 0:
         x = max_x // 2
-        return f"crop={cw}:{ch}:{x}:{y}", None
+        return f"crop@{name}={cw}:{ch}:{x}:{y}", None
 
     commands = []
     for ms, centre in track.samples:
         x = int(round(centre * sw - cw / 2))
         x = max(0, min(max_x, x))
-        commands.append(f"{ms / 1000:.2f} crop x {x};")
+        commands.append(f"{ms / 1000:.2f} crop@{name} x {x};")
     first = int(round(track.samples[0][1] * sw - cw / 2))
     first = max(0, min(max_x, first))
-    return f"crop={cw}:{ch}:{first}:{y}", "\n".join(commands)
+    return f"crop@{name}={cw}:{ch}:{first}:{y}", "\n".join(commands)

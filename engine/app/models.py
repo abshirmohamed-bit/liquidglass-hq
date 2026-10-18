@@ -35,6 +35,14 @@ class Asset(SQLModel, table=True):
     deleted_at: Optional[datetime] = None
 
 
+class ImportTask(SQLModel, table=True):
+    __tablename__ = "import_tasks"
+    asset_id: str = Field(primary_key=True)
+    status: str = "queued"
+    attempts: int = 0
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class Upload(SQLModel, table=True):
     __tablename__ = "uploads"
     id: str = Field(primary_key=True)

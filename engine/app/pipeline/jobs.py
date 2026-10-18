@@ -109,6 +109,8 @@ def _step(s: Session, job: Job) -> None:
         return
 
     if job.stage == "finalizing":
+        if not clips_payload(s, job.id):
+            raise RuntimeError("No usable moments were found. Try Clip anything or choose a different range.")
         job.status = "completed"
         job.progress = 100
         job.processing_s = round(job.processing_s + (time.time() - started), 2)
@@ -119,7 +121,9 @@ def _step(s: Session, job: Job) -> None:
             "autoclip_id": job.id,
             "source_name": _source_name(s, job),
             "processing_seconds": round(job.processing_s),
-            "clips": clips_payload(s, job.id),
+            # full: the app writes these onto each clip so the editor opens
+            # ready — captions, title, watermark and layout already in place.
+            "clips": clips_payload(s, job.id, full=True),
         })
         return
 
@@ -190,15 +194,35 @@ def _find(s: Session, job: Job, asset: Asset, params: dict) -> list[finder.Momen
         count = int(requested)
 
     envelope: list[float] = []
-    if params.get("mode") == "energy" or (params.get("mode", "auto") == "auto" and not sentences):
-        envelope = media.loudness_envelope(storage.local_path(asset.mezzanine_key))
+    mode = params.get("mode", "auto")
+    if mode in {"energy", "visual"} or (mode == "auto" and not sentences):
+        envelope = media.loudness_envelope(storage.local_path(asset.mezzanine_key or asset.storage_key))
 
     moments = finder.find(
-        sentences, count=count, target_ms=target, mode=params.get("mode", "auto"),
+        sentences if mode != "visual" else [], count=count, target_ms=target,
+        mode="energy" if mode == "visual" else mode,
         coverage=coverage, genre=params.get("genre", "auto"), prompt=params.get("prompt", ""),
         must_include=params.get("must_include") or [], keep_qa=params.get("keep_qa", True),
         envelope=envelope,
     )
+    # Sparse speech can yield sentences but no viable speech-sized clip. Auto
+    # must then use the real source's audio peaks, not finish with zero projects.
+    if not moments and mode == "auto":
+        envelope = envelope or media.loudness_envelope(
+            storage.local_path(asset.mezzanine_key or asset.storage_key))
+        moments = finder.energy_find(envelope, count, target)
+    bounded: list[finder.Moment] = []
+    for moment in moments:
+        moment.start_ms = max(start_ms, moment.start_ms)
+        moment.end_ms = min(end_ms, moment.end_ms)
+        if moment.duration_ms < 2000:
+            continue
+        if any(moment.start_ms < other.end_ms and other.start_ms < moment.end_ms for other in bounded):
+            continue
+        bounded.append(moment)
+    moments = bounded
+    if not moments:
+        raise RuntimeError("No usable moments were found. Try Clip anything or choose a different range.")
     if coverage == "whole":
         covered = [{"start_ms": m.start_ms, "end_ms": m.end_ms} for m in moments]
         job.skipped = _gaps(covered, start_ms, end_ms)
@@ -218,6 +242,11 @@ def _gaps(covered: list[dict], start_ms: int, end_ms: int, min_gap: int = 4000) 
 
 
 def _cut(s: Session, job: Job, asset: Asset, params: dict) -> None:
+    # Cutting is the one stage that creates rows, so it is the one stage where
+    # running twice is visible: the job would deliver double the clips asked
+    # for. If this job already has its clips, the stage has already run.
+    if s.exec(select(Project).where(Project.job_id == job.id)).first():
+        return
     moments = [finder.Moment(**m) for m in (job.params or {}).get("_moments", [])]
     transcript = s.exec(select(Transcript).where(Transcript.asset_id == asset.id)).first()
     words = list(transcript.words) if transcript else []
@@ -263,13 +292,24 @@ def _source_name(s: Session, job: Job) -> str:
     return (asset.name if asset else "") or "your video"
 
 
-def clips_payload(s: Session, job_id: str) -> list[dict]:
+def clips_payload(s: Session, job_id: str, full: bool = False) -> list[dict]:
     projects = s.exec(select(Project).where(Project.job_id == job_id).order_by(Project.index)).all()
-    return [project_summary(p) for p in projects]
+    return [project_summary(p, full=full) for p in projects]
 
 
-def project_summary(p: Project) -> dict:
-    return {
+def project_summary(p: Project, full: bool = False) -> dict:
+    """What a finished clip looks like to the app.
+
+    `full` adds everything needed to open the clip in the editor without any
+    further work: the words with their timings, the caption style, the title,
+    the watermark and the framing. All of it was computed while the source was
+    being processed, so handing it over now is what stops the app asking the
+    person to transcribe a clip the Engine already transcribed.
+
+    It is off by default because the app polls this same shape while a job
+    runs, and the words are by far the largest part of it.
+    """
+    out = {
         "project_id": p.id, "index": p.index, "title": (p.title or {}).get("text", ""),
         "start_ms": p.in_ms, "end_ms": p.out_ms, "duration_ms": p.out_ms - p.in_ms,
         "thumbnail_url": storage.public_url(p.thumb_key) if p.thumb_key else "",
@@ -277,3 +317,17 @@ def project_summary(p: Project) -> dict:
         "reason": p.reason, "alternate_of": p.alternate_of or None,
         "faces": p.faces or [],
     }
+    if full:
+        out["finish"] = {
+            # Word-level, already re-based so the clip starts at zero.
+            "captions": list(p.captions or []),
+            "caption_style_id": p.caption_style_id or "",
+            "caption_options": p.caption_options or {},
+            "title_text": (p.title or {}).get("text", ""),
+            "title_style": (p.title or {}).get("style", "") or "bold_band",
+            "watermark": p.watermark or {},
+            "aspect": p.aspect or "",
+            "layout": p.layout or "",
+            "framing": p.framing or {},
+        }
+    return out

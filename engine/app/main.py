@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import worker
+from . import idle, worker
 from .auth import check_key, check_rate, tier_for
 from .config import settings
 from .db import engine
@@ -33,8 +33,10 @@ async def lifespan(app: FastAPI):
     engine()                      # create tables
     worker.recover_stuck()        # a deploy or a crash leaves work half done
     worker.start()
-    log.info("engine ready: storage=%s transcribe=%s finder=%s",
-             settings().storage_backend, settings().transcribe_provider, settings().resolve_finder())
+    sleep_after = settings().idle_shutdown_s
+    log.info("engine ready: storage=%s transcribe=%s finder=%s sleep_after=%s",
+             settings().storage_backend, settings().transcribe_provider, settings().resolve_finder(),
+             f"{sleep_after:.0f}s" if sleep_after > 0 else "never")
     yield
     worker.stop()
 
@@ -52,6 +54,10 @@ async def unhandled(_: Request, exc: Exception) -> JSONResponse:
 @app.middleware("http")
 async def gate(request: Request, call_next):
     path = request.url.path
+    # Health checks must not count: Fly pings /v1/health every 30 seconds and
+    # the machine would never be allowed to sleep.
+    if idle.counts(path):
+        idle.touch()
     if path.startswith("/media/") or path in OPEN_PATHS:
         return await call_next(request)
     try:

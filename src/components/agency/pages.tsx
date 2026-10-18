@@ -1,8 +1,9 @@
-import { LayoutDashboard, Wallet, Users, CalendarDays, Target, Lightbulb, Image, ChartNoAxesCombined, UserRoundCog, Rocket, Settings, ChevronRight, FolderOpen, Scissors, ClipboardCheck, LayoutTemplate, Send, Megaphone, Wrench, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Wallet, Users, CalendarDays, Target, Lightbulb, Image, ChartNoAxesCombined, UserRoundCog, Rocket, Settings, ChevronRight, FolderOpen, Scissors, ClipboardCheck, LayoutTemplate, Send, Megaphone, Wrench, Clapperboard, type LucideIcon } from 'lucide-react';
 import { NAV_ORDER } from '@/lib/roles';
 type AgencyPageDef = {title: string; path: string; icon: LucideIcon; subtitle: string};
 const defs: AgencyPageDef[] = [
  {title:'Dashboard', path:'/', icon:LayoutDashboard, subtitle:'A clear view of your agency.'},
+ {title:'Videos', path:'/videos', icon:Clapperboard, subtitle:'Every video you have brought in, and the clips from it.'},
  {title:'Library', path:'/library', icon:FolderOpen, subtitle:'Your uploads and imported sources.'},
  {title:'Clips', path:'/clips', icon:Scissors, subtitle:'Every clip the Engine finds.'},
  {title:'Review', path:'/review', icon:ClipboardCheck, subtitle:'Approve, trim and export.'},

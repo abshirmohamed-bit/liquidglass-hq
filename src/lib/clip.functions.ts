@@ -3,6 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { sign } from "./review-helpers";
 import {
   ACTIVE_STATUSES, ASPECT_OPTIONS, CLIP_COUNT_MAX, CLIP_COUNT_MIN, DONT_CLIP_MAX_MS, EDIT_LEVELS, estimateWaitMinutes,
   HEADLINE_TOP_DEFAULT, LAYOUT_OPTIONS, MAX_MUST_INCLUDE, MAX_PROMPT_CHARS, MAX_SOURCE_MS, MIN_SOURCE_MS, MODE_OPTIONS,
@@ -50,9 +51,14 @@ const jobFormSchema = z.object({
   framing: z.enum(["AUTO", "BOTH", "CENTER"]).default("AUTO"),
   language: z.string().trim().max(12).default("auto"),
   captionLanguage: z.string().trim().max(12).default("same"),
+  captionStyleId: z.string().trim().max(40).default("bold_white"),
+  captionsEnabled: z.boolean().default(true),
   extras: extrasSchema.default({ removeSilences: false, removeFillers: false, zoom: "Balanced", autoTransitions: false, soundEffects: false, grade: "none", keywordHighlight: false, emojis: false, autoBroll: false }),
   brollAssetId: z.string().uuid().nullable().default(null),
   musicAssetId: z.string().uuid().nullable().default(null),
+  // On: the AI picks the count, approves what clears the bar, renders it and
+  // queues the posts. Off: the job stops at each of those for your decision.
+  autopilot: z.boolean().default(false),
 });
 
 export const clipWorkspace = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
@@ -67,9 +73,11 @@ export const clipWorkspace = createServerFn({ method: "GET" }).middleware([requi
   if (sources.error) throw new Error(sources.error.message);
   if (music.error) throw new Error(music.error.message);
   const pending = (jobs.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status)).length;
+  const signedJobs = await Promise.all((jobs.data ?? []).map(async (j) => ({ ...j, source_assets: j.source_assets ? { ...j.source_assets, thumbnail_url: await sign(context.supabase, j.source_assets.thumbnail_url) } : null })));
+  const signedSources = await Promise.all((sources.data ?? []).map(async (s) => ({ ...s, thumbnail_url: await sign(context.supabase, s.thumbnail_url) })));
   return {
-    jobs: jobs.data ?? [],
-    sources: sources.data ?? [],
+    jobs: signedJobs,
+    sources: signedSources,
     music: music.data ?? [],
     queue: { pending, waitMinutes: estimateWaitMinutes(pending) },
     badge: badge.count ?? 0,
@@ -82,8 +90,8 @@ export type ClipWorkspace = Awaited<ReturnType<typeof clipWorkspace>>;
 export const createClipJob = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(jobFormSchema)
   .handler(async ({ context, data }) => {
-    const src = (await context.supabase.from("source_assets").select("id,name,duration_ms,status,kind,niche").eq("id", data.sourceId).single()).data;
-    if (!src) throw new Error("That source no longer exists.");
+    const src = (await context.supabase.from("source_assets").select("id,name,duration_ms,status,kind,niche").eq("id", data.sourceId).maybeSingle()).data;
+    if (!src) throw new Error("That video is no longer in your library.");
     if (src.status !== "READY") throw new Error("This source is not ready yet.");
     if (!["UPLOAD", "LINK"].includes(src.kind)) throw new Error("Only videos can be clipped.");
     const durationIssue = sourceDurationIssue(src.duration_ms);
@@ -119,12 +127,15 @@ export const createClipJob = createServerFn({ method: "POST" }).middleware([requ
       framing: data.framing,
       language: data.language,
       caption_language: data.captionLanguage,
+      caption_style_id: data.captionStyleId,
       music_asset_id: data.musicAssetId,
       broll_asset_id: data.brollAssetId,
       formats: { layouts: data.layouts, extras: data.extras } as never,
+      edits: { autopilot: data.autopilot } as never,
       progress: 0,
-    }).select("id").single();
+    }).select("id").maybeSingle();
     if (ins.error) throw new Error(ins.error.message);
+    if (!ins.data) throw new Error("The clip job could not be saved. Sign out and back in, then try again.");
     return { id: ins.data.id };
   });
 
@@ -143,6 +154,43 @@ export const confirmClipCount = createServerFn({ method: "POST" }).middleware([r
     const u = await context.supabase.from("clip_jobs").update({ clip_count: data.count, status: "PROCESSING", stage: "FINDING", progress: 30 }).eq("id", data.jobId);
     if (u.error) throw new Error(u.error.message);
     return true;
+  });
+
+/**
+ * One job's progress, for the card the dashboard shows while it works.
+ * Also nudges the Engine along, so the card keeps moving even if a webhook
+ * is slow to arrive.
+ */
+export const clipJobStatus = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ id: z.string().uuid() }))
+  .handler(async ({ context, data }) => {
+    const db = context.supabase;
+    const job = (
+      await db
+        .from("clip_jobs")
+        .select("id,status,stage,progress,error,suggested_count")
+        .eq("id", data.id)
+        .maybeSingle()
+    ).data;
+    if (!job) throw new Error("That clip job no longer exists.");
+    if (ACTIVE_STATUSES.includes(job.status)) {
+      const { advanceActiveJobs } = await import("./clip-engine.server");
+      await advanceActiveJobs(db, 1);
+    }
+    const fresh =
+      (
+        await db
+          .from("clip_jobs")
+          .select("id,status,stage,progress,error,suggested_count")
+          .eq("id", data.id)
+          .maybeSingle()
+      ).data ?? job;
+    const clips = await db
+      .from("clips")
+      .select("id", { count: "exact", head: true })
+      .eq("job_id", data.id);
+    return { ...fresh, clips: clips.count ?? 0 };
   });
 
 /** Fallback sync: advances internal jobs (the Engine's polling stand-in). */

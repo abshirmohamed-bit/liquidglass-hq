@@ -40,13 +40,13 @@ import { agencyPages, extraPages } from "./pages";
  */
 const GROUPS: { label: string | null; tabs: string[]; folded?: boolean }[] = [
   { label: null, tabs: ["Dashboard"] },
-  { label: "Make clips", tabs: ["Library", "Clips", "Review"] },
+  { label: "Make clips", tabs: ["Videos"] },
   { label: "Publish", tabs: ["Posts", "Analytics"] },
   { label: "Business", tabs: ["Clients", "Money"] },
   {
     label: "More",
     folded: true,
-    tabs: ["Formats", "Campaigns", "Tools", "Ideation", "Thumbnails", "Leads", "Team", "Onboarding", "Settings"],
+    tabs: ["Library", "Clips", "Review", "Formats", "Campaigns", "Tools", "Ideation", "Thumbnails", "Leads", "Team", "Onboarding", "Settings"],
   },
 ];
 
@@ -114,8 +114,12 @@ function NotificationBell() {
 }
 
 function AccountMenu() {
-  const me = useQuery(meQuery).data;
+  const account = useQuery(meQuery);
+  const me = account.data;
   const navigate = useNavigate();
+  // Until the account resolves, a "Sign in" button tells the user they have
+  // been logged out. Hold a quiet placeholder instead.
+  if (account.isPending) return <span className="account-pending skeleton" aria-hidden="true" />;
   if (!me)
     return (
       <Button asChild variant="outline" size="sm">

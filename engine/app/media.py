@@ -4,10 +4,14 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 from .errors import EngineError
+from .config import settings
+
+_processing_slot = threading.BoundedSemaphore(1)
 
 
 def _bin(name: str) -> str:
@@ -26,7 +30,17 @@ def run(args: list[str], timeout: int = 3600) -> subprocess.CompletedProcess:
 
 
 def ffmpeg(args: list[str], timeout: int = 3600) -> subprocess.CompletedProcess:
-    return run([_bin("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y", *args], timeout)
+    threads = str(settings().worker_threads())
+    bounded = []
+    for arg in args:
+        if arg == "-i":
+            bounded.extend(["-threads", threads])
+        bounded.append(arg)
+    # Decoder options are per input; encoder options must precede the output.
+    bounded[-1:-1] = ["-threads", threads]
+    with _processing_slot:
+        return run([_bin("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y",
+                    "-filter_threads", threads, "-filter_complex_threads", threads, *bounded], timeout)
 
 
 @dataclass
@@ -98,6 +112,29 @@ def make_mezzanine(src: Path, dest: Path, fps: float = 30.0) -> Path:
         "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dest),
     ])
     return dest
+
+
+#: Codecs ffmpeg seeks reliably once they are in an indexed mp4. A source in
+#: one of these never needs re-encoding on the way in.
+COPYABLE = {"h264", "hevc", "vp9", "av1"}
+
+
+def remux_copy(src: Path, dest: Path) -> Path:
+    """Keep the video bit-for-bit; normalise the audio and container only.
+
+    FFmpeg decodes the retained source when rendering individual clips, so a
+    long 4K import need not first encode every frame into another 4K video.
+    Encoding a whole source is minutes of work; this is seconds.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    ffmpeg(["-i", str(src), "-map", "0:v:0", "-map", "0:a:0?",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "160k",
+            "-movflags", "+faststart", str(dest)])
+    return dest
+
+
+#: The name this arrived under. AV1 was the first codec it was needed for.
+remux_av1 = remux_copy
 
 
 def extract_audio(src: Path, dest: Path, rate: int = 16000) -> Path:

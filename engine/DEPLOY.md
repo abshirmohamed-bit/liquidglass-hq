@@ -63,7 +63,12 @@ header belongs to that table, so keep them above the first `[section]`.
 
 **`auto_stop_machines = "off"` must stay off.** Fly's proxy only sees inbound
 HTTP. It cannot see a render in progress, so with autostop on, Fly would stop
-the machine mid-encode and the export would never finish.
+the machine mid-encode and the export would never finish. The Engine puts
+itself to sleep instead — see "Paying only for the hours you use" below.
+
+**`[[restart]] policy = "on-failure"` must stay that way.** The Engine shuts
+itself down with a clean exit when idle. `policy = "always"` would restart it
+within seconds and the machine would never actually sleep.
 
 **`kill_timeout = "300s"` must stay above `SHUTDOWN_GRACE_S` (120s).** On
 deploy, Fly sends SIGTERM; the Engine stops taking new work and lets the
@@ -97,9 +102,56 @@ fly scale vm performance-4x    # renders feel slow
 fly volumes extend <id> -s 25  # running out of disk
 ```
 
-**Cost.** `performance-2x` with 4GB running continuously is the bulk of the
-bill, plus Tigris storage and egress. Encoding is the expensive part; check
-Fly's current pricing before committing.
+**Cost.** The machine is the bulk of the bill, plus Tigris storage and egress.
+Fly bills the machine per second that it runs, so what you pay depends far
+more on whether it sleeps than on how big it is — see below. Check Fly's
+current pricing before committing.
+
+## Paying only for the hours you use
+
+Left alone, a Fly machine runs every second of the month whether anyone uses
+it or not. The Engine instead stops itself once it has been quiet, and Fly's
+proxy starts it again the next time the app calls it. A machine used an hour a
+day is billed for an hour a day.
+
+```bash
+fly machine list               # "stopped" is the state you want when idle
+fly logs                       # look for: sleeping: idle for 604s ...
+```
+
+Three settings make it work, and all three are already in `fly.toml`:
+
+| setting | value | why |
+| --- | --- | --- |
+| `IDLE_SHUTDOWN_S` | `600` | quiet minutes before sleeping; `0` runs it 24/7 |
+| `auto_start_machines` | `true` | the next request wakes it |
+| `min_machines_running` | `0` | nothing to wake up if Fly keeps one running |
+
+**It will not sleep on top of your work.** The decision is made by the Engine,
+not by Fly, precisely because Fly cannot see a render. `app/idle.py` refuses to
+sleep while any job, import or export is queued or processing, while an asset
+is still importing, or while a finished clip still owes the app a webhook.
+A job parked at `awaiting_confirmation` is the one exception: that waits on a
+person, who may not come back for days.
+
+**What you will notice.** The first call after a sleep waits a few seconds for
+the machine to boot. `engineClient` in the app expects this and retries a
+refused connection or a 503 three times before reporting a problem, so a cold
+start looks like a slow click rather than an error.
+
+**Change the timeout** without a redeploy:
+
+```bash
+fly secrets set IDLE_SHUTDOWN_S=1800    # half an hour
+fly secrets set IDLE_SHUTDOWN_S=0       # stay up around the clock
+```
+
+A browser tab left open on a page that polls the Engine counts as use and will
+keep it awake. Close the tab when you are done for the day.
+
+**The volume is billed either way.** Disk is charged per GB-month whether the
+machine runs or not, so a 10GB volume costs the same while asleep. Only the
+CPU and RAM stop.
 
 **Scaling.** One machine processes jobs one at a time. For more throughput:
 
@@ -109,3 +161,54 @@ fly scale count 2
 
 Each machine needs its own volume, and each runs its own worker. Jobs are
 claimed from the database, so they will not collide.
+
+## When YouTube says "sign in to confirm you're not a bot"
+
+YouTube scores the address a request comes from, and a cloud machine's address
+scores badly. The same video your browser plays without a thought can be
+refused to the Engine. The image already does everything that can be done
+from this side: it mints a PO token locally, solves YouTube's JavaScript
+challenge with Node, uses IPv4 only, and tries several player clients before
+giving up. No account and no cookies are involved.
+
+If a link is still refused, there are two reliable ways out.
+
+**A residential proxy.** This is the real fix: it gives requests an address
+that is not a datacentre. Any residential provider works.
+
+```bash
+fly secrets set YTDLP_PROXY="http://user:pass@host:port"
+```
+
+**Upload the file instead.** Download the video yourself and upload it in the
+Library. Nothing is asked of YouTube, so nothing can be refused.
+
+A cookies file is a third option and the worst one. Put a `cookies.txt` at
+`/data/cookies.txt` on the volume and the Engine will use it. The cookies
+expire within weeks, and the Google account that exported them can be
+rate-limited or locked for being used from a server — so never use your own
+account for this.
+
+## Faster transcription with Groq
+
+Transcribing on the Engine's own CPU is the slow part of a job: minutes for a
+long video. Groq runs the same Whisper family on their hardware at a couple of
+hundred times real time, and at `whisper-large-v3-turbo` rather than the
+`small` model this machine can afford. A 20-minute video costs about 1.3 cents
+and comes back in seconds.
+
+```bash
+fly secrets set GROQ_API_KEY="gsk_..."
+```
+
+That is the whole change. With a key set the Engine uses Groq; without one it
+uses its own CPU, and it falls back to the CPU on its own if Groq is
+rate-limited or down. To check which is live:
+
+```
+GET /v1/health   ->   "transcribe_provider": "groq" | "faster-whisper"
+```
+
+To pin it either way, set `TRANSCRIBE_PROVIDER` to `groq` (fail loudly if Groq
+is unreachable) or `faster-whisper` (never leave the machine). Audio leaves the
+Engine when Groq is in use, which is the trade being made.

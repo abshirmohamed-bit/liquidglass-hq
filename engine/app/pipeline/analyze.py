@@ -16,6 +16,8 @@ from ..config import settings
 from ..errors import EngineError
 from .find import suggest_count
 
+log = logging.getLogger("engine.analyze")
+
 # Sites whose terms mean the creator must confirm they hold the rights.
 log = logging.getLogger("engine.analyze")
 
@@ -121,6 +123,7 @@ def _ytdlp(url: str) -> UrlInfo:
     except ImportError as e:  # pragma: no cover - production dependency
         raise EngineError("ENGINE_ERROR", "The link importer is not installed on this Engine.") from e
 
+<<<<<<< HEAD
     # Metadata only. ignore_no_formats_error matters: YouTube serves a thin or
     # empty format list to datacenter addresses, and without this yt-dlp fails
     # the whole extraction on format selection even though we never download here.
@@ -137,6 +140,27 @@ def _ytdlp(url: str) -> UrlInfo:
         # The creator gets one clear line; the operator needs the real thing.
         log.warning("yt-dlp could not read %s: %s", url, e)
         raise EngineError("IMPORT_FAILED", _friendly(str(e))) from e
+=======
+    from . import ytdlp_opts
+
+    # YouTube gates each player client differently, so a refusal for one is
+    # worth retrying as another before telling the user it cannot be read.
+    raw = None
+    last = ""
+    for client in ytdlp_opts.PLAYER_CLIENTS:
+        opts = {**ytdlp_opts.api_opts(client), "skip_download": True}
+        try:
+            with yt_dlp.YoutubeDL(opts) as y:
+                raw = y.extract_info(url, download=False)
+            break
+        except Exception as e:
+            last = str(e)
+            if not ytdlp_opts.looks_blocked(last):
+                raise EngineError("IMPORT_FAILED", _friendly(last)) from e
+            log.warning("yt-dlp was refused for %s as %s: %s", url, client, last)
+    if raw is None:
+        raise EngineError("IMPORT_FAILED", _friendly(last))
+>>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
     if not raw:
         raise EngineError("IMPORT_FAILED", "Nothing could be read from that link.")
     if raw.get("_type") == "playlist":
