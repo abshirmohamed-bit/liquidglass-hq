@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { ArrowLeft, Clapperboard, Scissors, Pencil, Trash2 } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft, Clapperboard, Scissors, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { EmptyState, LoadingGrid } from "./kit";
 import { NewJob } from "./newjob";
 import { Review } from "./review";
 import { reviewData } from "@/lib/review.functions";
-import { renameItem, trashItem } from "@/lib/library.functions";
+import { deleteVideos, renameItem } from "@/lib/library.functions";
 
 /**
  * Videos — the one place the day's work happens.
@@ -24,6 +24,19 @@ type Clip = Data["clips"][number];
 type Job = Data["jobs"][number];
 
 const err = (e: unknown) => toast.error(e instanceof Error ? e.message : "Something went wrong");
+
+/** Delete a video for good, with every clip and job that came from it. */
+async function removeVideo(id: string, name: string, clips: number, after: () => void) {
+  const tail = clips ? ` and its ${clips} clip${clips === 1 ? "" : "s"}` : "";
+  if (!window.confirm(`Delete “${name}”${tail}? This cannot be undone.`)) return;
+  try {
+    await deleteVideos({ data: { ids: [id] } });
+    toast.success("Deleted");
+    after();
+  } catch (e) {
+    err(e);
+  }
+}
 
 const mmss = (ms: number | null | undefined) => {
   const s = Math.max(0, Math.round((ms ?? 0) / 1000));
@@ -133,6 +146,19 @@ export function Videos({ video }: { video?: string | undefined }) {
                     .join(" · ")}
                 </span>
                 <span className={`status-pill ${s.tone}`}>{s.text}</span>
+                <button
+                  type="button"
+                  className="video-remove"
+                  aria-label={`Delete ${v.src.name}`}
+                  title="Delete this video"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void removeVideo(v.src.id, v.src.name, v.clips.length, () => void refresh());
+                  }}
+                >
+                  <X size={14} />
+                </button>
               </Link>
             );
           })}
@@ -150,6 +176,7 @@ function OneVideo({
   v: { src: Source; jobs: Job[]; clips: Clip[] };
   refresh: () => Promise<void> | void;
 }) {
+  const nav = useNavigate();
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(v.src.name);
   const s = state(v.src, v.jobs, v.clips);
@@ -228,18 +255,15 @@ function OneVideo({
           <Button
             size="sm"
             variant="ghost"
-            onClick={async () => {
-              try {
-                await trashItem({ data: { id: v.src.id, table: "source_assets" } });
-                toast.success("Moved to Trash");
-                await refresh();
-              } catch (e) {
-                err(e);
-              }
-            }}
+            onClick={() =>
+              void removeVideo(v.src.id, v.src.name, v.clips.length, () => {
+                void refresh();
+                nav({ to: "/videos", search: { v: undefined } });
+              })
+            }
           >
             <Trash2 size={14} />
-            Move to Trash
+            Delete video
           </Button>
         </div>
       </header>

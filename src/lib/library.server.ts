@@ -11,7 +11,12 @@ export async function deleteLibraryRow(db: SupabaseClient<Database>, table: "sou
     const r = await engineClient("DELETE", `/v1/assets/${encodeURIComponent(eid)}`);
     if (!r.ok && r.error.code !== "not_found" && r.error.code !== "HTTP_404") throw new Error(r.error.message);
   }
-  if (table === "source_assets") await db.from("clips").delete().eq("source_asset_id", id);
+  if (table === "source_assets") {
+    // Clips first, then the jobs that made them: a job with no source left is
+    // a row nothing can ever read again.
+    await db.from("clips").delete().eq("source_asset_id", id);
+    await db.from("clip_jobs").delete().eq("source_asset_id", id);
+  }
   const d = await db.from(table).delete().eq("id", id);
   if (d.error) throw new Error(d.error.message);
 }

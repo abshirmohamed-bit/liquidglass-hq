@@ -16,6 +16,12 @@ log = logging.getLogger("engine.worker")
 _stop = threading.Event()
 _thread: threading.Thread | None = None
 
+# The pipelines advance a job one stage per pass and nothing claims the row
+# while that stage runs. Two passes at once — the loop and a direct tick, or
+# two ticks — would both pick the same job and run the stage twice, which cuts
+# every clip twice. One pass at a time is the whole guarantee.
+_pass = threading.Lock()
+
 
 def tick() -> int:
     """One pass over everything that might have work. Returns items advanced."""
@@ -25,11 +31,12 @@ def tick() -> int:
     from .pipeline import imports as import_pipeline
 
     done = 0
-    for step in (import_pipeline.advance_one, job_pipeline.advance_one, export_pipeline.advance_one):
-        try:
-            done += 1 if step() else 0
-        except Exception:
-            log.exception("worker step failed")
+    with _pass:
+        for step in (import_pipeline.advance_one, job_pipeline.advance_one, export_pipeline.advance_one):
+            try:
+                done += 1 if step() else 0
+            except Exception:
+                log.exception("worker step failed")
     try:
         webhooks.deliver_due()
     except Exception:

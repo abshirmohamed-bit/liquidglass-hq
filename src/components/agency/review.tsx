@@ -1,14 +1,14 @@
 const ZIP_LIB = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, X, Scissors, Play, Copy, Star, ThumbsDown, Download, Share2, Merge, FileCode, Captions, ClipboardCheck } from "lucide-react";
+import { Check, X, Scissors, Play, Copy, Star, ThumbsDown, Download, Share2, Merge, FileCode, Captions, ClipboardCheck, Trash2 } from "lucide-react";
 import { EmptyState, LoadingGrid } from "./kit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
 import { finishSpec } from "@/lib/finish-rules";
 import { Distribute } from "./posts";
-import { reviewData, updateClip, setClipStatus, trimClip, duplicateClip, mergeClips, startExport, finishExport, shareJob, clipPreview } from "@/lib/review.functions";
+import { reviewData, updateClip, setClipStatus, trimClip, duplicateClip, mergeClips, startExport, finishExport, shareJob, clipPreview, deleteClips } from "@/lib/review.functions";
 import { CLIP_STATUSES, FLAG_FILTERS, defaultJob, filterClips, fromLabel, formatPrecise, parsePrecise, trimIssue, transcriptWords, sliceWords, snapToSentence, needsReexport, srtFor, timelineFile, mergeIssue, exportSize, type Resolution, type TimelineFormat } from "@/lib/review-rules";
 
 type Data = Awaited<ReturnType<typeof reviewData>>;
@@ -45,6 +45,11 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
   }, [d, job, status, source, mine, flags, search, sort, srcById]);
 
   async function act(ids: string[], s: "APPROVED" | "REJECTED") { try { await setClipStatus({ data: { ids, status: s } }); await refresh(); } catch (e) { err(e); } }
+  async function remove(ids: string[]) {
+    const many = ids.length > 1;
+    if (!window.confirm(many ? `Delete ${ids.length} clips? This cannot be undone.` : "Delete this clip? This cannot be undone.")) return;
+    try { const r = await deleteClips({ data: { ids } }); setSel((x) => x.filter((i) => !ids.includes(i))); await refresh(); toast.success(`${r.deleted} clip${r.deleted === 1 ? "" : "s"} deleted`); } catch (e) { err(e); }
+  }
   async function exportClips(ids: string[]) {
     try {
       const r = await startExport({ data: { ids, resolution: res } });
@@ -99,6 +104,7 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
       <strong>{sel.length} selected</strong>
       <Button size="sm" onClick={() => act(sel, "APPROVED")}><Check />Approve all</Button>
       <Button size="sm" variant="outline" onClick={() => act(sel, "REJECTED")}><X />Reject all</Button>
+      <Button size="sm" variant="outline" onClick={() => remove(sel)}><Trash2 />Delete</Button>
       <select aria-label="Resolution" value={res} onChange={(e) => setRes(e.target.value as Resolution)}><option value="HD">HD 1080×1920</option><option value="UHD">4K 2160×3840</option></select>
       <Button size="sm" onClick={() => exportClips(selected.filter((c) => c.status === "APPROVED").map((c) => c.id))}>Export approved</Button>
       <Button size="sm" variant="outline" onClick={async () => { void 0; const ready = selected.filter((c) => c.video_url); if (!ready.length) { toast.error("None of the selected clips are exported yet."); return; } const { zipSync } = (await import(/* @vite-ignore */ ZIP_LIB as string)) as { zipSync: (f: Record<string, Uint8Array>, o: { level: 0 }) => Uint8Array }; const files: Record<string, Uint8Array> = {}; for (const c of ready) files[`${(c.title ?? "clip").replace(/[^\w -]+/g, "")}-${c.id.slice(0, 6)}.mp4`] = new Uint8Array(await (await fetch(c.video_url!)).arrayBuffer()); save("clips.zip", zipSync(files, { level: 0 }).slice().buffer, "application/zip"); }}><Download />Download selected</Button>
@@ -112,7 +118,7 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
       action={<Button asChild size="sm"><Link to="/clips" search={{ source: undefined }}>Start a clip job</Link></Button>} /></section> :
       <div className={view === "grid" ? "lib-grid review-grid" : "review-list"}>{clips.map((c, i) => <ClipCard key={c.id} c={c} focused={i === focus} data={d!} selected={sel.includes(c.id)} rendering={rendering[c.id]}
         onSelect={(v) => setSel((x) => (v ? [...x, c.id] : x.filter((y) => y !== c.id)))} onAct={(s) => act([c.id], s)} onTrim={() => setTrim(c)} onPreview={() => setPreview(c)} onScore={() => setScoreOf(c)}
-        onExport={() => exportClips([c.id])} res={res} setRes={setRes} refresh={refresh} source={c.source_asset_id ? srcById.get(c.source_asset_id) : undefined} search={search} />)}</div>}
+        onExport={() => exportClips([c.id])} onDelete={() => remove([c.id])} res={res} setRes={setRes} refresh={refresh} source={c.source_asset_id ? srcById.get(c.source_asset_id) : undefined} search={search} />)}</div>}
     {trim && <TrimModal clip={trim} source={trim.source_asset_id ? srcById.get(trim.source_asset_id) : undefined} onClose={() => setTrim(null)} onSaved={async () => { setTrim(null); await refresh(); }} />}
     {preview && <PreviewModal clip={preview} source={preview.source_asset_id ? srcById.get(preview.source_asset_id) : undefined} search={search} onClose={() => setPreview(null)} onExport={() => { exportClips([preview.id]); setPreview(null); }} refresh={refresh} />}
     {scoreOf && <Modal title="Score details" onClose={() => setScoreOf(null)}><p><strong>Scene analysis:</strong> {scoreOf.scene_analysis || "No scene analysis for this clip."}</p><Transcript clip={scoreOf} source={scoreOf.source_asset_id ? srcById.get(scoreOf.source_asset_id) : undefined} search={search} /></Modal>}
@@ -124,8 +130,8 @@ function Grades({ c }: { c: Clip }) {
   return <div className="review-grades">{(["hook", "flow", "value", "trend"] as const).map((k) => <span key={k}>{k[0]!.toUpperCase() + k.slice(1)} {typeof g[k] === "number" ? g[k] : "—"}</span>)}</div>;
 }
 
-function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTrim, onPreview, onScore, onExport, res, setRes, refresh, source, search }: {
-  c: Clip; data: Data; selected: boolean; focused: boolean; rendering?: string | undefined; onSelect: (v: boolean) => void; onAct: (s: "APPROVED" | "REJECTED") => void; onTrim: () => void; onPreview: () => void; onScore: () => void; onExport: () => void; res: Resolution; setRes: (r: Resolution) => void; refresh: () => Promise<void>; source?: Source | undefined; search: string;
+function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTrim, onPreview, onScore, onExport, onDelete, res, setRes, refresh, source, search }: {
+  c: Clip; data: Data; selected: boolean; focused: boolean; rendering?: string | undefined; onSelect: (v: boolean) => void; onAct: (s: "APPROVED" | "REJECTED") => void; onTrim: () => void; onPreview: () => void; onScore: () => void; onExport: () => void; onDelete: () => void; res: Resolution; setRes: (r: Resolution) => void; refresh: () => Promise<void>; source?: Source | undefined; search: string;
 }) {
   const [title, setTitle] = useState(c.title ?? ""); const [posting, setPosting] = useState(false);
   const upd = async (f: Parameters<typeof updateClip>[0]["data"]) => { try { await updateClip({ data: f }); await refresh(); } catch (e) { err(e); } };
@@ -154,6 +160,7 @@ function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTr
       <Button size="sm" variant="outline" onClick={onTrim} disabled={c.status === "EXPORTING" || !!(c.edits as { segments?: unknown } | null)?.segments}><Scissors />Trim</Button>
       <Button size="sm" variant="outline" onClick={onPreview}><Play />Preview</Button>
       <Button size="sm" variant="outline" onClick={async () => { try { await duplicateClip({ data: { id: c.id } }); await refresh(); toast.success("Duplicated"); } catch (e) { err(e); } }}><Copy />Duplicate</Button>
+      <Button size="sm" variant="ghost" aria-label="Delete clip" onClick={onDelete}><Trash2 />Delete</Button>
     </div>
     {(c.status === "APPROVED" || reexport) && <div className="review-actions">
       <select aria-label="Export resolution" value={res} onChange={(e) => setRes(e.target.value as Resolution)}><option value="HD">HD</option><option value="UHD">4K</option></select>

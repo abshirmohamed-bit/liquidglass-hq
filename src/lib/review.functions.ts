@@ -135,6 +135,27 @@ export const finishExport = createServerFn({ method: "POST" }).middleware([requi
     return applyEngineEvent(context.supabase, ev);
   });
 
+/**
+ * Delete clips for good — the Engine's copy and ours. Rejecting a clip hides
+ * it; this removes it, which is what you want when a run was simply wrong.
+ */
+export const deleteClips = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ ids: z.array(z.string().uuid()).min(1).max(200) }))
+  .handler(async ({ context, data }) => {
+    const db = context.supabase;
+    const rows = must(await db.from("clips").select("id,engine_project_id").in("id", data.ids));
+    const { engineClient } = await import("./engine.server");
+    for (const c of rows) {
+      if (!c.engine_project_id) continue;
+      // A clip the Engine has already forgotten is still a clip we can drop.
+      const r = await engineClient("DELETE", `/v1/projects/${encodeURIComponent(c.engine_project_id)}`);
+      if (!r.ok && r.error.code !== "NOT_FOUND" && r.error.code !== "HTTP_404") throw new Error(r.error.message);
+    }
+    const d = await db.from("clips").delete().in("id", data.ids);
+    if (d.error) throw new Error(d.error.message);
+    return { deleted: rows.length };
+  });
+
 export const shareJob = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ jobId: z.string().uuid() }))
   .handler(async ({ context, data }) => {

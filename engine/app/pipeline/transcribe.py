@@ -104,9 +104,11 @@ def _fake(audio: Path, duration_s: float) -> Transcription:
 
 
 def _faster_whisper(audio: Path, vocabulary: list[str], language: str | None) -> Transcription:
-    from faster_whisper import WhisperModel
+    import os
     import wave
+
     import numpy as np
+    from faster_whisper import WhisperModel
 
     cfg = settings()
     device = cfg.whisper_device
@@ -120,8 +122,11 @@ def _faster_whisper(audio: Path, vocabulary: list[str], language: str | None) ->
     key = f"{cfg.whisper_model}:{device}"
     model = _model_cache.get(key)
     if model is None:
+        # More threads than cores makes a CPU GEMM workload slower, not faster.
+        # A Fly performance-2x has two.
+        cores = os.cpu_count() or 2
         model = WhisperModel(cfg.whisper_model, device=device, compute_type="float16" if device == "cuda" else "int8",
-                             cpu_threads=max(1, min(4, cfg.processing_threads)), num_workers=1)
+                             cpu_threads=max(1, min(cores, cfg.processing_threads or cores)), num_workers=1)
         _model_cache[key] = model
 
     prompt = ", ".join(vocabulary[:30]) if vocabulary else None
@@ -135,7 +140,16 @@ def _faster_whisper(audio: Path, vocabulary: list[str], language: str | None) ->
         samples, word_timestamps=True, vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 500},
         language=language.replace("_", "-").split("-")[0].lower() if language and language.lower() != "auto" else None,
-        beam_size=5, initial_prompt=prompt,
+        initial_prompt=prompt,
+        # Speed, in the three places it is nearly free on CPU:
+        #   greedy decoding instead of a 5-wide beam,
+        #   no carrying context between segments, which also stops the
+        #     repetition loops Whisper falls into on music and silence,
+        #   two temperature retries instead of six, so one bad patch of audio
+        #     cannot quietly cost six re-decodes.
+        beam_size=1,
+        condition_on_previous_text=False,
+        temperature=[0.0, 0.2],
     )
     words: list[Word] = []
     for seg in segments:

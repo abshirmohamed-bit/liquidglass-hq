@@ -845,6 +845,17 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
   font-size: .95rem; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+.video-card { position: relative; }
+.video-remove {
+  position: absolute; top: 10px; right: 10px;
+  width: 26px; height: 26px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: color-mix(in oklab, #000 55%, transparent); color: #fff;
+  border: var(--hairline) solid color-mix(in oklab, #fff 22%, transparent);
+  opacity: 0; transition: opacity .15s ease, background .15s ease;
+}
+.video-card:hover .video-remove, .video-remove:focus-visible { opacity: 1; }
+.video-remove:hover { background: var(--destructive); }
 .video-back { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; margin-bottom: var(--s2); }
 .video-head { align-items: flex-start; gap: var(--s4); }
 

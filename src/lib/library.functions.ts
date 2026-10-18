@@ -191,6 +191,15 @@ export const deleteForever = createServerFn({ method: "POST" }).middleware([requ
     return true;
   });
 
+/** Delete whole videos for good, with every clip and job that came from them. */
+export const deleteVideos = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ ids: z.array(z.string().uuid()).min(1).max(100) }))
+  .handler(async ({ context, data }) => {
+    const { deleteLibraryRow } = await import("./library.server");
+    for (const id of data.ids) await deleteLibraryRow(context.supabase, "source_assets", id);
+    return { deleted: data.ids.length };
+  });
+
 export const setBrollMeta = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ id: z.string().uuid(), tags: z.array(z.string().trim().min(1).max(40)).max(10), isDefault: z.boolean() }))
   .handler(async ({ context, data }) => {

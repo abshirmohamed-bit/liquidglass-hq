@@ -240,6 +240,11 @@ def _gaps(covered: list[dict], start_ms: int, end_ms: int, min_gap: int = 4000) 
 
 
 def _cut(s: Session, job: Job, asset: Asset, params: dict) -> None:
+    # Cutting is the one stage that creates rows, so it is the one stage where
+    # running twice is visible: the job would deliver double the clips asked
+    # for. If this job already has its clips, the stage has already run.
+    if s.exec(select(Project).where(Project.job_id == job.id)).first():
+        return
     moments = [finder.Moment(**m) for m in (job.params or {}).get("_moments", [])]
     transcript = s.exec(select(Transcript).where(Transcript.asset_id == asset.id)).first()
     words = list(transcript.words) if transcript else []
