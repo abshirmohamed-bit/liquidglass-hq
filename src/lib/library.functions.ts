@@ -136,8 +136,9 @@ export const engineImport = createServerFn({ method: "POST" }).middleware([requi
 export const importedSourceStatus = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ id: z.string().uuid() }))
   .handler(async ({ context, data }) => {
-    const row = await context.supabase.from("source_assets").select("status,error,engine_asset_id").eq("id", data.id).single();
+    const row = await context.supabase.from("source_assets").select("status,error,engine_asset_id").eq("id", data.id).maybeSingle();
     if (row.error) throw new Error(row.error.message);
+    if (!row.data) throw new Error("That video is no longer in your library — it may have been deleted while it was importing.");
     if (row.data.status !== "UPLOADING" || !row.data.engine_asset_id) return { status: row.data.status, error: row.data.error };
     const r = await (await engine())<EngineAsset>("GET", `/v1/assets/${encodeURIComponent(row.data.engine_asset_id)}`);
     if (!r.ok) throw new Error(r.error.message);
@@ -146,9 +147,15 @@ export const importedSourceStatus = createServerFn({ method: "POST" }).middlewar
       ? { status: "FAILED", error: typeof x.error === "string" ? x.error : x.error?.message || "Import failed" }
       : x.status === "ready" && x.url ? sourceFields(x) : null;
     if (!fields) return { status: "UPLOADING", error: null };
-    const updated = await context.supabase.from("source_assets").update(fields).eq("id", data.id).select("status,error").single();
+    // This runs on a poll, so it must not be the thing that kills a job. A
+    // write that returns no row is not proof the write failed — read the row
+    // back and report what is actually there.
+    const updated = await context.supabase.from("source_assets").update(fields).eq("id", data.id).select("status,error").maybeSingle();
     if (updated.error) throw new Error(updated.error.message);
-    return updated.data;
+    if (updated.data) return updated.data;
+    const after = await context.supabase.from("source_assets").select("status,error").eq("id", data.id).maybeSingle();
+    if (after.data) return after.data;
+    return { status: String(fields.status ?? "UPLOADING"), error: null };
   });
 
 /** Polls GET /v1/assets/{id} for link imports still UPLOADING. */

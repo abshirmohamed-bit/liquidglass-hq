@@ -90,8 +90,8 @@ export type ClipWorkspace = Awaited<ReturnType<typeof clipWorkspace>>;
 export const createClipJob = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(jobFormSchema)
   .handler(async ({ context, data }) => {
-    const src = (await context.supabase.from("source_assets").select("id,name,duration_ms,status,kind,niche").eq("id", data.sourceId).single()).data;
-    if (!src) throw new Error("That source no longer exists.");
+    const src = (await context.supabase.from("source_assets").select("id,name,duration_ms,status,kind,niche").eq("id", data.sourceId).maybeSingle()).data;
+    if (!src) throw new Error("That video is no longer in your library.");
     if (src.status !== "READY") throw new Error("This source is not ready yet.");
     if (!["UPLOAD", "LINK"].includes(src.kind)) throw new Error("Only videos can be clipped.");
     const durationIssue = sourceDurationIssue(src.duration_ms);
@@ -133,8 +133,9 @@ export const createClipJob = createServerFn({ method: "POST" }).middleware([requ
       formats: { layouts: data.layouts, extras: data.extras } as never,
       edits: { autopilot: data.autopilot } as never,
       progress: 0,
-    }).select("id").single();
+    }).select("id").maybeSingle();
     if (ins.error) throw new Error(ins.error.message);
+    if (!ins.data) throw new Error("The clip job could not be saved. Sign out and back in, then try again.");
     return { id: ins.data.id };
   });
 
