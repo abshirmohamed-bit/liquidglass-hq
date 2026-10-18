@@ -32,20 +32,12 @@ def tick() -> int:
     from .pipeline import imports as import_pipeline
 
     done = 0
-<<<<<<< HEAD
-    for step in (ingest_pipeline.advance_one, job_pipeline.advance_one, export_pipeline.advance_one):
-        try:
-            done += 1 if step() else 0
-        except Exception:
-            log.exception("worker step failed")
-=======
     with _pass:
         for step in (import_pipeline.advance_one, job_pipeline.advance_one, export_pipeline.advance_one):
             try:
                 done += 1 if step() else 0
             except Exception:
                 log.exception("worker step failed")
->>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
     try:
         webhooks.deliver_due()
     except Exception:

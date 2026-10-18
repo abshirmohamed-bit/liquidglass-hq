@@ -123,24 +123,6 @@ def _ytdlp(url: str) -> UrlInfo:
     except ImportError as e:  # pragma: no cover - production dependency
         raise EngineError("ENGINE_ERROR", "The link importer is not installed on this Engine.") from e
 
-<<<<<<< HEAD
-    # Metadata only. ignore_no_formats_error matters: YouTube serves a thin or
-    # empty format list to datacenter addresses, and without this yt-dlp fails
-    # the whole extraction on format selection even though we never download here.
-    opts = {
-        "quiet": True, "no_warnings": True, "skip_download": True,
-        "noplaylist": True, "socket_timeout": 20,
-        "ignore_no_formats_error": True,
-        "format": None,
-    }
-    try:
-        with yt_dlp.YoutubeDL(opts) as y:
-            raw = y.extract_info(url, download=False)
-    except Exception as e:
-        # The creator gets one clear line; the operator needs the real thing.
-        log.warning("yt-dlp could not read %s: %s", url, e)
-        raise EngineError("IMPORT_FAILED", _friendly(str(e))) from e
-=======
     from . import ytdlp_opts
 
     # YouTube gates each player client differently, so a refusal for one is
@@ -148,7 +130,10 @@ def _ytdlp(url: str) -> UrlInfo:
     raw = None
     last = ""
     for client, via_proxy in ytdlp_opts.attempts():
-        opts = {**ytdlp_opts.api_opts(client, via_proxy), "skip_download": True}
+        # format=None keeps yt-dlp from doing format selection at all on a
+        # metadata read, which is where a thin server-side list bites.
+        opts = {**ytdlp_opts.api_opts(client, via_proxy),
+                "skip_download": True, "format": None}
         try:
             with yt_dlp.YoutubeDL(opts) as y:
                 raw = y.extract_info(url, download=False)
@@ -161,7 +146,6 @@ def _ytdlp(url: str) -> UrlInfo:
                         " via proxy" if via_proxy else "", last)
     if raw is None:
         raise EngineError("IMPORT_FAILED", _friendly(last))
->>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
     if not raw:
         raise EngineError("IMPORT_FAILED", "Nothing could be read from that link.")
     if raw.get("_type") == "playlist":

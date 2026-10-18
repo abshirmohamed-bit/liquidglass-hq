@@ -6,14 +6,9 @@ import { Check, Link2, Loader2, Sparkles, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { analyzeLink, type LinkDetails } from "@/lib/analyze.functions";
-<<<<<<< HEAD
-import { engineImport, sourceStatus } from "@/lib/library.functions";
-import { createClipJob } from "@/lib/clip.functions";
-=======
 import { engineImport, importedSourceStatus } from "@/lib/library.functions";
 import { waitForImportedSource } from "@/lib/import-wait";
 import { clipJobStatus, createClipJob } from "@/lib/clip.functions";
->>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
 import { ASPECT_OPTIONS, GENRES, LENGTH_BANDS, bandByValue } from "@/lib/clip-rules";
 
 /** The clip models, in the creator's words rather than the engine's. */
@@ -113,7 +108,6 @@ export function NewJob() {
   const [url, setUrl] = useState("");
   const [details, setDetails] = useState<LinkDetails | null>(null);
   const [opts, setOpts] = useState<Options | null>(null);
-  const [stage, setStage] = useState("");
   const set = <K extends keyof Options>(k: K, v: Options[K]) =>
     setOpts((o) => (o ? { ...o, [k]: v } : o));
 
@@ -130,29 +124,6 @@ export function NewJob() {
     mutationFn: async () => {
       if (!details || !opts) throw new Error("Paste a link first.");
       const band = bandByValue(opts.band);
-<<<<<<< HEAD
-      setStage("Fetching the video…");
-      const imported = await engineImport({
-        data: { url: details.url, name: details.title, rightsConfirmed: opts.rights },
-      });
-
-      // The Engine downloads in the background; a long video takes minutes.
-      if (!imported.ready) {
-        const deadline = Date.now() + 20 * 60_000;
-        for (;;) {
-          await new Promise((r) => setTimeout(r, 4000));
-          const s = await sourceStatus({ data: { id: imported.id } });
-          if (s.status === "READY") break;
-          if (s.status === "FAILED") throw new Error(s.error ?? "That video could not be downloaded.");
-          if (Date.now() > deadline) {
-            throw new Error("Still downloading. It will appear in the Library when it finishes.");
-          }
-        }
-      }
-
-      setStage("Starting the clip job…");
-      return createClipJob({
-=======
       const imported = await importVideo({
         data: { url: details.url, name: details.title, rightsConfirmed: opts.rights },
       });
@@ -161,7 +132,6 @@ export function NewJob() {
       }
       setPhase("clipping");
       return createJob({
->>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
         data: {
           sourceId: imported.id,
           rangeStartMs: opts.startMs > 0 ? opts.startMs : null,
@@ -202,17 +172,6 @@ export function NewJob() {
         },
       });
     },
-<<<<<<< HEAD
-    onSuccess: () => {
-      setStage("");
-      toast.success("Finding your clips. They'll appear in Review when they're ready.");
-      setDetails(null);
-      setOpts(null);
-      setUrl("");
-      navigate({ to: "/clips", search: { source: undefined } });
-    },
-    onError: (e: Error) => { setStage(""); toast.error(e.message); },
-=======
     // The card stays put and follows the job through, rather than throwing the
     // user onto another screen to wonder whether anything is happening.
     onSuccess: (job) => setJobId(job.id),
@@ -220,7 +179,6 @@ export function NewJob() {
       setFailure(e.message);
       setPhase("failed");
     },
->>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
   });
 
   const running = phase === "importing" || phase === "clipping";
@@ -465,15 +423,9 @@ export function NewJob() {
             <Button variant="ghost" type="button" onClick={reset}>
               Cancel
             </Button>
-<<<<<<< HEAD
-            <Button type="button" disabled={blocked || start.isPending} onClick={() => start.mutate()}>
-              {start.isPending ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-              {start.isPending ? (stage || "Working") : "Get clips"}
-=======
             <Button type="button" disabled={blocked} onClick={begin}>
               <Sparkles size={16} />
               Get clips
->>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
             </Button>
           </div>
         </div>

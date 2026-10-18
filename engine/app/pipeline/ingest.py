@@ -164,31 +164,15 @@ def _ytdlp(url: str, dest: Path) -> None:
     from . import ytdlp_opts
 
     dest.parent.mkdir(parents=True, exist_ok=True)
-<<<<<<< HEAD
-    cmd = [exe, "--no-playlist", "--quiet", "--no-warnings",
-           # Widening fallbacks: a restricted format list is common from a server.
-           "-f", ("bestvideo[height<=2160]+bestaudio/best[height<=2160]/"
-                  "bv*+ba/b[height<=2160]/b"),
-           "--merge-output-format", "mp4", "-o", str(dest), url]
-    cookies = Path("/data/cookies.txt")
-    if cookies.exists():
-        cmd[1:1] = ["--cookies", str(cookies)]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-    if proc.returncode != 0 or not dest.exists():
-        err = (proc.stderr or "").strip()
-        if "requested format is not available" in err.lower() or "no video formats" in err.lower():
-            raise EngineError(
-                "IMPORT_FAILED",
-                "YouTube did not offer this server a usable video format. Download the "
-                "video and upload it from the Library instead.")
-        tail = err.splitlines()[-2:]
-        raise EngineError("VALIDATION_ERROR", "Could not fetch that link: " + " / ".join(tail))
-=======
     last = ""
     for client, via_proxy in ytdlp_opts.attempts():
         cmd = [exe, "--no-playlist", "--quiet", "--no-warnings",
                *ytdlp_opts.cli_args(client, via_proxy),
-               "-f", "bestvideo[height<=2160]+bestaudio/best[height<=2160]/best",
+               # Widening fallbacks, kept from Lovable's fix: YouTube offers a
+               # server a thinner format list than a browser, and the strict
+               # selector alone fails on videos that are perfectly downloadable.
+               "-f", ("bestvideo[height<=2160]+bestaudio/best[height<=2160]/"
+                      "bv*+ba/b[height<=2160]/b"),
                "--merge-output-format", "mp4", "-o", str(dest), url]
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         if proc.returncode == 0 and dest.exists():
@@ -214,9 +198,12 @@ def _download_error(stderr: str) -> str:
         return ("YouTube would not serve this video to the Engine — it asks a "
                 "cloud server to prove it is not a bot. Download the video and "
                 "upload the file instead, or set a residential proxy on the Engine.")
+    low = stderr.lower()
+    if "requested format is not available" in low or "no video formats" in low:
+        return ("YouTube did not offer this server a usable video format. "
+                "Download the video and upload it from the Library instead.")
     tail = stderr.strip().splitlines()[-2:]
     return "Could not fetch that link: " + " / ".join(tail)
->>>>>>> ef374e3fde4745c5daf14f7ab8c8b59a6c24b719
 
 
 def asset_event(asset: Asset) -> dict:
