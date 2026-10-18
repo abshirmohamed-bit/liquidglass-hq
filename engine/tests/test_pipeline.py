@@ -243,3 +243,39 @@ def test_finalizing_without_projects_is_not_success(api, uploaded_asset):
         with pytest.raises(RuntimeError, match="No usable moments"):
             jobs._step(s, job)
         assert job.status != "completed"
+
+
+def test_the_finished_job_hands_over_everything_the_editor_needs(api, uploaded_asset):
+    """The app should never ask a person to transcribe a clip twice.
+
+    Everything here was computed while the source was being processed. If it
+    does not travel with the finished job, the editor opens empty and offers
+    to do the work again.
+    """
+    from sqlmodel import select
+
+    from app.db import session
+    from app.models import WebhookEvent
+
+    with session() as s:
+        events = s.exec(select(WebhookEvent).where(WebhookEvent.event == "autoclip.completed")).all()
+        assert events, "a completed job should announce itself"
+        clips = events[-1].data["clips"]
+
+    assert clips, "the event should carry the clips"
+    finish = clips[0]["finish"]
+    assert finish["captions"], "the words the Engine already transcribed"
+    assert {"text", "start_ms", "end_ms"} <= set(finish["captions"][0])
+    assert finish["caption_style_id"], "a style to draw them in"
+    assert finish["title_text"], "the hook the finder wrote"
+    assert finish["title_style"]
+    assert finish["aspect"] and finish["layout"]
+    assert "framing" in finish and "watermark" in finish
+
+
+def test_polling_a_running_job_stays_light(api, uploaded_asset):
+    """The app polls this shape every second; the words do not belong in it."""
+    jobs = api.get("/v1/autoclip").json()["autoclips"]
+    job = next(j for j in jobs if j["clips"])
+    assert "finish" not in job["clips"][0]
+    assert job["clips"][0]["title"], "the summary still names the clip"

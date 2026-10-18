@@ -48,6 +48,22 @@ export function Editor({ clipId }: { clipId: string }) {
     setOv((c.overlays as Overlays | null) ?? {}); setMark(c.watermark_text ?? q.data?.brand?.handle ?? ""); setAspect(c.aspect ?? "9:16");
   }, [c, q.data]);
   const style = useMemo(() => styleFor(presetId, custom), [presetId, custom]);
+  /**
+   * Picking a style re-flows the words to that style's line length. Without
+   * this, choosing "Word pop" leaves the four-word lines of the style before
+   * it and the preview looks nothing like the button that was pressed.
+   */
+  function pickPreset(id: string) {
+    const keep = {
+      ...(custom.x != null ? { x: custom.x } : {}),
+      ...(custom.y != null ? { y: custom.y } : {}),
+    };
+    setPresetId(id);
+    setCustom(keep);
+    const next = styleFor(id, keep).maxWords;
+    if (cues.length && next !== style.maxWords)
+      setCues((c) => cuesFromWords(wordsFromCues(c), next));
+  }
   if (q.isLoading) return <div className="page"><p className="muted">Loading…</p></div>;
   if (!c) return <div className="page"><p>Clip not found.</p></div>;
   const start = c.start_ms ?? 0, end = c.end_ms ?? 0;
@@ -109,7 +125,7 @@ export function Editor({ clipId }: { clipId: string }) {
           <div className="review-actions"><Button size="sm" onClick={transcribe} disabled={!!busy}><Captions />{cues.length ? "Re-transcribe" : "Transcribe & add captions"}</Button>
             <label className="lib-check"><input type="checkbox" checked={captionsOn} onChange={(e) => setCaptionsOn(e.target.checked)} />Captions on</label></div>
           <h3>Style</h3>
-          <div className="preset-grid">{CAPTION_PRESETS.map((p) => { const s = styleFor(p.id); return <button key={p.id} aria-pressed={presetId === p.id} className={`preset ${presetId === p.id ? "on" : ""}`} onClick={() => { setPresetId(p.id); setCustom((x) => ({ ...(x.x != null ? { x: x.x } : {}), ...(x.y != null ? { y: x.y } : {}) })); }}>
+          <div className="preset-grid">{CAPTION_PRESETS.map((p) => { const s = styleFor(p.id); return <button key={p.id} aria-pressed={presetId === p.id} className={`preset ${presetId === p.id ? "on" : ""}`} onClick={() => pickPreset(p.id)}>
             <span style={{ color: s.fill, WebkitTextStroke: s.box ? undefined : `${Math.min(2, s.outlineW / 3)}px ${s.outline}`, background: s.box ? s.boxColor : undefined, textTransform: s.uppercase ? "uppercase" : undefined }}>Aa {s.active && <em style={{ color: s.active }}>word</em>}</span><small>{p.name}</small></button>; })}</div>
           <details><summary>Customise</summary><div className="editor-fields">
             <label>Size<input type="range" min={28} max={120} value={style.size} onChange={(e) => setS("size", +e.target.value)} /></label>
@@ -128,7 +144,7 @@ export function Editor({ clipId }: { clipId: string }) {
           <p className="caption muted">Drag the caption on the preview to move it. Position: {Math.round(style.x)}% × {Math.round(style.y)}%</p>
           <div className="review-actions">{[["Top", 18], ["Middle", 50], ["Lower", 72], ["Bottom", 86]].map(([n, y]) => <Button key={n} size="sm" variant="ghost" onClick={() => setCustom((x) => ({ ...x, x: 50, y: y as number }))}>{n}</Button>)}</div>
           <h3>Caption text</h3>
-          {!cues.length ? <p className="caption muted">Transcribe the clip to get captions, then fix any word here.</p> :
+          {!cues.length ? <p className="caption muted">This clip has no captions yet. Use Transcribe &amp; add captions, then fix any word here.</p> :
             <div className="cue-list">{cues.map((q2, i) => <label key={i} className={now >= q2.start_ms && now < q2.end_ms ? "on" : ""}><small>{((q2.start_ms - start) / 1000).toFixed(1)}s</small><input value={q2.text} onChange={(e) => setCues((x) => x.map((y, j) => (j === i ? { ...y, text: e.target.value } : y)))} /></label>)}</div>}
           <p className="caption muted">{words.length} words</p>
         </>}

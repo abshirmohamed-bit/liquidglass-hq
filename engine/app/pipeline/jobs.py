@@ -121,7 +121,9 @@ def _step(s: Session, job: Job) -> None:
             "autoclip_id": job.id,
             "source_name": _source_name(s, job),
             "processing_seconds": round(job.processing_s),
-            "clips": clips_payload(s, job.id),
+            # full: the app writes these onto each clip so the editor opens
+            # ready — captions, title, watermark and layout already in place.
+            "clips": clips_payload(s, job.id, full=True),
         })
         return
 
@@ -290,13 +292,24 @@ def _source_name(s: Session, job: Job) -> str:
     return (asset.name if asset else "") or "your video"
 
 
-def clips_payload(s: Session, job_id: str) -> list[dict]:
+def clips_payload(s: Session, job_id: str, full: bool = False) -> list[dict]:
     projects = s.exec(select(Project).where(Project.job_id == job_id).order_by(Project.index)).all()
-    return [project_summary(p) for p in projects]
+    return [project_summary(p, full=full) for p in projects]
 
 
-def project_summary(p: Project) -> dict:
-    return {
+def project_summary(p: Project, full: bool = False) -> dict:
+    """What a finished clip looks like to the app.
+
+    `full` adds everything needed to open the clip in the editor without any
+    further work: the words with their timings, the caption style, the title,
+    the watermark and the framing. All of it was computed while the source was
+    being processed, so handing it over now is what stops the app asking the
+    person to transcribe a clip the Engine already transcribed.
+
+    It is off by default because the app polls this same shape while a job
+    runs, and the words are by far the largest part of it.
+    """
+    out = {
         "project_id": p.id, "index": p.index, "title": (p.title or {}).get("text", ""),
         "start_ms": p.in_ms, "end_ms": p.out_ms, "duration_ms": p.out_ms - p.in_ms,
         "thumbnail_url": storage.public_url(p.thumb_key) if p.thumb_key else "",
@@ -304,3 +317,17 @@ def project_summary(p: Project) -> dict:
         "reason": p.reason, "alternate_of": p.alternate_of or None,
         "faces": p.faces or [],
     }
+    if full:
+        out["finish"] = {
+            # Word-level, already re-based so the clip starts at zero.
+            "captions": list(p.captions or []),
+            "caption_style_id": p.caption_style_id or "",
+            "caption_options": p.caption_options or {},
+            "title_text": (p.title or {}).get("text", ""),
+            "title_style": (p.title or {}).get("style", "") or "bold_band",
+            "watermark": p.watermark or {},
+            "aspect": p.aspect or "",
+            "layout": p.layout or "",
+            "framing": p.framing or {},
+        }
+    return out

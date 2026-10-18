@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { cuesFromWords, styleFor } from "@/lib/finish-rules";
 
 /**
  * Shared Engine event applier. The signed webhook route and the internal
@@ -11,6 +12,66 @@ export type EngineEvent = { id: string; type: string; data?: Record<string, unkn
 export type EventResult = "processed" | "ignored" | "duplicate";
 
 const d = (ev: EngineEvent) => (ev.data ?? {}) as Record<string, unknown>;
+
+/**
+ * The Engine transcribes the source, picks the titles and settles the framing
+ * while the video is still being processed. This turns that work into the
+ * columns the editor reads, so a finished clip opens with its captions, title,
+ * watermark and layout already in place instead of a "transcribe first" button
+ * over work that was done minutes ago.
+ */
+export function finishColumns(raw: unknown): Record<string, unknown> {
+  const f = (raw ?? {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  // Two callers, two shapes: the webhook sends title_text/title_style flat,
+  // a project read sends title as { text, style }. Accept both.
+  const title = (f["title"] ?? {}) as Record<string, unknown>;
+  const titleText =
+    typeof f["title_text"] === "string"
+      ? f["title_text"]
+      : typeof title["text"] === "string"
+        ? title["text"]
+        : "";
+  const titleStyle =
+    typeof f["title_style"] === "string" && f["title_style"]
+      ? f["title_style"]
+      : typeof title["style"] === "string"
+        ? title["style"]
+        : "";
+
+  // Word-level timings from the Engine, grouped into lines at the length the
+  // chosen caption style asks for — the same grouping the editor would do.
+  const words = (Array.isArray(f["captions"]) ? f["captions"] : [])
+    .map((w) => (w ?? {}) as Record<string, unknown>)
+    .filter(
+      (w) =>
+        typeof w["text"] === "string" &&
+        typeof w["start_ms"] === "number" &&
+        typeof w["end_ms"] === "number",
+    )
+    .map((w) => ({
+      text: String(w["text"]),
+      start_ms: Math.round(w["start_ms"] as number),
+      end_ms: Math.round(w["end_ms"] as number),
+    }));
+  const styleId = typeof f["caption_style_id"] === "string" ? f["caption_style_id"] : "";
+  if (words.length) out["captions"] = cuesFromWords(words, styleFor(styleId).maxWords) as never;
+  if (styleId) out["caption_style_id"] = styleId;
+  if (f["caption_options"] && typeof f["caption_options"] === "object")
+    out["caption_options"] = f["caption_options"] as never;
+
+  if (titleText.trim()) out["title_text"] = titleText.trim();
+  if (titleStyle) out["title_style"] = titleStyle;
+
+  const mark = (f["watermark"] ?? {}) as Record<string, unknown>;
+  if (typeof mark["text"] === "string" && mark["text"].trim())
+    out["watermark_text"] = mark["text"].trim();
+
+  if (typeof f["aspect"] === "string" && f["aspect"]) out["aspect"] = f["aspect"];
+  if (typeof f["layout"] === "string" && f["layout"]) out["layout"] = f["layout"];
+  if (f["framing"] && typeof f["framing"] === "object") out["framing"] = f["framing"] as never;
+  return out;
+}
 
 async function audit(db: Db, ownerId: string | null, action: string, entity: string, entityId: string, details: unknown) {
   await db.from("audit_logs").insert({
@@ -77,6 +138,8 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
         reason: typeof c["reason"] === "string" ? c["reason"] : null,
         alternate_of: typeof c["alternate_of"] === "string" ? c["alternate_of"] : null,
         aspect: job.aspect, layout: firstLayout, status: "FOUND", last_event_id: ev.id,
+        // Last, so the Engine's own aspect/layout win over the job defaults.
+        ...finishColumns(c["finish"]),
       }, { onConflict: "job_id,engine_project_id", ignoreDuplicates: true }).select("id");
       if (ins.error) throw new Error(ins.error.message);
       inserted += ins.data?.length ?? 0;
