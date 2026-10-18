@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { ArrowLeft, Captions, Save, Send, Sparkles, Wand2 } from "lucide-react";
+import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Save, Send, SlidersHorizontal, Type, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { editorData, saveFinish, transcribeChunk } from "@/lib/finish.functions";
 import { startExport } from "@/lib/review.functions";
@@ -20,13 +20,11 @@ async function loadPreviewFont() {
   await f.load(); document.fonts.add(f); fontLoaded = true;
 }
 
-type Tab = "Subtitles" | "Title" | "Watermark" | "Layout";
 
 export function Editor({ clipId }: { clipId: string }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["editor", clipId], queryFn: () => editorData({ data: { id: clipId } }) });
   const c = q.data?.clip;
-  const [tab, setTab] = useState<Tab>("Subtitles");
   const [presetId, setPresetId] = useState("bold_white");
   const [custom, setCustom] = useState<Partial<CaptionStyle>>({});
   const [cues, setCues] = useState<Cue[]>([]);
@@ -37,6 +35,7 @@ export function Editor({ clipId }: { clipId: string }) {
   const [busy, setBusy] = useState(""); const [applyTo, setApplyTo] = useState<string[]>([]); const [posting, setPosting] = useState(false);
   const [now, setNow] = useState(0);
   const loaded = useRef(false);
+  const seek = useRef<((ms: number) => void) | null>(null);
   useEffect(() => { void loadPreviewFont().catch(() => {}); }, []);
   useEffect(() => {
     if (!c || loaded.current) return; loaded.current = true;
@@ -107,75 +106,115 @@ export function Editor({ clipId }: { clipId: string }) {
   }
   const setS = (k: keyof CaptionStyle, v: unknown) => setCustom((x) => ({ ...x, [k]: v }));
   const words = wordsFromCues(cues);
+  const canExport = ["APPROVED", "READY"].includes(c.status);
+  const exported = c.status === "READY" && !!c.video_url;
+  const step = exported ? 3 : canExport ? 2 : 1;
+  const posName = ([["Top", 18], ["Middle", 50], ["Lower", 72], ["Bottom", 86]] as const).find(([, y]) => Math.abs(style.y - y) < 4)?.[0];
+  const applyShared = async () => { const p = patch(); const { captions: _c, title_text: _t, ...shared } = p; try { await saveFinish({ data: { ids: applyTo, patch: shared } }); await saveFinish({ data: { ids: [clipId], patch: p } }); toast.success(`Applied to ${applyTo.length} clips`); setApplyTo([]); await qc.invalidateQueries({ queryKey: ["review"] }); } catch (e) { err(e); } };
 
-  return <div className="page editor-page">
-    <header className="page-header">
-      <div><Link to="/review" search={{ job: undefined }} className="caption muted"><ArrowLeft size={14} /> Review</Link><h1>{c.title ?? "Clip"}</h1><p className="page-subtitle">{Math.round((end - start) / 1000)}s · {c.status.toLowerCase()} {busy && <span className="status-pill tone-orange">{busy}</span>}</p></div>
-      <div className="review-actions">
-        <Button variant="outline" onClick={() => save()}><Save />Save</Button>
-        <Button variant="outline" onClick={() => save([clipId], true)}>Save as my defaults</Button>
-        <Button onClick={exportNow} disabled={!!busy || !["APPROVED", "READY"].includes(c.status)} title={["APPROVED", "READY"].includes(c.status) ? "" : "Approve the clip in Review first"}>Export video</Button>
-        <Button variant="outline" onClick={() => setPosting(true)} disabled={c.status !== "READY" || !c.video_url} title={c.status === "READY" ? "" : "Export first"}><Send />Post</Button>
+  return <div className="page ed-page">
+    <header className="ed-bar glass-panel">
+      <div className="ed-bar-title">
+        <Link to="/review" search={{ job: undefined }} className="ed-back" aria-label="Back to Review"><ArrowLeft size={16} /></Link>
+        <div className="min-w-0"><h1 className="ed-h1">{c.title ?? "Clip"}</h1>
+          <p className="caption">{Math.round((end - start) / 1000)}s · {c.status.toLowerCase()}{busy && <span className="status-pill tone-orange ed-busy"><Loader2 size={12} className="animate-spin" />{busy}</span>}</p></div>
+      </div>
+      <ol className="ed-steps" aria-label="Progress">
+        {["Edit", "Export", "Post"].map((s, i) => <li key={s} className={i + 1 < step ? "done" : i + 1 === step ? "now" : ""}><span>{i + 1 < step ? <Check size={11} /> : i + 1}</span>{s}</li>)}
+      </ol>
+      <div className="ed-bar-actions">
+        <Button variant="ghost" size="sm" onClick={() => save([clipId], true)} title="Use these settings on future clips">Save as defaults</Button>
+        <Button variant="outline" size="sm" onClick={() => save()}><Save />Save</Button>
+        <Button size="sm" onClick={exportNow} disabled={!!busy || !canExport} title={canExport ? "Render this clip" : "Approve the clip in Review first"}><Download />Export</Button>
+        <Button variant={exported ? "default" : "outline"} size="sm" onClick={() => setPosting(true)} disabled={!exported} title={exported ? "" : "Export first"}><Send />Post</Button>
       </div>
     </header>
-    <div className="editor-grid">
-      <section className="glass-panel editor-controls">
-        <div className="editor-tabs" role="tablist">{(["Subtitles", "Title", "Watermark", "Layout"] as Tab[]).map((t) => <button key={t} role="tab" aria-selected={tab === t} className={`status-pill ${tab === t ? "tone-blue" : ""}`} onClick={() => setTab(t)}>{t}</button>)}</div>
-        {tab === "Subtitles" && <>
-          <div className="review-actions"><Button size="sm" onClick={transcribe} disabled={!!busy}><Captions />{cues.length ? "Re-transcribe" : "Transcribe & add captions"}</Button>
-            <label className="lib-check"><input type="checkbox" checked={captionsOn} onChange={(e) => setCaptionsOn(e.target.checked)} />Captions on</label></div>
-          <h3>Style</h3>
-          <div className="preset-grid">{CAPTION_PRESETS.map((p) => { const s = styleFor(p.id); return <button key={p.id} aria-pressed={presetId === p.id} className={`preset ${presetId === p.id ? "on" : ""}`} onClick={() => pickPreset(p.id)}>
-            <span style={{ color: s.fill, WebkitTextStroke: s.box ? undefined : `${Math.min(2, s.outlineW / 3)}px ${s.outline}`, background: s.box ? s.boxColor : undefined, textTransform: s.uppercase ? "uppercase" : undefined }}>Aa {s.active && <em style={{ color: s.active }}>word</em>}</span><small>{p.name}</small></button>; })}</div>
-          <details><summary>Customise</summary><div className="editor-fields">
+
+    <div className="ed-layout">
+      <div className="ed-stage-col">
+        <div className="ed-dock glass-panel" role="toolbar" aria-label="Picture controls">
+          <div className="ed-dock-group"><span className="ed-dock-label">Format</span>
+            <div className="ed-seg">{ASPECTS.map((a) => <button key={a} aria-pressed={aspect === a} onClick={() => setAspect(a)}><i className="ed-ratio" style={{ aspectRatio: ratio(a) }} />{a}</button>)}</div></div>
+          <div className="ed-dock-group"><span className="ed-dock-label">Captions</span>
+            <div className="ed-seg">
+              <button aria-pressed={captionsOn} onClick={() => setCaptionsOn(!captionsOn)}>{captionsOn ? <Eye size={13} /> : <EyeOff size={13} />}{captionsOn ? "On" : "Off"}</button>
+              {[["Top", 18], ["Middle", 50], ["Lower", 72], ["Bottom", 86]].map(([n, y]) => <button key={n} aria-pressed={posName === n} disabled={!captionsOn} onClick={() => setCustom((x) => ({ ...x, x: 50, y: y as number }))}>{n}</button>)}
+            </div></div>
+          <div className="ed-dock-group"><span className="ed-dock-label">Overlays</span>
+            <div className="ed-seg">
+              <button aria-pressed={!!title.trim()} onClick={() => setTitle(title.trim() ? "" : (c.title ?? "Title"))}><Type size={13} />Title</button>
+              <button aria-pressed={!!mark.trim()} onClick={() => setMark(mark.trim() ? "" : (q.data?.brand?.handle ?? "@handle"))}><AtSign size={13} />Handle</button>
+            </div></div>
+        </div>
+
+        <Preview ctl={seek} src={src} videoUrl={c.video_url} start={start} end={end} aspect={aspect} style={style} cues={captionsOn ? cues : []} title={title} titleStyle={titleStyle} ov={ov} mark={mark} onTime={setNow} onMove={(x, y) => setCustom((s) => ({ ...s, x, y }))} />
+
+        <section className="glass-panel ed-script">
+          <div className="ed-sec-head"><div><h2>Caption text</h2><p className="caption">{cues.length ? `${cues.length} lines · ${words.length} words — click a time to jump there, type to fix a word.` : "No captions yet."}</p></div>
+            <Button size="sm" variant={cues.length ? "outline" : "default"} onClick={transcribe} disabled={!!busy}><Captions />{cues.length ? "Re-transcribe" : "Transcribe"}</Button></div>
+          {cues.length > 0 && <div className="ed-cues">{cues.map((q2, i) => { const on = now >= q2.start_ms && now < q2.end_ms; return <div key={i} className={`ed-cue ${on ? "on" : ""}`}>
+            <button className="ed-cue-time" onClick={() => seek.current?.(q2.start_ms)}>{((q2.start_ms - start) / 1000).toFixed(1)}s</button>
+            <input value={q2.text} aria-label={`Caption line ${i + 1}`} onChange={(e) => setCues((x) => x.map((y, j) => (j === i ? { ...y, text: e.target.value } : y)))} /></div>; })}</div>}
+        </section>
+      </div>
+
+      <aside className="ed-rail">
+        <section className="glass-panel ed-sec">
+          <div className="ed-sec-head"><h2>Caption style</h2></div>
+          <div className="ed-presets">{CAPTION_PRESETS.map((p) => { const s = styleFor(p.id); return <button key={p.id} aria-pressed={presetId === p.id} className="ed-preset" onClick={() => pickPreset(p.id)}>
+            <span className="ed-preset-swatch"><span style={{ color: s.fill, WebkitTextStroke: s.box ? undefined : `${Math.min(2, s.outlineW / 3)}px ${s.outline}`, paintOrder: "stroke fill", background: s.box ? s.boxColor : undefined, padding: s.box ? "0 4px" : undefined, borderRadius: 3, textTransform: s.uppercase ? "uppercase" : undefined }}>Aa{s.active && <em style={{ color: s.active }}> word</em>}</span></span>
+            <small>{p.name}</small></button>; })}</div>
+          <details className="ed-more"><summary><SlidersHorizontal size={14} />Fine-tune</summary><div className="ed-fields">
             <label>Size<input type="range" min={28} max={120} value={style.size} onChange={(e) => setS("size", +e.target.value)} /></label>
-            <label>Fill<input type="color" value={style.fill} onChange={(e) => setS("fill", e.target.value)} /></label>
-            <label>Outline<input type="color" value={style.outline} onChange={(e) => setS("outline", e.target.value)} /></label>
+            <div className="ed-row"><label>Fill<input type="color" value={style.fill} onChange={(e) => setS("fill", e.target.value)} /></label>
+              <label>Outline<input type="color" value={style.outline} onChange={(e) => setS("outline", e.target.value)} /></label>
+              <label>Active word<input type="color" value={style.active ?? "#30D158"} onChange={(e) => { setS("active", e.target.value); setS("animation", "karaoke"); }} /></label></div>
             <label>Outline width<input type="range" min={0} max={10} value={style.outlineW} onChange={(e) => setS("outlineW", +e.target.value)} /></label>
-            <label className="lib-check"><input type="checkbox" checked={style.box} onChange={(e) => setS("box", e.target.checked)} />Background box</label>
-            <label>Box colour<input type="color" value={style.boxColor} onChange={(e) => setS("boxColor", e.target.value)} /></label>
-            <label>Box opacity<input type="range" min={0.1} max={1} step={0.05} value={style.boxOpacity} onChange={(e) => setS("boxOpacity", +e.target.value)} /></label>
-            <label className="lib-check"><input type="checkbox" checked={style.uppercase} onChange={(e) => setS("uppercase", e.target.checked)} />UPPERCASE</label>
-            <label>Active word<input type="color" value={style.active ?? "#30D158"} onChange={(e) => { setS("active", e.target.value); setS("animation", "karaoke"); }} /></label>
-            <label>Animation<select value={style.animation} onChange={(e) => setS("animation", e.target.value)}>{["none", "pop", "karaoke", "bounce", "typewriter"].map((a) => <option key={a}>{a}</option>)}</select></label>
-            <label>Max words per line<input type="number" min={1} max={12} value={style.maxWords} onChange={(e) => setS("maxWords", +e.target.value)} /></label>
-            <Button size="sm" variant="ghost" onClick={() => setCues(cuesFromWords(wordsFromCues(cues), style.maxWords))} disabled={!cues.length}>Regroup lines</Button>
+            <label className="ed-check"><input type="checkbox" checked={style.box} onChange={(e) => setS("box", e.target.checked)} />Background box</label>
+            {style.box && <div className="ed-row"><label>Box colour<input type="color" value={style.boxColor} onChange={(e) => setS("boxColor", e.target.value)} /></label>
+              <label>Box opacity<input type="range" min={0.1} max={1} step={0.05} value={style.boxOpacity} onChange={(e) => setS("boxOpacity", +e.target.value)} /></label></div>}
+            <label className="ed-check"><input type="checkbox" checked={style.uppercase} onChange={(e) => setS("uppercase", e.target.checked)} />UPPERCASE</label>
+            <div className="ed-row"><label>Animation<select value={style.animation} onChange={(e) => setS("animation", e.target.value)}>{["none", "pop", "karaoke", "bounce", "typewriter"].map((a) => <option key={a}>{a}</option>)}</select></label>
+              <label>Words per line<input type="number" min={1} max={12} value={style.maxWords} onChange={(e) => setS("maxWords", +e.target.value)} /></label></div>
+            <Button size="sm" variant="outline" onClick={() => setCues(cuesFromWords(wordsFromCues(cues), style.maxWords))} disabled={!cues.length}>Regroup lines</Button>
           </div></details>
-          <p className="caption muted">Drag the caption on the preview to move it. Position: {Math.round(style.x)}% × {Math.round(style.y)}%</p>
-          <div className="review-actions">{[["Top", 18], ["Middle", 50], ["Lower", 72], ["Bottom", 86]].map(([n, y]) => <Button key={n} size="sm" variant="ghost" onClick={() => setCustom((x) => ({ ...x, x: 50, y: y as number }))}>{n}</Button>)}</div>
-          <h3>Caption text</h3>
-          {!cues.length ? <p className="caption muted">This clip has no captions yet. Use Transcribe &amp; add captions, then fix any word here.</p> :
-            <div className="cue-list">{cues.map((q2, i) => <label key={i} className={now >= q2.start_ms && now < q2.end_ms ? "on" : ""}><small>{((q2.start_ms - start) / 1000).toFixed(1)}s</small><input value={q2.text} onChange={(e) => setCues((x) => x.map((y, j) => (j === i ? { ...y, text: e.target.value } : y)))} /></label>)}</div>}
-          <p className="caption muted">{words.length} words</p>
-        </>}
-        {tab === "Title" && <div className="editor-fields">
-          <label>Title text<input value={title} maxLength={140} onChange={(e) => setTitle(e.target.value)} /></label>
-          <label>Style<select value={titleStyle} onChange={(e) => setTitleStyle(e.target.value as TitleStyle)}>{TITLE_STYLES.map((t) => <option key={t} value={t}>{TITLE_STYLE_NAMES[t]}</option>)}</select></label>
-          {titleStyle === "headline" && <><label>Highlighted word<input value={ov.title?.highlight_word ?? ""} onChange={(e) => setOv((o) => ({ ...o, title: { y: o.title?.y ?? 14, ...o.title, highlight_word: e.target.value } }))} /></label>
-            <label>Highlight colour<select value={ov.title?.highlight ?? "yellow"} onChange={(e) => setOv((o) => ({ ...o, title: { y: o.title?.y ?? 14, ...o.title, highlight: e.target.value as keyof typeof HIGHLIGHTS } }))}>{Object.keys(HIGHLIGHTS).map((k) => <option key={k}>{k}</option>)}</select></label></>}
-          <label>Position (from top)<input type="range" min={4} max={60} value={ov.title?.y ?? 14} onChange={(e) => setOv((o) => ({ ...o, title: { ...o.title, y: +e.target.value } }))} /></label>
-          <Button size="sm" variant="ghost" onClick={() => setTitle("")}>Remove title</Button>
-        </div>}
-        {tab === "Watermark" && <div className="editor-fields">
-          <label>Handle<input value={mark} placeholder="@yourhandle" maxLength={60} onChange={(e) => setMark(e.target.value)} /></label>
-          <label>Position<select value={ov.watermark?.pos ?? "centre-below-captions"} onChange={(e) => setOv((o) => ({ ...o, watermark: { opacity: o.watermark?.opacity ?? 0.5, pos: e.target.value as WatermarkPos } }))}>{WATERMARK_POS.map((p) => <option key={p}>{p}</option>)}</select></label>
-          <label>Opacity<select value={ov.watermark?.opacity ?? 0.5} onChange={(e) => setOv((o) => ({ ...o, watermark: { pos: o.watermark?.pos ?? "centre-below-captions", opacity: +e.target.value } }))}>{[0.3, 0.5, 0.8].map((v) => <option key={v} value={v}>{v * 100}%</option>)}</select></label>
-        </div>}
-        {tab === "Layout" && <div className="review-actions">{ASPECTS.map((a) => <Button key={a} size="sm" variant={aspect === a ? "default" : "outline"} onClick={() => setAspect(a)}>{a}</Button>)}<p className="caption muted">Switching aspect crops around the centre; the export uses this size.</p></div>}
-        <h3>Apply to other clips</h3>
-        <p className="caption muted">Copies this caption style and position, title style, watermark and aspect onto the clips you tick (each keeps its own caption words).</p>
-        <div className="cue-list apply-list">{q.data!.others.map((o) => <label key={o.id} className="lib-check"><input type="checkbox" checked={applyTo.includes(o.id)} onChange={(e) => setApplyTo((x) => (e.target.checked ? [...x, o.id] : x.filter((y) => y !== o.id)))} />{o.title ?? "Clip"} <small className="muted">{o.status.toLowerCase()}</small></label>)}</div>
-        <Button size="sm" disabled={!applyTo.length} onClick={async () => { const p = patch(); const { captions: _c, title_text: _t, ...shared } = p; try { await saveFinish({ data: { ids: applyTo, patch: shared } }); await saveFinish({ data: { ids: [clipId], patch: p } }); toast.success(`Applied to ${applyTo.length} clips`); setApplyTo([]); await qc.invalidateQueries({ queryKey: ["review"] }); } catch (e) { err(e); } }}><Wand2 />Apply to {applyTo.length || ""} selected</Button>
-      </section>
-      <Preview src={src} videoUrl={c.video_url} start={start} end={end} aspect={aspect} style={style} cues={captionsOn ? cues : []} title={title} titleStyle={titleStyle} ov={ov} mark={mark} onTime={setNow} onMove={(x, y) => setCustom((s) => ({ ...s, x, y }))} />
+        </section>
+
+        <section className="glass-panel ed-sec">
+          <div className="ed-sec-head"><h2>Title</h2>{title.trim() && <Button size="sm" variant="ghost" onClick={() => setTitle("")}>Remove</Button>}</div>
+          <div className="ed-fields">
+            <input value={title} maxLength={140} placeholder="Add a title on the video" aria-label="Title text" onChange={(e) => setTitle(e.target.value)} />
+            <div className="ed-chips">{TITLE_STYLES.map((t) => <button key={t} aria-pressed={titleStyle === t} onClick={() => setTitleStyle(t)}>{TITLE_STYLE_NAMES[t]}</button>)}</div>
+            {titleStyle === "headline" && <div className="ed-row"><label>Highlighted word<input value={ov.title?.highlight_word ?? ""} onChange={(e) => setOv((o) => ({ ...o, title: { y: o.title?.y ?? 14, ...o.title, highlight_word: e.target.value } }))} /></label>
+              <label>Colour<select value={ov.title?.highlight ?? "yellow"} onChange={(e) => setOv((o) => ({ ...o, title: { y: o.title?.y ?? 14, ...o.title, highlight: e.target.value as keyof typeof HIGHLIGHTS } }))}>{Object.keys(HIGHLIGHTS).map((k) => <option key={k}>{k}</option>)}</select></label></div>}
+            <label>Height from top · {ov.title?.y ?? 14}%<input type="range" min={4} max={60} value={ov.title?.y ?? 14} onChange={(e) => setOv((o) => ({ ...o, title: { ...o.title, y: +e.target.value } }))} /></label>
+          </div>
+        </section>
+
+        <section className="glass-panel ed-sec">
+          <div className="ed-sec-head"><h2>Handle watermark</h2></div>
+          <div className="ed-fields">
+            <input value={mark} placeholder="@yourhandle" maxLength={60} aria-label="Handle" onChange={(e) => setMark(e.target.value)} />
+            <div className="ed-row"><label>Position<select value={ov.watermark?.pos ?? "centre-below-captions"} onChange={(e) => setOv((o) => ({ ...o, watermark: { opacity: o.watermark?.opacity ?? 0.5, pos: e.target.value as WatermarkPos } }))}>{WATERMARK_POS.map((p) => <option key={p}>{p}</option>)}</select></label>
+              <label>Opacity<select value={ov.watermark?.opacity ?? 0.5} onChange={(e) => setOv((o) => ({ ...o, watermark: { pos: o.watermark?.pos ?? "centre-below-captions", opacity: +e.target.value } }))}>{[0.3, 0.5, 0.8].map((v) => <option key={v} value={v}>{v * 100}%</option>)}</select></label></div>
+          </div>
+        </section>
+
+        {q.data!.others.length > 0 && <details className="glass-panel ed-sec ed-more">
+          <summary><Wand2 size={14} />Use this look on other clips</summary>
+          <p className="caption">Copies style, position, title style, handle and format. Each clip keeps its own words.</p>
+          <div className="ed-apply">{q.data!.others.map((o) => <label key={o.id} className="ed-check"><input type="checkbox" checked={applyTo.includes(o.id)} onChange={(e) => setApplyTo((x) => (e.target.checked ? [...x, o.id] : x.filter((y) => y !== o.id)))} /><span className="min-w-0 truncate">{o.title ?? "Clip"}</span><small className="muted">{o.status.toLowerCase()}</small></label>)}</div>
+          <Button size="sm" disabled={!applyTo.length} onClick={applyShared}><Wand2 />Apply to {applyTo.length || ""} selected</Button>
+        </details>}
+      </aside>
     </div>
     {posting && c.video_url && <Distribute clip={{ id: c.id, title: c.title, duration_ms: c.duration_ms, aspect: c.aspect, watermark_text: mark }} onClose={() => setPosting(false)} />}
-    <p className="caption muted"><Sparkles size={12} /> The preview draws captions over the source; Export burns the same captions, title and handle into the video.</p>
   </div>;
 }
 
-function Preview({ src, videoUrl, start, end, aspect, style, cues, title, titleStyle, ov, mark, onTime, onMove }: { src: string | null; videoUrl: string | null; start: number; end: number; aspect: string; style: CaptionStyle; cues: Cue[]; title: string; titleStyle: TitleStyle; ov: Overlays; mark: string; onTime: (ms: number) => void; onMove: (x: number, y: number) => void }) {
-  const box = useRef<HTMLDivElement>(null); const [w, setW] = useState(360); const [t, setT] = useState(start); const drag = useRef(false);
+function Preview({ ctl, src, videoUrl, start, end, aspect, style, cues, title, titleStyle, ov, mark, onTime, onMove }: { ctl: React.MutableRefObject<((ms: number) => void) | null>; src: string | null; videoUrl: string | null; start: number; end: number; aspect: string; style: CaptionStyle; cues: Cue[]; title: string; titleStyle: TitleStyle; ov: Overlays; mark: string; onTime: (ms: number) => void; onMove: (x: number, y: number) => void }) {
+  const box = useRef<HTMLDivElement>(null); const [w, setW] = useState(360); const [t, setT] = useState(start); const drag = useRef(false); const vid = useRef<HTMLVideoElement>(null);
+  useEffect(() => { ctl.current = (ms) => { const v = vid.current; if (!v) return; v.currentTime = (src ? ms : ms - start) / 1000; void v.play().catch(() => {}); }; }, [ctl, src, start]);
   useEffect(() => { const el = box.current; if (!el) return; const ro = new ResizeObserver(() => setW(el.clientWidth)); ro.observe(el); return () => ro.disconnect(); }, []);
   const k = w / 1080;
   const cue = cueAt(cues, t);
@@ -187,14 +226,14 @@ function Preview({ src, videoUrl, start, end, aspect, style, cues, title, titleS
   const url = src ? `${src}#t=${start / 1000},${end / 1000}` : videoUrl;
   const hw = (ov.title?.highlight_word ?? "").toLowerCase();
   const pos = ov.watermark?.pos ?? "centre-below-captions";
-  return <section className="glass-panel editor-preview">
-    <div ref={box} className="editor-frame" style={{ aspectRatio: ratio(aspect) }} onPointerMove={move} onPointerUp={() => (drag.current = false)} onPointerLeave={() => (drag.current = false)}>
-      {url ? <video src={url} controls playsInline onTimeUpdate={(e) => { const ms = src ? e.currentTarget.currentTime * 1000 : start + e.currentTarget.currentTime * 1000; setT(ms); onTime(ms); if (src && ms >= end) { e.currentTarget.pause(); } }} /> : <p className="muted">No video available.</p>}
+  return <section className="ed-stage">
+    <div ref={box} className="editor-frame ed-frame" style={{ aspectRatio: ratio(aspect), width: `min(100%, calc(60vh * ${aspect.split(":").map(Number).reduce((w, h) => w / h)}))` }} onPointerMove={move} onPointerUp={() => (drag.current = false)} onPointerLeave={() => (drag.current = false)}>
+      {url ? <video ref={vid} src={url} controls playsInline onTimeUpdate={(e) => { const ms = src ? e.currentTarget.currentTime * 1000 : start + e.currentTarget.currentTime * 1000; setT(ms); onTime(ms); if (src && ms >= end) { e.currentTarget.pause(); } }} /> : <p className="muted">No video available.</p>}
       {title.trim() && <div className={`ed-title ed-${titleStyle}`} style={{ top: `${ov.title?.y ?? 14}%`, fontSize: 66 * k }}>{title.split(/\s+/).map((x, i) => <span key={i} style={titleStyle === "headline" && hw && x.toLowerCase().replace(/[^\w']/g, "") === hw.replace(/[^\w']/g, "") ? { color: HIGHLIGHTS[ov.title?.highlight ?? "yellow"] } : undefined}>{x} </span>)}</div>}
       {text && <div className="ed-caption" onPointerDown={(e) => { drag.current = true; e.preventDefault(); }} style={{ left: `${style.x}%`, top: `${style.y}%`, fontSize: style.size * k, color: style.fill, WebkitTextStroke: style.box ? undefined : `${style.outlineW * k}px ${style.outline}`, paintOrder: "stroke fill", textShadow: style.shadow && !style.box ? `0 ${3 * k}px ${4 * k}px rgba(0,0,0,.5)` : undefined, background: style.box ? `color-mix(in srgb, ${style.boxColor} ${style.boxOpacity * 100}%, transparent)` : undefined }}>
         {shown.map((x, i) => <span key={i} style={style.active && style.animation === "karaoke" && i === activeIdx ? { color: style.active } : undefined}>{x} </span>)}</div>}
       {mark.trim() && <div className={`ed-mark ed-${pos}`} style={{ fontSize: 34 * k, opacity: ov.watermark?.opacity ?? 0.5, ...(pos === "centre-below-captions" ? { top: `calc(${style.y}% + ${style.size * k * 1.4}px)` } : {}) }}>{mark}</div>}
     </div>
-    <p className="caption muted">{cues.length ? "Drag the caption to place it." : "Transcribe to see captions here."}</p>
+    <p className="caption ed-hint">{cues.length ? "Drag the caption on the video to place it anywhere." : "Transcribe to see captions on the video."}</p>
   </section>;
 }
