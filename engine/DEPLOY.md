@@ -136,7 +136,12 @@ signature matches and the two halves are talking.
 
 **`auto_stop_machines = "off"` must stay off.** Fly's proxy only sees inbound
 HTTP. It cannot see a render in progress, so with autostop on, Fly would stop
-the machine mid-encode and the export would never finish.
+the machine mid-encode and the export would never finish. The Engine puts
+itself to sleep instead — see "Paying only for the hours you use" below.
+
+**`[[restart]] policy = "on-failure"` must stay that way.** The Engine shuts
+itself down with a clean exit when idle. `policy = "always"` would restart it
+within seconds and the machine would never actually sleep.
 
 **`kill_timeout = "300s"` must stay above `SHUTDOWN_GRACE_S` (120s).** On
 deploy, Fly sends SIGTERM; the Engine stops taking new work and lets the
@@ -160,9 +165,56 @@ fly scale vm performance-4x    # renders feel slow
 fly volumes extend <id> -s 25  # running out of disk
 ```
 
-**Cost.** `performance-2x` with 4GB running continuously is the bulk of the
-bill, plus Tigris storage and egress. Encoding is the expensive part; check
-Fly's current pricing before committing.
+**Cost.** The machine is the bulk of the bill, plus Tigris storage and egress.
+Fly bills the machine per second that it runs, so what you pay depends far
+more on whether it sleeps than on how big it is — see below. Check Fly's
+current pricing before committing.
+
+## Paying only for the hours you use
+
+Left alone, a Fly machine runs every second of the month whether anyone uses
+it or not. The Engine instead stops itself once it has been quiet, and Fly's
+proxy starts it again the next time the app calls it. A machine used an hour a
+day is billed for an hour a day.
+
+```bash
+fly machine list               # "stopped" is the state you want when idle
+fly logs                       # look for: sleeping: idle for 604s ...
+```
+
+Three settings make it work, and all three are already in `fly.toml`:
+
+| setting | value | why |
+| --- | --- | --- |
+| `IDLE_SHUTDOWN_S` | `600` | quiet minutes before sleeping; `0` runs it 24/7 |
+| `auto_start_machines` | `true` | the next request wakes it |
+| `min_machines_running` | `0` | nothing to wake up if Fly keeps one running |
+
+**It will not sleep on top of your work.** The decision is made by the Engine,
+not by Fly, precisely because Fly cannot see a render. `app/idle.py` refuses to
+sleep while any job, import or export is queued or processing, while an asset
+is still importing, or while a finished clip still owes the app a webhook.
+A job parked at `awaiting_confirmation` is the one exception: that waits on a
+person, who may not come back for days.
+
+**What you will notice.** The first call after a sleep waits a few seconds for
+the machine to boot. `engineClient` in the app expects this and retries a
+refused connection or a 503 three times before reporting a problem, so a cold
+start looks like a slow click rather than an error.
+
+**Change the timeout** without a redeploy:
+
+```bash
+fly secrets set IDLE_SHUTDOWN_S=1800    # half an hour
+fly secrets set IDLE_SHUTDOWN_S=0       # stay up around the clock
+```
+
+A browser tab left open on a page that polls the Engine counts as use and will
+keep it awake. Close the tab when you are done for the day.
+
+**The volume is billed either way.** Disk is charged per GB-month whether the
+machine runs or not, so a 10GB volume costs the same while asleep. Only the
+CPU and RAM stop.
 
 **Scaling.** One machine processes jobs one at a time. For more throughput:
 

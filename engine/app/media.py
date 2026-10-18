@@ -30,7 +30,7 @@ def run(args: list[str], timeout: int = 3600) -> subprocess.CompletedProcess:
 
 
 def ffmpeg(args: list[str], timeout: int = 3600) -> subprocess.CompletedProcess:
-    threads = str(max(1, min(4, settings().processing_threads)))
+    threads = str(settings().worker_threads())
     bounded = []
     for arg in args:
         if arg == "-i":

@@ -112,7 +112,6 @@ def _fake(audio: Path, duration_s: float) -> Transcription:
 
 
 def _faster_whisper(audio: Path, vocabulary: list[str], language: str | None) -> Transcription:
-    import os
     import wave
 
     import numpy as np
@@ -130,11 +129,9 @@ def _faster_whisper(audio: Path, vocabulary: list[str], language: str | None) ->
     key = f"{cfg.whisper_model}:{device}"
     model = _model_cache.get(key)
     if model is None:
-        # More threads than cores makes a CPU GEMM workload slower, not faster.
-        # A Fly performance-2x has two.
-        cores = os.cpu_count() or 2
+        # More threads than cores makes a CPU matrix workload slower, not faster.
         model = WhisperModel(cfg.whisper_model, device=device, compute_type="float16" if device == "cuda" else "int8",
-                             cpu_threads=max(1, min(cores, cfg.processing_threads or cores)), num_workers=1)
+                             cpu_threads=cfg.worker_threads(), num_workers=1)
         _model_cache[key] = model
 
     prompt = ", ".join(vocabulary[:30]) if vocabulary else None

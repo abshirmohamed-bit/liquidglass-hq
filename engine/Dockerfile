@@ -74,6 +74,7 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s \
   CMD curl -fsS http://localhost:8080/v1/health || exit 1
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-# Graceful shutdown must outlast the worker's drain, which must outlast a render.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080", \
-     "--timeout-graceful-shutdown", "150"]
+# `python -m app`, not the uvicorn CLI: app/__main__.py owns the Server so the
+# idle watchdog can stop it with exit 0. Through the CLI, uvicorn re-raises the
+# signal and exits 143, which Fly treats as a crash and restarts.
+CMD ["python", "-m", "app"]

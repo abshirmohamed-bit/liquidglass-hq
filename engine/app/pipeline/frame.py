@@ -102,7 +102,7 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
     import numpy as np
 
     from ..config import settings
-    threads = max(1, min(4, settings().processing_threads))
+    threads = settings().worker_threads()
     cv2.setNumThreads(threads)
     cap = cv2.VideoCapture(str(video), cv2.CAP_FFMPEG, [cv2.CAP_PROP_N_THREADS, threads])
     if not cap.isOpened():

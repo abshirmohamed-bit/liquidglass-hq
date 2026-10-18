@@ -45,12 +45,21 @@ def tick() -> int:
 
 
 def _loop(interval: float) -> None:
+    from . import idle
+
     while not _stop.is_set():
         try:
             busy = tick()
         except Exception:
             log.exception("worker tick failed")
             busy = 0
+        if not busy:
+            # The only thread that knows the queues are empty. Checked here so
+            # the machine can never be stopped in the middle of a pass.
+            try:
+                idle.sleep_if_idle()
+            except Exception:
+                log.exception("idle check failed")
         _stop.wait(0.1 if busy else interval)
 
 

@@ -144,8 +144,12 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
 }
 
 function Grades({ c }: { c: Clip }) {
-  const g = (c.score_breakdown ?? {}) as Record<string, number>;
-  return <div className="review-grades">{(["hook", "flow", "value", "trend"] as const).map((k) => <span key={k}>{k[0]!.toUpperCase() + k.slice(1)} {typeof g[k] === "number" ? g[k] : "—"}</span>)}</div>;
+  // The Engine grades a clip in letters (A+, B); only numbers were ever
+  // rendered, so every card showed four dashes and looked ungraded.
+  const g = (c.score_breakdown ?? {}) as Record<string, string | number>;
+  const show = (v: string | number | undefined) =>
+    v === undefined || v === null || v === "" ? "—" : String(v);
+  return <div className="review-grades">{(["hook", "flow", "value", "trend"] as const).map((k) => <span key={k}>{k[0]!.toUpperCase() + k.slice(1)} {show(g[k])}</span>)}</div>;
 }
 
 function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTrim, onPreview, onScore, onExport, onDelete, res, setRes, refresh, source, search }: {
