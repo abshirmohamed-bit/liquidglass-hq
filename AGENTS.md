@@ -39,3 +39,5 @@
 - Completion uses unique job/project inserts and conditional FOUND claims so webhook/poll races cannot duplicate clips or exports.
 
 - Download Git LFS model binaries from the media endpoint, not raw GitHub pointer files; otherwise the face detector cannot load at export time.
+
+- Review cards expose state-relevant editing and completion actions, with secondary operations in the shared dropdown menu; preview picture remains the direct entry to playback.
