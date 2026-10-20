@@ -2,10 +2,11 @@ const ZIP_LIB = "https://unpkg.com/fflate@0.8.2/esm/browser.js";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, X, Scissors, Play, Copy, Star, ThumbsDown, Download, Share2, Merge, FileCode, Captions, ClipboardCheck, Trash2 } from "lucide-react";
+import { Check, X, Scissors, Play, Copy, Star, Download, Share2, Merge, FileCode, Captions, ClipboardCheck, Trash2, MoreHorizontal, Pencil, Loader2, ChevronDown, UserRound } from "lucide-react";
 import { EmptyState, LoadingGrid } from "./kit";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@/components/ui/dropdown-menu";
 import { Link } from "@tanstack/react-router";
 import { finishSpec } from "@/lib/finish-rules";
 import { Distribute } from "./posts";
@@ -127,9 +128,7 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
       <Button size="sm" onClick={() => exportClips(selected.filter((c) => c.status === "APPROVED").map((c) => c.id))}>Export approved</Button>
       <Button size="sm" variant="outline" onClick={async () => { void 0; const ready = selected.filter((c) => c.video_url); if (!ready.length) { toast.error("None of the selected clips are exported yet."); return; } const { zipSync } = (await import(/* @vite-ignore */ ZIP_LIB as string)) as { zipSync: (f: Record<string, Uint8Array>, o: { level: 0 }) => Uint8Array }; const files: Record<string, Uint8Array> = {}; for (const c of ready) files[`${(c.title ?? "clip").replace(/[^\w -]+/g, "")}-${c.id.slice(0, 6)}.mp4`] = new Uint8Array(await (await fetch(c.video_url!)).arrayBuffer()); save("clips.zip", zipSync(files, { level: 0 }).slice().buffer, "application/zip"); }}><Download />Download selected</Button>
       <Button size="sm" variant="outline" onClick={async () => { const bad = mergeIssue(selected); if (bad) { toast.error(bad); return; } try { await mergeClips({ data: { ids: sel } }); setSel([]); await refresh(); toast.success("Merged into a new clip"); } catch (e) { err(e); } }}><Merge />Merge</Button>
-      <Button size="sm" variant="ghost" disabled title="Comes with Prompt 10">Schedule selected</Button>
       <Button size="sm" variant="ghost" onClick={() => toast.info("Open one clip in the editor and use “Apply to other clips”.")}>Apply my style</Button>
-      <Button size="sm" variant="ghost" disabled title="Comes with Prompt 11">Edit with AI</Button>
     </section>}
     {q.isLoading ? <LoadingGrid count={6} className="lib-grid" height={300} /> : !clips.length ? <section className="glass-panel"><EmptyState icon={ClipboardCheck} title="No clips to review"
       hint="When a clip job finishes, every moment it found lands here to approve, trim and export."
@@ -139,7 +138,7 @@ export function Review({ job: jobParam, source: sourceParam, embedded }: { job?:
         onExport={() => exportClips([c.id])} onDelete={() => remove([c.id])} res={res} setRes={setRes} refresh={refresh} source={c.source_asset_id ? srcById.get(c.source_asset_id) : undefined} search={search} />)}</div>}
     {trim && <TrimModal clip={trim} source={trim.source_asset_id ? srcById.get(trim.source_asset_id) : undefined} onClose={() => setTrim(null)} onSaved={async () => { setTrim(null); await refresh(); }} />}
     {preview && <PreviewModal clip={d?.clips.find((x) => x.id === preview.id) ?? preview} source={preview.source_asset_id ? srcById.get(preview.source_asset_id) : undefined} search={search} onClose={() => setPreview(null)} onExport={() => exportClips([preview.id])} onAct={(s) => act([preview.id], s)} refresh={refresh} />}
-    {scoreOf && <Modal title="Score details" onClose={() => setScoreOf(null)}><p><strong>Scene analysis:</strong> {scoreOf.scene_analysis || "No scene analysis for this clip."}</p><Transcript clip={scoreOf} source={scoreOf.source_asset_id ? srcById.get(scoreOf.source_asset_id) : undefined} search={search} /></Modal>}
+    {scoreOf && <Modal title="Score details" onClose={() => setScoreOf(null)}><Grades c={scoreOf} />{scoreOf.reason && <p>{scoreOf.reason}</p>}<p><strong>Scene analysis:</strong> {scoreOf.scene_analysis || "No scene analysis for this clip."}</p><Transcript clip={scoreOf} source={scoreOf.source_asset_id ? srcById.get(scoreOf.source_asset_id) : undefined} search={search} /></Modal>}
   </div>;
 }
 
@@ -161,47 +160,52 @@ function ClipCard({ c, data, selected, focused, rendering, onSelect, onAct, onTr
   const dur = (c.end_ms ?? 0) - (c.start_ms ?? 0);
   const fps = Number(source?.fps) || 30;
   const timeline = (fmt: TimelineFormat) => { const f = timelineFile(fmt, { title: c.title ?? "clip", sourceName: source?.name ?? "source", sourceUrl: source?.playUrl ?? "", fps, start_ms: c.start_ms ?? 0, end_ms: c.end_ms ?? 0, sourceMs: source?.duration_ms ?? c.end_ms ?? 0 }); save(f.name, f.body, "application/xml"); };
-  return <article className={`glass-panel lib-card review-card${focused ? " focused" : ""}`} aria-label={c.title ?? "Clip"}>
-    <label className="review-select"><input type="checkbox" aria-label="Select clip" checked={selected} onChange={(e) => onSelect(e.target.checked)} />#{c.index ?? "—"}</label>
-    <button type="button" className="review-open" onClick={onPreview} aria-label={`Open ${c.title ?? "clip"}`}>
-      {(c.thumbnail_url || source?.thumbnail_url)
-        ? <img src={(c.thumbnail_url || source?.thumbnail_url)!} alt="" />
-        : <div className="lib-thumb"><Play /></div>}
-      <span className="review-open-badge"><Play size={18} /></span>
-    </button>
-    <input className="review-title" aria-label="Clip title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title.trim() && title !== c.title && upd({ id: c.id, title: title.trim() })} />
-    <p className="caption muted">{Math.round(dur / 1000)}s · From {fromLabel(c.start_ms)} {c.alternate_of && <span className="status-pill tone-purple">Alt cut</span>} <span className={`status-pill ${pill(c.status)}`}>{rendering ?? c.status[0] + c.status.slice(1).toLowerCase()}</span></p>
-    <button className="review-score" onClick={onScore} aria-label="Score details">{c.score ?? "—"}</button><Grades c={c} />
-    {c.reason && <p className="caption">{c.reason}</p>}
-    {c.error && <p className="caption clip-error" title={c.error}>{readableError(c.error)}</p>}
-    {(c.edits as { client_feedback?: string } | null)?.client_feedback && <p className="caption">Client: {(c.edits as { client_feedback: string }).client_feedback}</p>}
-    {search && (c as { transcriptText?: string }).transcriptText?.toLowerCase().includes(search.toLowerCase()) && <p className="caption">Matches transcript</p>}
-    <div className="review-actions">
-      <Button size="icon" variant="ghost" aria-label="Favorite" aria-pressed={c.favorite} onClick={() => upd({ id: c.id, favorite: !c.favorite })}><Star fill={c.favorite ? "currentColor" : "none"} /></Button>
-      <Button size="icon" variant="ghost" aria-label="Dislike" aria-pressed={c.disliked} onClick={() => upd({ id: c.id, disliked: !c.disliked })}><ThumbsDown fill={c.disliked ? "currentColor" : "none"} /></Button>
-      <select aria-label="Assign" value={c.assignee ?? ""} onChange={(e) => upd({ id: c.id, assignee: e.target.value || null })}><option value="">Unassigned</option>{data.members.map((m) => <option key={m.user_id} value={m.user_id}>{m.name}</option>)}</select>
+  const ready = c.status === "READY" && !!c.video_url;
+  const exporting = c.status === "EXPORTING";
+  const canExport = c.status === "APPROVED" || reexport;
+  const thumb = c.thumbnail_url || source?.thumbnail_url;
+  const hasTranscript = transcriptWords(source?.transcript).length > 0;
+  return <article className={`glass-panel lib-card review-card${selected ? " is-selected" : ""}${focused ? " focused" : ""}`} aria-label={c.title ?? "Clip"}>
+    <header className="review-card-head">
+      <label className="review-select"><input type="checkbox" aria-label="Select clip" checked={selected} onChange={(e) => onSelect(e.target.checked)} /><span>Clip {c.index ?? "—"}</span></label>
+      <span className={`status-pill ${pill(c.status)}`}>{exporting && <Loader2 size={12} className="animate-spin" />}{c.status === "FOUND" ? "To review" : c.status[0] + c.status.slice(1).toLowerCase()}</span>
+      <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label="More clip actions" title="More clip actions"><MoreHorizontal /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="review-menu">
+          <DropdownMenuItem onSelect={onPreview}><Play />Preview</DropdownMenuItem>
+          <DropdownMenuItem onSelect={onTrim} disabled={exporting || !!(c.edits as { segments?: unknown } | null)?.segments}><Scissors />Trim clip</DropdownMenuItem>
+          {ready && <DropdownMenuItem onSelect={() => setPosting(true)}><Share2 />Post clip</DropdownMenuItem>}
+          <DropdownMenuItem onSelect={onScore}>Score & analysis</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={() => upd({ id: c.id, favorite: !c.favorite })}><Star fill={c.favorite ? "currentColor" : "none"} />{c.favorite ? "Remove favorite" : "Favorite"}</DropdownMenuItem>
+          <DropdownMenuSub><DropdownMenuSubTrigger><UserRound />Assign to</DropdownMenuSubTrigger><DropdownMenuSubContent><DropdownMenuRadioGroup value={c.assignee ?? ""} onValueChange={(value) => upd({ id: c.id, assignee: value || null })}><DropdownMenuRadioItem value="">Unassigned</DropdownMenuRadioItem>{data.members.map((m) => <DropdownMenuRadioItem key={m.user_id} value={m.user_id}>{m.name}</DropdownMenuRadioItem>)}</DropdownMenuRadioGroup></DropdownMenuSubContent></DropdownMenuSub>
+          <DropdownMenuItem onSelect={async () => { try { await duplicateClip({ data: { id: c.id } }); await refresh(); toast.success("Duplicated"); } catch (e) { err(e); } }}><Copy />Duplicate</DropdownMenuItem>
+          {ready && <><DropdownMenuSeparator />{hasTranscript && <DropdownMenuItem onSelect={() => save(`${c.title ?? "clip"}.srt`, srtFor(transcriptWords(source?.transcript), c.start_ms ?? 0, c.end_ms ?? 0))}><Captions />Download subtitles</DropdownMenuItem>}<DropdownMenuSub><DropdownMenuSubTrigger><FileCode />Download timeline</DropdownMenuSubTrigger><DropdownMenuSubContent>{([['fcpxml', 'Final Cut Pro'], ['premiere', 'Premiere Pro'], ['edl', 'DaVinci Resolve']] as const).map(([fmt, label]) => <DropdownMenuItem key={fmt} onSelect={() => timeline(fmt)}>{label}</DropdownMenuItem>)}</DropdownMenuSubContent></DropdownMenuSub></>}
+          <DropdownMenuSeparator />
+          {c.status !== "REJECTED" && <DropdownMenuItem disabled={exporting} onSelect={() => onAct("REJECTED")}><X />Reject clip</DropdownMenuItem>}
+          <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={onDelete}><Trash2 />Delete clip</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </header>
+    <Button type="button" variant="ghost" className="review-open" onClick={onPreview} aria-label={`Open ${c.title ?? "clip"}`}>
+      {thumb ? <img src={thumb} alt="" loading="lazy" /> : <div className="lib-thumb"><Play /></div>}
+      <span className="review-open-badge"><Play size={20} fill="currentColor" /></span>
+      <span className="review-duration">{formatPrecise(dur).split(".")[0]}</span>
+    </Button>
+    <div className="review-card-body">
+      <textarea rows={2} className="review-title" aria-label="Clip title" value={title} onChange={(e) => setTitle(e.target.value)} onBlur={() => title.trim() && title !== c.title && upd({ id: c.id, title: title.trim() })} />
+      <div className="review-card-meta"><span>From {fromLabel(c.start_ms)} · {c.aspect ?? "9:16"}</span><Button size="sm" variant="ghost" className="review-score" onClick={onScore} aria-label="Score details" title="Score details"><span>{c.score ?? "—"}</span><span className="review-score-label">score</span></Button></div>
+      {c.alternate_of && <span className="caption">Alternate cut</span>}
+      {c.error && <p className="caption clip-error" title={c.error}>{readableError(c.error)}</p>}
+      {(c.edits as { client_feedback?: string } | null)?.client_feedback && <p className="caption">Client: {(c.edits as { client_feedback: string }).client_feedback}</p>}
+      {search && (c as { transcriptText?: string }).transcriptText?.toLowerCase().includes(search.toLowerCase()) && <p className="caption">Matches transcript</p>}
+      {reexport && <p className="review-pending">Saved edits · export to update video</p>}
+      <footer className="review-card-footer">
+        <Button size="sm" variant="outline" asChild disabled={exporting}><Link to="/editor/$clipId" params={{ clipId: c.id }}><Pencil />Edit</Link></Button>
+        {exporting ? <Button size="sm" disabled><Loader2 className="animate-spin" />Rendering</Button> : canExport ? <div className="review-export-control"><Button size="sm" onClick={onExport}><Download />{reexport ? "Re-export" : "Export"}</Button><DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" aria-label="Export resolution" title="Export resolution">{res === "UHD" ? "4K" : "HD"}<ChevronDown size={12} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuLabel>Export resolution</DropdownMenuLabel><DropdownMenuRadioGroup value={res} onValueChange={(v) => setRes(v as Resolution)}><DropdownMenuRadioItem value="HD">HD · 1080p</DropdownMenuRadioItem><DropdownMenuRadioItem value="UHD">4K · 2160p</DropdownMenuRadioItem></DropdownMenuRadioGroup></DropdownMenuContent></DropdownMenu></div> : ready && c.video_url ? <Button size="sm" asChild><a href={c.video_url} download target="_blank" rel="noreferrer"><Download />Download</a></Button> : <Button size="sm" onClick={() => onAct("APPROVED")}><Check />Approve</Button>}
+      </footer>
+      {ready && reexport && c.video_url && <a className="review-previous" href={c.video_url} download target="_blank" rel="noreferrer">Download previous export</a>}
+      {rendering && <p className="caption">{rendering}</p>}
     </div>
-    <div className="review-actions">
-      <Button size="sm" onClick={() => onAct("APPROVED")} disabled={c.status === "EXPORTING"}><Check />Approve</Button>
-      <Button size="sm" variant="outline" onClick={() => onAct("REJECTED")} disabled={c.status === "EXPORTING"}><X />Reject</Button>
-      <Button size="sm" variant="outline" onClick={onTrim} disabled={c.status === "EXPORTING" || !!(c.edits as { segments?: unknown } | null)?.segments}><Scissors />Trim</Button>
-      <Button size="sm" variant="outline" onClick={onPreview}><Play />Preview</Button>
-      <Button size="sm" variant="outline" onClick={async () => { try { await duplicateClip({ data: { id: c.id } }); await refresh(); toast.success("Duplicated"); } catch (e) { err(e); } }}><Copy />Duplicate</Button>
-      <Button size="sm" variant="ghost" aria-label="Delete clip" onClick={onDelete}><Trash2 />Delete</Button>
-    </div>
-    {(c.status === "APPROVED" || reexport) && <div className="review-actions">
-      <select aria-label="Export resolution" value={res} onChange={(e) => setRes(e.target.value as Resolution)}><option value="HD">HD</option><option value="UHD">4K</option></select>
-      <Button size="sm" onClick={onExport}>{reexport ? "Re-export" : "Export"}</Button>
-      <span className="caption muted">Estimated {Math.max(1, Math.round((dur / 1000) * (res === "UHD" ? 4 : 1.2) / 60))} min</span>
-    </div>}
-    {c.status === "READY" && c.video_url && <div className="review-actions">
-      <Button size="sm" asChild><a href={c.video_url} download target="_blank" rel="noreferrer"><Download />Download {c.resolution === "UHD" ? "4K" : "HD"}</a></Button>
-      <Button size="sm" variant="outline" disabled={!transcriptWords(source?.transcript).length} title={transcriptWords(source?.transcript).length ? "" : "Transcribe the source first (Prompt 5)"} onClick={() => save(`${c.title ?? "clip"}.srt`, srtFor(transcriptWords(source?.transcript), c.start_ms ?? 0, c.end_ms ?? 0))}><Captions />Captions</Button>
-      <select aria-label="Export timeline XML" value="" onChange={(e) => e.target.value && timeline(e.target.value as TimelineFormat)}><option value="">Timeline XML…</option><option value="fcpxml">Final Cut Pro</option><option value="premiere">Premiere Pro</option><option value="edl">DaVinci Resolve (EDL)</option></select>
-      <Button size="sm" variant="ghost" disabled title="Formats studio comes with Prompt 6">Formats</Button>
-      <Button size="sm" onClick={() => setPosting(true)}>Post</Button>
-    </div>}
-    <div className="review-actions"><Button size="sm" variant="outline" asChild><Link to="/editor/$clipId" params={{ clipId: c.id }}>Edit captions & title</Link></Button></div>
     {posting && <Distribute clip={c} onClose={() => setPosting(false)} />}
   </article>;
 }
@@ -261,20 +265,10 @@ function PreviewModal({ clip, source, search, onClose, onExport, onAct, refresh 
     <Transcript clip={clip} source={source} search={search} only={only} />
     <p><strong>Scene analysis:</strong> {clip.scene_analysis || "—"}</p>
     <div className="review-actions">
-      <Button size="sm" onClick={() => setPosting(true)} disabled={clip.status !== "READY"} title={clip.status === "READY" ? "" : "Export the clip first"}>Publish</Button>
-      <Button size="sm" variant="outline" onClick={() => onAct("APPROVED")} disabled={clip.status === "APPROVED" || clip.status === "READY"}>Approve</Button>
-      <Button size="sm" onClick={onExport} disabled={clip.status !== "APPROVED" && !needsReexport(clip)}>{needsReexport(clip) ? "Re-export" : "Export"}</Button>
-      {clip.video_url ? <Button size="sm" variant="outline" asChild><a href={clip.video_url} download>Download</a></Button> : <Button size="sm" variant="outline" disabled title="Export first">Download</Button>}
-      <Button size="sm" variant="outline" asChild><Link to="/editor/$clipId" params={{ clipId: clip.id }}>Edit</Link></Button>
-      {(["9:16", "1:1", "4:5", "16:9"] as const).map((a) => <Button
-        key={a} size="sm" variant={clip.aspect === a ? "default" : "ghost"} aria-pressed={clip.aspect === a}
-        title={clip.aspect === a ? `Already ${a}` : `Re-shape this clip to ${a}`}
-        onClick={async () => {
-          if (clip.aspect === a) return;
-          try { await updateClip({ data: { id: clip.id, aspect: a } }); await refresh(); toast.success(`Now ${a} — export again to render it`); } catch (e) { err(e); }
-        }}>{a}</Button>)}
-      <Button size="sm" variant="outline" onClick={() => { const f = timelineFile("fcpxml", { title: clip.title ?? "clip", sourceName: source?.name ?? "source", sourceUrl: source?.playUrl ?? "", fps: Number(source?.fps) || 30, start_ms: clip.start_ms ?? 0, end_ms: clip.end_ms ?? 0, sourceMs: source?.duration_ms ?? 0 }); save(f.name, f.body, "application/xml"); }}><FileCode />Export timeline XML</Button>
-      <Button size="sm" variant="outline" onClick={async () => { await duplicateClip({ data: { id: clip.id } }); await refresh(); toast.success("Duplicated"); }}><Copy />Duplicate</Button>
+      <Button size="sm" variant="outline" asChild><Link to="/editor/$clipId" params={{ clipId: clip.id }}><Pencil />Edit clip</Link></Button>
+      {!rendering && (clip.status === "APPROVED" || needsReexport(clip)) && <Button size="sm" onClick={onExport}><Download />{needsReexport(clip) ? "Re-export" : "Export"}</Button>}
+      {!rendering && !["APPROVED", "READY"].includes(clip.status) && <Button size="sm" onClick={() => onAct("APPROVED")}><Check />Approve</Button>}
+      {clip.status === "READY" && clip.video_url && <><Button size="sm" asChild><a href={clip.video_url} download target="_blank" rel="noreferrer"><Download />Download</a></Button><Button size="sm" variant="outline" onClick={() => setPosting(true)}><Share2 />Post</Button></>}
     </div>
     {posting && <Distribute clip={clip} onClose={() => { setPosting(false); void refresh(); }} />}
   </Modal>;
