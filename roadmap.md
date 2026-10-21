@@ -1,5 +1,5 @@
 # Agency Admin first pass
-- [ ] Simplify Review clip cards and preview actions; verify real clips, menus and editor access with screenshots.
+- [x] Simplified Review clip cards and preview actions; verified 11 real clips, menus, score details, editor access, quality selector, grid/list and narrow layout with screenshots. 13 review/access tests passed. No export or posting started in this UI check.
 - [x] Current Get clips repair: deployed PCM transcription, sparse-speech fallback, selected-range framing, and duplicate-delivery protection; Fly restarted/healthy. Fresh signed-in TON 618 retry completed in 21 seconds with five unique READY clips in Library/Projects, Finished clips and Review, completed job on Clips. All five exports downloaded and fully decoded; 33 Engine and 16 app checks passed. Screenshots inspected. Sandbox inline playback still reports unsupported source (code 4); do not claim browser playback verified.
 - [x] Captured and visually inspected Clips, Review and Library; fixed overlapping Library cards and signed thumbnails.
 - [x] Resolved private thumbnail markers with signed URLs; no raw storage images on Library, Clips or Review, CSP unchanged.
