@@ -685,9 +685,11 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .review-grades { display: flex; gap: var(--s2); font-size: 12px; color: var(--muted-foreground); flex-wrap: wrap; }
 .review-pending { font-size: 11px; color: var(--warning); }
 .review-card-footer { display: flex; align-items: center; gap: var(--s2); margin-top: auto; padding-top: var(--s3); border-top: var(--hairline) solid var(--border); }
-.review-card-footer > :first-child { flex: 1; }
-.review-card-footer > :last-child { flex: 1; }
+.review-card-footer > :first-child { flex: 1 1 0; min-width: 0; }
+.review-card-footer > :last-child { flex: 1 1 0; min-width: 0; }
+.review-card-footer > .review-export-control { flex: 1.35 1 0; }
 .review-export-control { display: flex; min-width: 0; }
+.review-export-control > button { padding-left: 9px; padding-right: 9px; }
 .review-export-control > button:first-child { flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .review-export-control > button:last-child { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: var(--hairline) solid color-mix(in oklab, var(--primary-foreground) 25%, transparent); padding-left: 7px; padding-right: 7px; gap: 3px; font-size: 11px; }
 .review-previous { font-size: 11px; color: var(--muted-foreground); text-align: right; }
