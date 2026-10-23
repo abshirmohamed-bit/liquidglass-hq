@@ -15,20 +15,13 @@ describe("finishColumns — what the Engine already did, as clip columns", () =>
     expect(out["caption_style_id"]).toBe("bold_white");
   });
 
-  it("puts the cues in source time, so a clip from deep in a video stays in sync", () => {
-    // The Engine re-bases its words to zero. The editor reads the player's own
-    // clock, which is source time. A clip starting at 0:00 hides this; one
-    // starting ten minutes in would show every caption 10 minutes early.
-    const TEN_MIN = 600_000;
-    const out = finishColumns({ captions: words(4), caption_style_id: "bold_white" }, TEN_MIN);
-    const cues = out["captions"] as { start_ms: number; end_ms: number; text: string }[];
-    expect(cues[0]!.start_ms).toBe(TEN_MIN);
-    expect(cues[0]!.end_ms).toBe(TEN_MIN + 2000);
-  });
-
-  it("leaves a clip that starts at the beginning untouched", () => {
-    const out = finishColumns({ captions: words(2), caption_style_id: "bold_white" }, 0);
-    expect((out["captions"] as { start_ms: number }[])[0]!.start_ms).toBe(0);
+  it("keeps the Engine's clip time — cue 0 is the clip's first frame", () => {
+    // Clip time is the one base. Shifting these into source time here is what
+    // made every caption vanish on any clip that did not start at 0:00.
+    const out = finishColumns({ captions: words(4), caption_style_id: "bold_white" });
+    const cues = out["captions"] as { start_ms: number; end_ms: number }[];
+    expect(cues[0]!.start_ms).toBe(0);
+    expect(cues[0]!.end_ms).toBe(2000);
   });
 
   it("gives a one-word style one word a line", () => {

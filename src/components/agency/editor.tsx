@@ -11,6 +11,21 @@ import { Distribute } from "./posts";
 
 const err = (e: unknown) => toast.error(e instanceof Error ? e.message : "Something went wrong");
 const b64 = (u: Uint8Array) => { let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
+/**
+ * Cue times are clip time: 0 is the clip's first frame.
+ *
+ * Two producers disagreed. The Engine re-bases its words to zero; the browser
+ * re-transcriber reported source time, because it cuts audio out of the full
+ * video. Rows of both kinds are in the database, and the editor compares cue
+ * times against the player's clock — so the wrong base means no caption ever
+ * appears, which is invisible on a clip starting at 0:00 and total on every
+ * other one. Anything that arrives in source time is converted once, here.
+ */
+export function toClipTime(cues: Cue[], startMs: number): Cue[] {
+  if (!cues.length || startMs <= 0 || cues[0]!.start_ms < startMs) return cues;
+  return cues.map((c) => ({ ...c, start_ms: c.start_ms - startMs, end_ms: c.end_ms - startMs }));
+}
+
 const ratio = (a: string) => { const [w, h] = a.split(":").map(Number); return `${w} / ${h}`; };
 let fontLoaded = false;
 async function loadPreviewFont() {
@@ -41,7 +56,7 @@ export function Editor({ clipId }: { clipId: string }) {
     if (!c || loaded.current) return; loaded.current = true;
     setPresetId(c.caption_style_id || q.data?.brand?.caption_style_id || "bold_white");
     setCustom(((c.caption_style ?? q.data?.brand?.caption_style) as Partial<CaptionStyle> | null) ?? {});
-    setCues(Array.isArray(c.captions) ? (c.captions as Cue[]) : []);
+    setCues(toClipTime(Array.isArray(c.captions) ? (c.captions as Cue[]) : [], c.start_ms ?? 0));
     setCaptionsOn((c.caption_options as { enabled?: boolean } | null)?.enabled !== false);
     setTitle(c.title_text ?? c.title ?? ""); setTitleStyle((TITLE_STYLES as readonly string[]).includes(c.title_style ?? "") ? (c.title_style as TitleStyle) : "bold_band");
     setOv((c.overlays as Overlays | null) ?? {}); setMark(c.watermark_text ?? q.data?.brand?.handle ?? ""); setAspect(c.aspect ?? "9:16");
@@ -82,7 +97,9 @@ export function Editor({ clipId }: { clipId: string }) {
       let done = 0;
       const run = async (i: number) => { const ch = chunks[i]!; out[i] = { start_ms: ch.start_ms, end_ms: ch.end_ms, text: await transcribeChunk({ data: { audio: b64(ch.data), mime: "audio/mpeg" } }) }; setBusy(`Transcribing ${++done}/${chunks.length}`); };
       for (let i = 0; i < chunks.length; i += 3) await Promise.all([i, i + 1, i + 2].filter((x) => x < chunks.length).map(run));
-      const next = cuesFromWords(wordsFromChunks(out.filter((x) => x.text)), style.maxWords);
+      // audioChunks reports source time; everything downstream is clip time.
+      const rebased = out.filter((x) => x.text).map((x) => ({ ...x, start_ms: x.start_ms - start, end_ms: x.end_ms - start }));
+      const next = cuesFromWords(wordsFromChunks(rebased), style.maxWords);
       if (!next.length) toast.error("No speech was found in this clip."); else { setCues(next); toast.success(`${next.length} caption lines ready — edit any word below`); }
     } catch (e) { err(e); } finally { setBusy(""); }
   }
@@ -153,7 +170,7 @@ export function Editor({ clipId }: { clipId: string }) {
           <div className="ed-sec-head"><div><h2>Caption text</h2><p className="caption">{cues.length ? `${cues.length} lines · ${words.length} words — click a time to jump there, type to fix a word.` : "No captions yet."}</p></div>
             <Button size="sm" variant={cues.length ? "outline" : "default"} onClick={transcribe} disabled={!!busy}><Captions />{cues.length ? "Re-transcribe" : "Transcribe"}</Button></div>
           {cues.length > 0 && <div className="ed-cues">{cues.map((q2, i) => { const on = now >= q2.start_ms && now < q2.end_ms; return <div key={i} className={`ed-cue ${on ? "on" : ""}`}>
-            <button className="ed-cue-time" onClick={() => seek.current?.(q2.start_ms)}>{((q2.start_ms - start) / 1000).toFixed(1)}s</button>
+            <button className="ed-cue-time" onClick={() => seek.current?.(q2.start_ms)}>{(q2.start_ms / 1000).toFixed(1)}s</button>
             <input value={q2.text} aria-label={`Caption line ${i + 1}`} onChange={(e) => setCues((x) => x.map((y, j) => (j === i ? { ...y, text: e.target.value } : y)))} /></div>; })}</div>}
         </section>
       </div>
@@ -222,7 +239,9 @@ function Preview({ ctl, src, videoUrl, start, end, aspect, style, cues, title, t
     ctl.current = (ms) => {
       const v = vid.current;
       if (!v) return;
-      v.currentTime = (videoUrl ? ms - start : ms) / 1000;
+      // ms is clip time. The exported clip starts at zero; the full source
+      // starts wherever this clip begins.
+      v.currentTime = (videoUrl ? ms : ms + start) / 1000;
       void v.play().catch(() => {});
     };
   }, [ctl, videoUrl, start]);
@@ -245,7 +264,7 @@ function Preview({ ctl, src, videoUrl, start, end, aspect, style, cues, title, t
   const pos = ov.watermark?.pos ?? "centre-below-captions";
   return <section className="ed-stage">
     <div ref={box} className="editor-frame ed-frame" style={{ aspectRatio: ratio(aspect), width: `min(100%, calc(60vh * ${aspect.split(":").map(Number).reduce((w, h) => w / h)}))` }} onPointerMove={move} onPointerUp={() => (drag.current = false)} onPointerLeave={() => (drag.current = false)}>
-      {url ? <video ref={vid} src={url} controls playsInline onTimeUpdate={(e) => { const ms = clipOnly ? start + e.currentTarget.currentTime * 1000 : e.currentTarget.currentTime * 1000; setT(ms); onTime(ms); if (!clipOnly && ms >= end) { e.currentTarget.pause(); } }} /> : <p className="muted">No video available.</p>}
+      {url ? <video ref={vid} src={url} controls playsInline onTimeUpdate={(e) => { const ms = clipOnly ? e.currentTarget.currentTime * 1000 : e.currentTarget.currentTime * 1000 - start; setT(ms); onTime(ms); if (!clipOnly && ms >= end - start) { e.currentTarget.pause(); } }} /> : <p className="muted">No video available.</p>}
       {title.trim() && <div className={`ed-title ed-${titleStyle}`} style={{ top: `${ov.title?.y ?? 14}%`, fontSize: 66 * k }}>{title.split(/\s+/).map((x, i) => <span key={i} style={titleStyle === "headline" && hw && x.toLowerCase().replace(/[^\w']/g, "") === hw.replace(/[^\w']/g, "") ? { color: HIGHLIGHTS[ov.title?.highlight ?? "yellow"] } : undefined}>{x} </span>)}</div>}
       {text && <div className="ed-caption" onPointerDown={(e) => { drag.current = true; e.preventDefault(); }} style={{ left: `${style.x}%`, top: `${style.y}%`, fontSize: style.size * k, color: style.fill, WebkitTextStroke: style.box ? undefined : `${style.outlineW * k}px ${style.outline}`, paintOrder: "stroke fill", textShadow: style.shadow && !style.box ? `0 ${3 * k}px ${4 * k}px rgba(0,0,0,.5)` : undefined, background: style.box ? `color-mix(in srgb, ${style.boxColor} ${style.boxOpacity * 100}%, transparent)` : undefined }}>
         {shown.map((x, i) => <span key={i} style={style.active && style.animation === "karaoke" && i === activeIdx ? { color: style.active } : undefined}>{x} </span>)}</div>}
