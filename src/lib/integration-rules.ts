@@ -17,7 +17,7 @@ export const INTEGRATIONS: Integration[] = [
       addKey("ENGINE_API_KEY and ENGINE_WEBHOOK_SECRET"),
       { title: "Test", body: "Click Test Connection — it calls GET /v1/health on your Engine." },
     ] },
-  { id: "ai", name: "Your AI provider", minutes: 3, required: true, secrets: ["AI_API_KEY"], intro: "Set this up first — your own AI key powers ideation, thumbnails, titles, captions, channel analysis and the Discord agent. Any OpenAI-compatible provider works (OpenAI, Gemini, Anthropic, OpenRouter, Groq, DeepSeek, Mistral, xAI…).",
+  { id: "ai", name: "Your AI provider", minutes: 2, required: true, secrets: ["AI_API_KEY"], intro: "Set this up first — your own AI key powers ideation, thumbnails, titles, captions, channel analysis and the Discord agent. Any OpenAI-compatible provider works (OpenAI, Gemini, Anthropic, OpenRouter, Groq, DeepSeek, Mistral, xAI…).",
     steps: [
       { title: "Get a key", body: "Create an API key at your AI provider's dashboard." },
       addKey("AI_API_KEY"),
