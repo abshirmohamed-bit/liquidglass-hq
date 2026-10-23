@@ -80,16 +80,16 @@ export const saveFinish = createServerFn({ method: "POST" }).middleware([require
 export const transcribeChunk = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
   .inputValidator(z.object({ audio: z.string().min(10).max(3_000_000), mime: z.enum(["audio/mpeg", "audio/wav"]), language: z.string().max(8).optional() }))
   .handler(async ({ data }) => {
-    const key = process.env["LOVABLE_API_KEY"];
-    if (!key) throw new Error("AI is not available right now.");
+    const { requireAi } = await import("./ai/provider.server");
+    const ai = requireAi();
     const bytes = Uint8Array.from(atob(data.audio), (ch) => ch.charCodeAt(0));
     const form = new FormData();
-    form.append("model", "openai/gpt-transcribe");
+    form.append("model", ai.transcribeModel);
     form.append("file", new File([bytes], data.mime === "audio/wav" ? "chunk.wav" : "chunk.mp3", { type: data.mime }));
     form.append("response_format", "json");
     form.append("stream", "true");
     if (data.language) form.append("language", data.language);
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form });
+    const res = await fetch(`${ai.baseURL}/audio/transcriptions`, { method: "POST", headers: { Authorization: `Bearer ${ai.apiKey}` }, body: form });
     if (res.status === 429) throw new Error("Too many requests right now. Try again in a moment.");
     if (res.status === 402) throw new Error("AI credits have run out. Add credits in your workspace to continue.");
     if (!res.ok || !res.body) { const t = await res.text().catch(() => ""); console.error("transcribe failed", res.status, t.slice(0, 300)); throw new Error(`Transcription failed (${res.status}).`); }

@@ -20,6 +20,6 @@ export const deleteClient=createServerFn({method:'POST'}).middleware([requireSup
 export const analyzeClient=createServerFn({method:'POST'}).middleware([requireSupabaseAuth]).inputValidator(z.object({id:z.string().uuid()})).handler(async({data,context})=>{
  const {data:client,error}=await context.supabase.from('clients').select('*').eq('id',data.id).single();if(error)throw new Error(error.message);
  const key=process.env['YOUTUBE_API_KEY'];if(!key)throw new Error('YouTube is not connected yet. Your client is saved; channel analysis needs a YouTube API key.');
- const {analyzeChannel}=await import('./channel.server');const analysis=await analyzeChannel(client.channel_url||'',key,process.env['LOVABLE_API_KEY']);
+ const {analyzeChannel}=await import('./channel.server');const analysis=await analyzeChannel(client.channel_url||'',key);
  const result=await context.supabase.from('clients').update(analysis).eq('id',data.id);if(result.error)throw new Error(result.error.message);return analysis;
 });
