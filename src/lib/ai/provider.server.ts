@@ -12,13 +12,31 @@ export type AiConfig = { apiKey: string; baseURL: string; model: string; transcr
 export function aiConfig(): AiConfig | null {
   const apiKey = process.env["AI_API_KEY"];
   if (!apiKey) return null;
-  const baseURL = (process.env["AI_BASE_URL"] || "https://api.openai.com/v1").replace(/\/+$/, "");
+  const p = detectProvider(apiKey);
+  const rawBase = (process.env["AI_BASE_URL"] || "").trim();
+  const baseURL = (/^https?:\/\//.test(rawBase) ? rawBase : p.baseURL).replace(/\/+$/, "");
+  const rawModel = (process.env["AI_MODEL"] || "").trim();
   return {
     apiKey,
     baseURL,
-    model: process.env["AI_MODEL"] || "gpt-4o-mini",
+    model: looksLikeModel(rawModel) ? rawModel : p.model,
     transcribeModel: process.env["AI_TRANSCRIBE_MODEL"] || "whisper-1",
   };
+}
+
+/** Guess the provider from the key's prefix so only the key is strictly needed. Cheapest capable model per provider. */
+export function detectProvider(key: string): { name: string; baseURL: string; model: string } {
+  if (key.startsWith("sk-ant-")) return { name: "Anthropic", baseURL: "https://api.anthropic.com/v1", model: "claude-haiku-4-5" };
+  if (key.startsWith("sk-or-")) return { name: "OpenRouter", baseURL: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" };
+  if (key.startsWith("AIza")) return { name: "Google Gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash" };
+  if (key.startsWith("gsk_")) return { name: "Groq", baseURL: "https://api.groq.com/openai/v1", model: "llama-3.3-70b-versatile" };
+  if (key.startsWith("xai-")) return { name: "xAI", baseURL: "https://api.x.ai/v1", model: "grok-3-mini" };
+  return { name: "OpenAI", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini" };
+}
+
+/** Real model ids carry a version digit or separator (gpt-4o-mini, gemini-2.5-flash); words like "NA" do not. */
+export function looksLikeModel(m: string) {
+  return /^[\w.\/:-]+$/.test(m) && /[\d\-\/.:]/.test(m);
 }
 
 export function requireAi(): AiConfig {
