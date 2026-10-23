@@ -20,7 +20,10 @@ async function backfillFinish(db: SupabaseClient<Database>, clip: Record<string,
   const r = await engineClient<Record<string, unknown>>("GET", `/v1/projects/${pid}`);
   if (!r.ok) return clip;
   const { finishColumns } = await import("./engine-events.server");
-  const patch = finishColumns(r.data);
+  // in_ms is where this clip starts in the source; the cues are stored in
+  // source time so the player, the seek and the displayed time all agree.
+  const inMs = typeof r.data["in_ms"] === "number" ? Math.round(r.data["in_ms"]) : 0;
+  const patch = finishColumns(r.data, inMs);
   if (!patch["captions"]) return clip;
   const saved = await db
     .from("clips")

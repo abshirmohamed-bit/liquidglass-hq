@@ -214,7 +214,18 @@ export function Editor({ clipId }: { clipId: string }) {
 
 function Preview({ ctl, src, videoUrl, start, end, aspect, style, cues, title, titleStyle, ov, mark, onTime, onMove }: { ctl: React.MutableRefObject<((ms: number) => void) | null>; src: string | null; videoUrl: string | null; start: number; end: number; aspect: string; style: CaptionStyle; cues: Cue[]; title: string; titleStyle: TitleStyle; ov: Overlays; mark: string; onTime: (ms: number) => void; onMove: (x: number, y: number) => void }) {
   const box = useRef<HTMLDivElement>(null); const [w, setW] = useState(360); const [t, setT] = useState(start); const drag = useRef(false); const vid = useRef<HTMLVideoElement>(null);
-  useEffect(() => { ctl.current = (ms) => { const v = vid.current; if (!v) return; v.currentTime = (src ? ms : ms - start) / 1000; void v.play().catch(() => {}); }; }, [ctl, src, start]);
+  // Cue times are in source time. Translate to whatever is actually playing:
+  // the exported clip starts at zero, the full source does not. Keying this
+  // off "is there a source" instead of "what is on screen" sent every cue
+  // click to 42 minutes into a 3 minute file.
+  useEffect(() => {
+    ctl.current = (ms) => {
+      const v = vid.current;
+      if (!v) return;
+      v.currentTime = (videoUrl ? ms - start : ms) / 1000;
+      void v.play().catch(() => {});
+    };
+  }, [ctl, videoUrl, start]);
   useEffect(() => { const el = box.current; if (!el) return; const ro = new ResizeObserver(() => setW(el.clientWidth)); ro.observe(el); return () => ro.disconnect(); }, []);
   const k = w / 1080;
   const cue = cueAt(cues, t);
@@ -223,12 +234,18 @@ function Preview({ ctl, src, videoUrl, start, end, aspect, style, cues, title, t
   const activeIdx = cue ? Math.min(ws.length - 1, Math.floor(((t - cue.start_ms) / Math.max(1, cue.end_ms - cue.start_ms)) * ws.length)) : -1;
   const shown = style.animation === "typewriter" ? ws.slice(0, activeIdx + 1) : ws;
   const move = (e: React.PointerEvent) => { if (!drag.current || !box.current) return; const r = box.current.getBoundingClientRect(); onMove(Math.max(5, Math.min(95, ((e.clientX - r.left) / r.width) * 100)), Math.max(5, Math.min(95, ((e.clientY - r.top) / r.height) * 100))); };
-  const url = src ? `${src}#t=${start / 1000},${end / 1000}` : videoUrl;
+  // Prefer the exported clip. It is this clip and nothing else: a few MB
+  // instead of a 1.5GB source, a scrubber that reads 3:37 instead of 46:32,
+  // and seeking that lands instantly. The source, played through a media
+  // fragment, was making the editor stream the whole video to show a sliver
+  // of it. Falling back to the source still covers a clip never exported.
+  const clipOnly = !!videoUrl;
+  const url = videoUrl ?? (src ? `${src}#t=${start / 1000},${end / 1000}` : null);
   const hw = (ov.title?.highlight_word ?? "").toLowerCase();
   const pos = ov.watermark?.pos ?? "centre-below-captions";
   return <section className="ed-stage">
     <div ref={box} className="editor-frame ed-frame" style={{ aspectRatio: ratio(aspect), width: `min(100%, calc(60vh * ${aspect.split(":").map(Number).reduce((w, h) => w / h)}))` }} onPointerMove={move} onPointerUp={() => (drag.current = false)} onPointerLeave={() => (drag.current = false)}>
-      {url ? <video ref={vid} src={url} controls playsInline onTimeUpdate={(e) => { const ms = src ? e.currentTarget.currentTime * 1000 : start + e.currentTarget.currentTime * 1000; setT(ms); onTime(ms); if (src && ms >= end) { e.currentTarget.pause(); } }} /> : <p className="muted">No video available.</p>}
+      {url ? <video ref={vid} src={url} controls playsInline onTimeUpdate={(e) => { const ms = clipOnly ? start + e.currentTarget.currentTime * 1000 : e.currentTarget.currentTime * 1000; setT(ms); onTime(ms); if (!clipOnly && ms >= end) { e.currentTarget.pause(); } }} /> : <p className="muted">No video available.</p>}
       {title.trim() && <div className={`ed-title ed-${titleStyle}`} style={{ top: `${ov.title?.y ?? 14}%`, fontSize: 66 * k }}>{title.split(/\s+/).map((x, i) => <span key={i} style={titleStyle === "headline" && hw && x.toLowerCase().replace(/[^\w']/g, "") === hw.replace(/[^\w']/g, "") ? { color: HIGHLIGHTS[ov.title?.highlight ?? "yellow"] } : undefined}>{x} </span>)}</div>}
       {text && <div className="ed-caption" onPointerDown={(e) => { drag.current = true; e.preventDefault(); }} style={{ left: `${style.x}%`, top: `${style.y}%`, fontSize: style.size * k, color: style.fill, WebkitTextStroke: style.box ? undefined : `${style.outlineW * k}px ${style.outline}`, paintOrder: "stroke fill", textShadow: style.shadow && !style.box ? `0 ${3 * k}px ${4 * k}px rgba(0,0,0,.5)` : undefined, background: style.box ? `color-mix(in srgb, ${style.boxColor} ${style.boxOpacity * 100}%, transparent)` : undefined }}>
         {shown.map((x, i) => <span key={i} style={style.active && style.animation === "karaoke" && i === activeIdx ? { color: style.active } : undefined}>{x} </span>)}</div>}

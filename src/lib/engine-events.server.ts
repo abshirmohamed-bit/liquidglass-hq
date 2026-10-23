@@ -20,7 +20,7 @@ const d = (ev: EngineEvent) => (ev.data ?? {}) as Record<string, unknown>;
  * watermark and layout already in place instead of a "transcribe first" button
  * over work that was done minutes ago.
  */
-export function finishColumns(raw: unknown): Record<string, unknown> {
+export function finishColumns(raw: unknown, clipStartMs = 0): Record<string, unknown> {
   const f = (raw ?? {}) as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   // Two callers, two shapes: the webhook sends title_text/title_style flat,
@@ -54,8 +54,19 @@ export function finishColumns(raw: unknown): Record<string, unknown> {
       start_ms: Math.round(w["start_ms"] as number),
       end_ms: Math.round(w["end_ms"] as number),
     }));
+  // The Engine re-bases its words so a clip starts at zero. The editor works
+  // in source time: it reads the player's own clock, seeks the source by cue,
+  // and subtracts the clip start to display a time. Handing it zero-based
+  // words puts every caption out by however far into the video the clip
+  // starts — invisible on a clip that begins at 0:00, and wildly wrong on
+  // every other one. Put the offset back.
+  const based = words.map((w) => ({
+    text: w.text,
+    start_ms: w.start_ms + clipStartMs,
+    end_ms: w.end_ms + clipStartMs,
+  }));
   const styleId = typeof f["caption_style_id"] === "string" ? f["caption_style_id"] : "";
-  if (words.length) out["captions"] = cuesFromWords(words, styleFor(styleId).maxWords) as never;
+  if (based.length) out["captions"] = cuesFromWords(based, styleFor(styleId).maxWords) as never;
   if (styleId) out["caption_style_id"] = styleId;
   if (f["caption_options"] && typeof f["caption_options"] === "object")
     out["caption_options"] = f["caption_options"] as never;
@@ -139,7 +150,7 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
         alternate_of: typeof c["alternate_of"] === "string" ? c["alternate_of"] : null,
         aspect: job.aspect, layout: firstLayout, status: "FOUND", last_event_id: ev.id,
         // Last, so the Engine's own aspect/layout win over the job defaults.
-        ...finishColumns(c["finish"]),
+        ...finishColumns(c["finish"], typeof c["start_ms"] === "number" ? Math.round(c["start_ms"]) : 0),
       }, { onConflict: "job_id,engine_project_id", ignoreDuplicates: true }).select("id");
       if (ins.error) throw new Error(ins.error.message);
       inserted += ins.data?.length ?? 0;
