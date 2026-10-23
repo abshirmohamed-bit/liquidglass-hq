@@ -26,6 +26,7 @@ export function aiConfig(): AiConfig | null {
 
 /** Guess the provider from the key's prefix so only the key is strictly needed. Cheapest capable model per provider. */
 export function detectProvider(key: string): { name: string; baseURL: string; model: string } {
+  if (key.startsWith("ci_live_")) return { name: "Cheaper Inference", baseURL: "https://api.cheaperinference.com/v1", model: "gpt-5.4-mini" };
   if (key.startsWith("sk-ant-")) return { name: "Anthropic", baseURL: "https://api.anthropic.com/v1", model: "claude-haiku-4-5" };
   if (key.startsWith("sk-or-")) return { name: "OpenRouter", baseURL: "https://openrouter.ai/api/v1", model: "openai/gpt-4o-mini" };
   if (key.startsWith("AIza")) return { name: "Google Gemini", baseURL: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash" };
