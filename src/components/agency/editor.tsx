@@ -170,7 +170,7 @@ export function Editor({ clipId }: { clipId: string }) {
           <div className="ed-sec-head"><div><h2>Caption text</h2><p className="caption">{cues.length ? `${cues.length} lines · ${words.length} words — click a time to jump there, type to fix a word.` : "No captions yet."}</p></div>
             <Button size="sm" variant={cues.length ? "outline" : "default"} onClick={transcribe} disabled={!!busy}><Captions />{cues.length ? "Re-transcribe" : "Transcribe"}</Button></div>
           {cues.length > 0 && <div className="ed-cues">{cues.map((q2, i) => { const on = now >= q2.start_ms && now < q2.end_ms; return <div key={i} className={`ed-cue ${on ? "on" : ""}`}>
-            <button className="ed-cue-time" onClick={() => seek.current?.(q2.start_ms)}>{(Math.max(0, q2.start_ms >= start ? q2.start_ms - start : q2.start_ms) / 1000).toFixed(1)}s</button>
+            <button className="ed-cue-time" onClick={() => seek.current?.(q2.start_ms)}>{(q2.start_ms / 1000).toFixed(1)}s</button>
             <input value={q2.text} aria-label={`Caption line ${i + 1}`} onChange={(e) => setCues((x) => x.map((y, j) => (j === i ? { ...y, text: e.target.value } : y)))} /></div>; })}</div>}
         </section>
       </div>
