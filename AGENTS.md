@@ -19,6 +19,7 @@
 - The public dashboard is a presentation-only shell until operational dashboard work is implemented; show unavailable metrics rather than fabricated financial totals.
 - Derive finances in one shared pure module from client, payment and team records; historical charts must label collected recurring payments rather than invent historical contract values.
 - Persist chat UI message parts in owner-scoped records and derive the active conversation from its page URL; this preserves reasoning and prevents histories crossing threads.
+- All text/chat/transcription AI goes through src/lib/ai/provider.server.ts (AI_API_KEY, AI_BASE_URL, AI_MODEL, AI_TRANSCRIBE_MODEL, OpenAI-compatible) so the owner can use any provider with their own key; never call the Lovable AI gateway.
 - Higgsfield image generation runs only in server code with key+secret from managed secrets; model/aspect/resolution constants live in src/lib/thumbnail-rules.ts so tests pin them.
 - Client title/idea results persist one row per client+kind in client_suggestions, replaced only on explicit regenerate; avoids re-generating on every visit.
 - Operational rules (capacity limit, lead pipeline totals, month grid, revenue this month) live in src/lib/ops-rules.ts; the dashboard reads shared agency + ops queries client-side because / is a public route.
@@ -39,3 +40,5 @@
 - Completion uses unique job/project inserts and conditional FOUND claims so webhook/poll races cannot duplicate clips or exports.
 
 - Download Git LFS model binaries from the media endpoint, not raw GitHub pointer files; otherwise the face detector cannot load at export time.
+
+- Review cards expose state-relevant editing and completion actions, with secondary operations in the shared dropdown menu; preview picture remains the direct entry to playback.

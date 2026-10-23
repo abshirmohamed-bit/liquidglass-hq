@@ -17,9 +17,11 @@ export const INTEGRATIONS: Integration[] = [
       addKey("ENGINE_API_KEY and ENGINE_WEBHOOK_SECRET"),
       { title: "Test", body: "Click Test Connection — it calls GET /v1/health on your Engine." },
     ] },
-  { id: "ai", name: "Claude / AI API", minutes: 2, required: true, secrets: ["LOVABLE_API_KEY"], intro: "Set this up first — it powers ideation, thumbnails, channel analysis, and the Discord agent.",
+  { id: "ai", name: "Your AI provider", minutes: 2, required: true, secrets: ["AI_API_KEY"], intro: "Set this up first — your own AI key powers ideation, thumbnails, titles, captions, channel analysis and the Discord agent. Any OpenAI-compatible provider works (OpenAI, Gemini, Anthropic, OpenRouter, Groq, DeepSeek, Mistral, xAI…).",
     steps: [
-      { title: "Check the AI connection", body: "This app uses the built-in AI service, which is already connected to your workspace. No key to paste." },
+      { title: "Get a key", body: "Create an API key at your AI provider's dashboard." },
+      addKey("AI_API_KEY"),
+      { title: "Point at your provider (optional)", body: "Defaults to OpenAI with gpt-4o-mini. For another provider add AI_BASE_URL and AI_MODEL, e.g. Gemini https://generativelanguage.googleapis.com/v1beta/openai + gemini-2.5-flash, OpenRouter https://openrouter.ai/api/v1, Anthropic https://api.anthropic.com/v1 + claude-sonnet-4-5. Optional AI_TRANSCRIBE_MODEL for caption transcription (default whisper-1)." },
       { title: "Run the test", body: "Click Test Connection below. A green Connected badge means ideation, thumbnails, channel analysis and the Discord agent can use AI." },
     ] },
   { id: "anthropic", name: "Anthropic (Claude)", minutes: 3, secrets: ["ANTHROPIC_API_KEY"], intro: "The AI model API used for judgement calls.",

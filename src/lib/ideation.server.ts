@@ -43,8 +43,9 @@ export async function handleIdeation(request: Request) {
     !last.parts.some((part) => part.type === "text" && part.text.trim())
   )
     return Response.json({ message: "Write a message first." }, { status: 400 });
-  const key = process.env["LOVABLE_API_KEY"];
-  if (!key) return Response.json({ message: "AI is not configured yet." }, { status: 401 });
+  const { aiConfig } = await import("./ai/provider.server");
+  const ai = aiConfig();
+  if (!ai) return Response.json({ message: "Add your AI key in Settings (AI_API_KEY) first." }, { status: 401 });
   const save = async (message: UIMessage) => {
     const content = message.parts
       .filter((part) => part.type === "text")
@@ -122,9 +123,9 @@ You are an expert content strategist specializing in personal-brand growth on Yo
   const call = createResponsesCall(
     request,
     {
-      baseURL: "https://ai.gateway.lovable.dev/v1",
-      apiKey: key,
-      model: "openai/gpt-6-astra",
+      baseURL: ai.baseURL,
+      apiKey: ai.apiKey,
+      model: ai.model,
       chat: true,
       tools,
     },
