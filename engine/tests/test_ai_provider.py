@@ -34,6 +34,7 @@ def test_no_key_means_no_ai(cfg):
 
 
 @pytest.mark.parametrize("key, kind, host", [
+    ("ci_live_abc123", "openai", "https://api.cheaperinference.com/v1"),
     ("gsk_abc123", "openai", "https://api.groq.com/openai/v1"),
     ("sk-ant-abc123", "anthropic", "https://api.anthropic.com"),
     ("sk-or-abc123", "openai", "https://openrouter.ai/api/v1"),
@@ -120,3 +121,12 @@ def test_without_a_key_it_says_so_rather_than_guessing(cfg):
     cfg()
     with pytest.raises(RuntimeError, match="AI_API_KEY"):
         find.ai_find(SENTENCES, 1, 30_000, http=_Client({}))
+
+
+def test_a_cheaper_inference_key_needs_nothing_else(cfg):
+    """One secret is the whole setup: no base URL, no model."""
+    kind, base, model, key = cfg(AI_API_KEY="ci_live_13cf74fb").ai_target()
+    assert kind == "openai"
+    assert base == "https://api.cheaperinference.com/v1"
+    assert model == "gpt-5.6-luna"
+    assert key.startswith("ci_live_")

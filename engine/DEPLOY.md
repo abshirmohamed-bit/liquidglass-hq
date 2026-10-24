@@ -49,6 +49,7 @@ Any provider will do. The key's shape says where to send it, so this is
 usually the entire setup:
 
 ```bash
+fly secrets set AI_API_KEY="ci_live_..."    # Cheaper Inference
 fly secrets set AI_API_KEY="gsk_..."        # Groq, already in use for audio
 fly secrets set AI_API_KEY="sk-ant-..."     # Anthropic
 fly secrets set AI_API_KEY="sk-or-..."      # OpenRouter

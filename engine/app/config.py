@@ -10,6 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 #: How to reach a provider from the shape of its key, so pasting one key is
 #: usually all it takes. Longest prefixes first: "sk-or-" is also "sk-".
 KEY_SHAPES: tuple[tuple[str, str, str, str], ...] = (
+    ("ci_live_", "https://api.cheaperinference.com/v1", "openai", "gpt-5.6-luna"),
     ("sk-ant-", "https://api.anthropic.com", "anthropic", "claude-sonnet-4-5"),
     ("sk-or-", "https://openrouter.ai/api/v1", "openai", "openai/gpt-4o-mini"),
     ("gsk_", "https://api.groq.com/openai/v1", "openai", "openai/gpt-oss-20b"),
