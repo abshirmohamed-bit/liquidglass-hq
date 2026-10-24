@@ -42,6 +42,8 @@ const jobFormSchema = z.object({
   genre: z.string().trim().max(40).default("Auto"),
   mode: modeEnum.default("AUTO"),
   prompt: z.string().trim().max(MAX_PROMPT_CHARS).default(""),
+  /** How headlines should read for THIS video, overriding the house style. */
+  titleBrief: z.string().trim().max(300).default(""),
   mustInclude: z.array(z.string().trim().min(1).max(200)).max(MAX_MUST_INCLUDE).default([]),
   headlineTopN: z.number().int().min(0).max(50).default(HEADLINE_TOP_DEFAULT),
   alternates: z.boolean().default(false),
@@ -131,7 +133,7 @@ export const createClipJob = createServerFn({ method: "POST" }).middleware([requ
       music_asset_id: data.musicAssetId,
       broll_asset_id: data.brollAssetId,
       formats: { layouts: data.layouts, extras: data.extras } as never,
-      edits: { autopilot: data.autopilot } as never,
+      edits: { autopilot: data.autopilot, title_brief: data.titleBrief || undefined } as never,
       progress: 0,
     }).select("id").maybeSingle();
     if (ins.error) throw new Error(ins.error.message);
@@ -199,6 +201,38 @@ export const syncClipJobs = createServerFn({ method: "POST" }).middleware([requi
   const changed = await advanceActiveJobs(context.supabase);
   return { changed };
 });
+
+/**
+ * The creator's standing instruction for how titles and descriptions should
+ * read. They never write the words — the AI takes those from each clip — only
+ * what KIND of line to write, said once for everything.
+ */
+export const copyBriefs = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const kit = (await context.supabase.from("brand_kits").select("tone,copy_defaults")
+      .eq("user_id", context.userId).maybeSingle()).data;
+    const saved = ((kit?.copy_defaults ?? {}) as Record<string, unknown>);
+    const text = (v: unknown) => (typeof v === "string" ? v : "");
+    return {
+      title: text(saved["title"]),
+      // `tone` predates the split in two and only ever meant caption voice.
+      caption: text(saved["caption"]) || text(kit?.tone),
+    };
+  });
+
+export const saveCopyBriefs = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ title: z.string().trim().max(300), caption: z.string().trim().max(300) }))
+  .handler(async ({ context, data }) => {
+    const row = (await context.supabase.from("brand_kits").select("id,copy_defaults")
+      .eq("user_id", context.userId).maybeSingle()).data;
+    const copy_defaults = { ...((row?.copy_defaults ?? {}) as object), title: data.title, caption: data.caption };
+    const values = { copy_defaults: copy_defaults as never, tone: data.caption || null };
+    const r = row
+      ? await context.supabase.from("brand_kits").update(values).eq("id", row.id)
+      : await context.supabase.from("brand_kits").insert({ owner_id: context.userId, user_id: context.userId, ...values });
+    if (r.error) throw new Error(r.error.message);
+    return true;
+  });
 
 /** "Save as my defaults" writes the form's key choices to the BrandKit. */
 export const saveClipDefaults = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])

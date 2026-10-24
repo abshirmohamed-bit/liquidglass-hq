@@ -424,3 +424,62 @@ def test_a_composite_with_a_back_and_forth_stays_split(tmp_path, monkeypatch):
     r = compose.Render(out=tmp_path / "o.mp4", source=tmp_path / "in.mp4",
                        in_ms=0, out_ms=10000, layout="auto")
     assert "vstack=inputs=2" in " ".join(compose.build(r, tmp_path / "w")[0])
+
+
+# --- what the clip was chosen for -----------------------------------------
+
+def _two_feeds_one_talker():
+    """A composite where one side holds the floor: the case that collapses."""
+    from app.pipeline import frame as F, speaker as S
+    t = F.Track("yunet", 1920, 1080, [(0, 0.5)],
+                [F.Face(1, 0.25, 0.45, 0.09, 0.2, 0.5),
+                 F.Face(2, 0.75, 0.45, 0.09, 0.2, 0.5)], 0.5)
+    tracks = [S.FaceTrack(id=1, boxes=[(0, (0.25, 0.45, 0.09, 0.2))]),
+              S.FaceTrack(id=2, boxes=[(0, (0.75, 0.45, 0.09, 0.2))])]
+    turns = [S.Turn(0, 9000, 2, 0.9), S.Turn(9000, 10000, 1, 0.9)]
+    return t, tracks, turns
+
+
+def test_a_reaction_keeps_both_people_on_screen():
+    """Ask for "every time they react to each other" and the one composition
+    that ruins it is a tight shot of whoever was talking."""
+    from app.pipeline import frame as F
+    t, tracks, turns = _two_feeds_one_talker()
+    assert F.plan(t, tracks, turns, 1080, 1920, "speaker")["layout"] == "one-feed"
+    assert F.plan(t, tracks, turns, 1080, 1920, "reaction")["layout"] == "split"
+    assert F.plan(t, tracks, turns, 1080, 1920, "everyone")["layout"] == "split"
+
+
+def test_without_a_stated_focus_the_faces_still_decide():
+    from app.pipeline import frame as F
+    t, tracks, turns = _two_feeds_one_talker()
+    assert F.plan(t, tracks, turns, 1080, 1920, "auto")["layout"] == "one-feed"
+
+
+def test_a_reaction_clip_renders_as_a_stack(tmp_path, monkeypatch):
+    from app.pipeline import compose
+    t, tracks, turns = _two_feeds_one_talker()
+    monkeypatch.setattr(compose.framing, "track", lambda *a, **k: t)
+    monkeypatch.setattr(compose.framing, "speech", lambda *a, **k: (tracks, turns, []))
+    r = compose.Render(out=tmp_path / "o.mp4", source=tmp_path / "in.mp4",
+                       in_ms=0, out_ms=10000, layout="auto", focus="reaction")
+    assert "vstack=inputs=2" in " ".join(compose.build(r, tmp_path / "w")[0])
+
+
+def test_a_reaction_clip_does_not_chase_the_talker(tmp_path, monkeypatch):
+    """Following the speaker is how you miss the face the clip is about."""
+    from app.pipeline import compose
+    t, tracks, turns = _two_feeds_one_talker()
+    called = []
+    monkeypatch.setattr(compose.framing, "track", lambda *a, **k: t)
+    monkeypatch.setattr(compose.framing, "speech", lambda *a, **k: (tracks, turns, []))
+    monkeypatch.setattr(compose.framing, "follow_speaker",
+                        lambda tr, *a, **k: called.append(1) or tr)
+    compose.build(compose.Render(out=tmp_path / "o.mp4", source=tmp_path / "in.mp4",
+                                 in_ms=0, out_ms=10000, layout="auto", focus="reaction"),
+                  tmp_path / "w")
+    assert called == []
+    compose.build(compose.Render(out=tmp_path / "o2.mp4", source=tmp_path / "in.mp4",
+                                 in_ms=0, out_ms=10000, layout="auto", focus="speaker"),
+                  tmp_path / "w2")
+    assert called == [1]

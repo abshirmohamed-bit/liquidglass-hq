@@ -72,6 +72,7 @@ type Options = {
   band: string;
   autoHeadline: boolean;
   prompt: string;
+  titleBrief: string;
   startMs: number;
   endMs: number;
   caption: string;
@@ -86,6 +87,7 @@ const defaults = (d: LinkDetails): Options => ({
   band: LENGTH_BANDS.find((b) => b.label === d.suggested.clip_length)?.value ?? "auto",
   autoHeadline: true,
   prompt: "",
+  titleBrief: "",
   startMs: 0,
   endMs: d.duration_ms,
   caption: "karaoke_highlight",
@@ -145,6 +147,7 @@ export function NewJob() {
           genre: opts.genre,
           mode: opts.model as "AUTO" | "SPEECH" | "ENERGY" | "VISUAL",
           prompt: opts.prompt,
+          titleBrief: opts.titleBrief,
           mustInclude: [],
           headlineTopN: opts.autoHeadline ? 10 : 0,
           alternates: false,
@@ -362,6 +365,18 @@ export function NewJob() {
               onChange={(e) => set("prompt", e.target.value)}
               placeholder="e.g. every time they disagree with each other"
             />
+          </label>
+
+          {/* The AI writes every headline from what its own clip says. This
+              is the kind of line it should write, not the words. */}
+          <label className="field">
+            <span>How headlines should read</span>
+            <input
+              value={opts.titleBrief}
+              onChange={(e) => set("titleBrief", e.target.value)}
+              placeholder="e.g. phrase it as a question — respectful, no hype"
+            />
+            <small className="caption">Just for this video. Leave it blank to use your saved style.</small>
           </label>
 
           <fieldset className="job-range">

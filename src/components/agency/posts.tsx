@@ -136,7 +136,7 @@ export function Distribute({ clip, onClose }: { clip: { id: string; title: strin
   const base = `${clip.title ?? ""}${clip.watermark_text ? `\n\nFollow ${clip.watermark_text}` : ""}`;
   const [copy, setCopy] = useState<Partial<Record<Platform, string>>>({});
   const [ytTitle, setYtTitle] = useState(`${(clip.title ?? "").slice(0, 90)} #Shorts`);
-  const [when, setWhen] = useState<"now" | "later">("now"); const [at, setAt] = useState(""); const [busy, setBusy] = useState(false); const [ai, setAi] = useState(false);
+  const [when, setWhen] = useState<"now" | "later">("now"); const [at, setAt] = useState(""); const [busy, setBusy] = useState(false); const [ai, setAi] = useState(false); const [askCopy, setAskCopy] = useState("");
   const plats = [...new Set(chans.filter((c) => selected.includes(c.id)).map((c) => c.platform as Platform))];
   const text = (p: Platform) => copy[p] ?? base;
   const sec = (clip.duration_ms ?? 0) / 1000;
@@ -155,7 +155,18 @@ export function Distribute({ clip, onClose }: { clip: { id: string; title: strin
     <header className="page-header"><h2>Post “{clip.title ?? "clip"}”</h2><Button size="icon" variant="ghost" aria-label="Close" onClick={onClose}><X /></Button></header>
     {!chans.length ? <p>No channels yet. Add your accounts on the Posts tab first.</p> : <>
       <div className="review-actions">{chans.map((c) => <label key={c.id} className="lib-check"><input type="checkbox" checked={selected.includes(c.id)} onChange={(e) => setOn((e.target.checked ? [...selected, c.id] : selected.filter((x) => x !== c.id)))} />{pname(c.platform)} {c.handle} {c.status === "MANUAL" && <span className="status-pill">manual</span>}</label>)}</div>
-      <Button size="sm" variant="outline" disabled={ai || !plats.length} onClick={async () => { setAi(true); try { const r = await writeCopy({ data: { clipId: clip.id, platforms: plats } }); setCopy((x) => ({ ...x, ...r })); if (r["YOUTUBE"]) setYtTitle(r["YOUTUBE"].split("\n")[0]!.slice(0, 100)); } catch (e) { err(e); } finally { setAi(false); } }}><Sparkles />{ai ? "Writing…" : "Write captions with AI"}</Button>
+      {/* The AI writes these from the clip. The box is for saying what THIS
+          one should get at — blank uses the style saved in Settings. */}
+      <div className="ed-row">
+        <input
+          value={askCopy}
+          maxLength={300}
+          aria-label="What these captions should highlight"
+          placeholder="What should these highlight? e.g. lead on what he said about patience"
+          onChange={(e) => setAskCopy(e.target.value)}
+        />
+        <Button size="sm" variant="outline" disabled={ai || !plats.length} onClick={async () => { setAi(true); try { const r = await writeCopy({ data: { clipId: clip.id, platforms: plats, ...(askCopy.trim() ? { tone: askCopy.trim() } : {}) } }); setCopy((x) => ({ ...x, ...r })); if (r["YOUTUBE"]) setYtTitle(r["YOUTUBE"].split("\n")[0]!.slice(0, 100)); } catch (e) { err(e); } finally { setAi(false); } }}><Sparkles />{ai ? "Writing…" : askCopy.trim() ? "Rewrite captions" : "Write captions with AI"}</Button>
+      </div>
       {plats.map((p) => <div key={p} className="editor-fields"><strong>{pname(p)}</strong>
         {p === "YOUTUBE" && <label>Title <small className="muted">{ytTitle.length}/100</small><input value={ytTitle} onChange={(e) => setYtTitle(e.target.value)} /></label>}
         <label>{p === "YOUTUBE" ? "Description" : "Caption"} <small className="muted">{text(p).length}/{COPY_LIMITS[p]}</small><textarea rows={4} value={text(p)} onChange={(e) => setCopy((x) => ({ ...x, [p]: e.target.value }))} /></label>

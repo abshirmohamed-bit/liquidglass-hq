@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Pause, Play, Save, Send, SlidersHorizontal, Type, Volume2, VolumeX, Wand2, X } from "lucide-react";
+import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Pause, Play, Save, Send, SlidersHorizontal, Sparkles, Type, Volume2, VolumeX, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { clipFraming, editorData, saveFinish, transcribeChunk, type Framing } from "@/lib/finish.functions";
+import { rewriteHeadline } from "@/lib/posts.functions";
 import { setClipStatus, startExport } from "@/lib/review.functions";
 import { drawFrame, resolveLayout } from "@/lib/layout-preview";
 import { CAPTION_PRESETS, TITLE_STYLES, TITLE_STYLE_NAMES, HIGHLIGHTS, WATERMARK_POS, ASPECTS, LAYOUTS, LAYOUT_NAMES, LAYOUT_HINTS, type LayoutId, styleFor, wordsFromChunks, cuesFromWords, wordsFromCues, cueAt, type CaptionStyle, type Cue, type Overlays, type TitleStyle, type WatermarkPos } from "@/lib/finish-rules";
@@ -56,6 +57,7 @@ export function Editor({ clipId }: { clipId: string }) {
   const [mark, setMark] = useState(""); const [aspect, setAspect] = useState("9:16");
   const [layout, setLayout] = useState<LayoutId>("auto");
   const [busy, setBusy] = useState(""); const [applyTo, setApplyTo] = useState<string[]>([]); const [posting, setPosting] = useState(false);
+  const [ask, setAsk] = useState("");
   const [now, setNow] = useState(0);
   const loaded = useRef(false);
   const seek = useRef<((ms: number) => void) | null>(null);
@@ -106,6 +108,15 @@ export function Editor({ clipId }: { clipId: string }) {
 
   async function save(ids = [clipId], saveAsBrand = false) {
     try { const n = await saveFinish({ data: { ids, patch: patch(), saveAsBrand } }); await qc.invalidateQueries({ queryKey: ["review"] }); await qc.invalidateQueries({ queryKey: ["editor", clipId] }); toast.success(ids.length > 1 ? `Applied to ${n} clips` : "Saved"); } catch (e) { err(e); }
+  }
+  /** Ask for a different headline for this clip, keeping the old one until one arrives. */
+  async function reheadline() {
+    setBusy("headline");
+    try {
+      const line = await rewriteHeadline({ data: { clipId, instruction: ask } });
+      setTitle(line);
+      toast.success("New headline — Save to keep it");
+    } catch (e) { err(e); } finally { setBusy(""); }
   }
   async function transcribe() {
     if (!src) { toast.error("The source video isn't stored in the app."); return; }
@@ -246,6 +257,22 @@ export function Editor({ clipId }: { clipId: string }) {
           <div className="ed-sec-head"><h2>Title</h2>{title.trim() && <Button size="sm" variant="ghost" onClick={() => setTitle("")}>Remove</Button>}</div>
           <div className="ed-fields">
             <input value={title} maxLength={140} placeholder="Add a title on the video" aria-label="Title text" onChange={(e) => setTitle(e.target.value)} />
+            {/* The AI already wrote one when the clip was cut. This is for
+                when this particular clip should say something else — the
+                creator says what it should get at, not the words. */}
+            <div className="ed-row">
+              <input
+                value={ask}
+                maxLength={300}
+                aria-label="What this headline should do"
+                placeholder="Ask for a different headline — e.g. lead on the number he gave"
+                onChange={(e) => setAsk(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") void reheadline(); }}
+              />
+              <Button size="sm" variant="outline" onClick={() => void reheadline()} disabled={!!busy}>
+                <Sparkles size={14} />{busy === "headline" ? "Writing…" : "Rewrite"}
+              </Button>
+            </div>
             <div className="ed-chips">{TITLE_STYLES.map((t) => <button key={t} aria-pressed={titleStyle === t} onClick={() => setTitleStyle(t)}>{TITLE_STYLE_NAMES[t]}</button>)}</div>
             {titleStyle === "headline" && <div className="ed-row"><label>Highlighted word<input value={ov.title?.highlight_word ?? ""} onChange={(e) => setOv((o) => ({ ...o, title: { y: o.title?.y ?? 14, ...o.title, highlight_word: e.target.value } }))} /></label>
               <label>Colour<select value={ov.title?.highlight ?? "yellow"} onChange={(e) => setOv((o) => ({ ...o, title: { y: o.title?.y ?? 14, ...o.title, highlight: e.target.value as keyof typeof HIGHLIGHTS } }))}>{Object.keys(HIGHLIGHTS).map((k) => <option key={k}>{k}</option>)}</select></label></div>}

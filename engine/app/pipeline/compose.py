@@ -42,6 +42,10 @@ class Render:
     aspect: str = "9:16"
     layout: str = "full-video"
     framing_mode: str = "auto"              # auto | center | manual
+    #: What the clip was chosen for: speaker | reaction | everyone | auto.
+    #: A moment picked because of how someone reacted is thrown away by a
+    #: tight shot of whoever happens to be talking.
+    focus: str = "auto"
     words: list[dict] | None = None
     caption_style_id: str = "bold_white"
     captions_enabled: bool = True
@@ -302,10 +306,14 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
     # not match the render is worse than none.
     one_feed = ""
     layout = render.layout
-    if track is not None and render.source is not None:
+    wants_everyone = render.focus in framing.WANTS_EVERYONE
+    if track is not None and render.source is not None and not wants_everyone:
         # Point the crop at whoever is talking rather than at the average of
         # everyone on screen, which on a two-person interview is the gap
         # between them. Only worth the decoding when there is a choice.
+        #
+        # Not for a reaction, though: chasing the talker is how you miss the
+        # face the clip was chosen for. Those stay framed on everybody.
         track = framing.follow_speaker(track, render.source,
                                        in_ms=render.in_ms, out_ms=render.out_ms)
     if layout == "auto":
@@ -313,7 +321,7 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
         if track is not None and render.source is not None:
             tracks, turns_, _cuts = framing.speech(render.source,
                                                    in_ms=render.in_ms, out_ms=render.out_ms)
-        chosen = framing.plan(track, tracks, turns_, w, h)
+        chosen = framing.plan(track, tracks, turns_, w, h, render.focus)
         layout = chosen["layout"]
         if chosen["feed"]:
             f = chosen["feed"]

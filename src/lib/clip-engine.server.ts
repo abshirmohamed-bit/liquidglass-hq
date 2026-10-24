@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { applyEngineEvent, type EngineEvent } from "./engine-events.server";
 import { engineClient } from "./engine.server";
+import { savedBrief } from "./posts.functions";
 import type { ClipLength } from "./clip-rules";
 
 /**
@@ -60,7 +61,7 @@ function lengthSeconds(cl: unknown): number | "auto" | { min_s: number; max_s: n
 }
 
 /** Everything the Engine needs to cut this job, from the row the app stored. */
-function requestFor(job: JobRow, engineAssetId: string) {
+function requestFor(job: JobRow, engineAssetId: string, titleBrief = "") {
   const formats = (job.formats ?? {}) as { layouts?: string[] };
   const layouts = (formats.layouts ?? ["auto"]).map((l) => LAYOUT[l] ?? "full-video");
   return {
@@ -73,6 +74,9 @@ function requestFor(job: JobRow, engineAssetId: string) {
     genre: (job.genre ?? "Auto").toLowerCase() === "auto" ? "auto" : job.genre,
     mode: (job.mode ?? "AUTO").toLowerCase(),
     prompt: job.prompt ?? "",
+    // How headlines should read. Not what they should say — the Engine's
+    // finder takes that from each clip — but the kind of line to write.
+    title_brief: titleBrief,
     must_include: Array.isArray(job.must_include) ? (job.must_include as string[]) : [],
     headline_top_n: job.headline_top_n ?? 0,
     alternates: !!job.alternates,
@@ -109,7 +113,12 @@ async function submit(db: Db, job: JobRow): Promise<boolean> {
       "This source was not uploaded through the Engine, so it cannot be clipped. Re-upload it from the Library.");
     return true;
   }
-  const request = requestFor(job, engineAssetId);
+  // This video's own instruction if it has one, otherwise the house style.
+  const override = (job.edits as { title_brief?: unknown } | null)?.title_brief;
+  const titleBrief = typeof override === "string" && override.trim()
+    ? override.trim()
+    : await savedBrief(db, "title").catch(() => "");
+  const request = requestFor(job, engineAssetId, titleBrief);
   let r = await engineClient<{ id: string; status: string }>("POST", "/v1/autoclip", request);
   // The app and the Engine deploy separately, so the app can know a layout
   // the running Engine does not. That is a reason to render the clip a

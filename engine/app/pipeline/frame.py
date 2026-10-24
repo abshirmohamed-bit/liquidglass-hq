@@ -505,19 +505,30 @@ def cell_crops(track: Track, out_w: int, out_h: int, rows: int = 2) -> list[str]
     return crops
 
 
-def plan(track: Track | None, tracks, turns_, out_w: int, out_h: int) -> dict:
+#: Moments whose point is somebody else's response. Collapsing these to the
+#: person talking removes the thing the clip was chosen for.
+WANTS_EVERYONE = {"reaction", "everyone"}
+
+
+def plan(track: Track | None, tracks, turns_, out_w: int, out_h: int,
+         focus: str = "auto") -> dict:
     """The one place a layout is chosen, so the render and the preview agree.
 
     The editor draws its own preview and the Engine renders the clip; if they
     worked this out separately they would drift, and the preview would stop
     being worth looking at. Both ask here.
+
+    `focus` is why the clip was picked. Asked for "every time they react to
+    each other", the finder marks those moments as reactions, and showing one
+    big shot of whoever held the floor would be the one composition that
+    throws the moment away — however well framed.
     """
     from .speaker import dominant_panel
 
     if track is None:
         return {"layout": "full-video", "cells": [], "feed": None}
     layout = suggest_layout(track)
-    if layout == "split" and track.seam is not None and turns_:
+    if layout == "split" and track.seam is not None and turns_ and focus not in WANTS_EVERYONE:
         side = dominant_panel(tracks or [], turns_, track.seam)
         if side is not None:
             crop = feed_crop(track, out_w, out_h, side)
@@ -609,7 +620,8 @@ def feed_crop(track: Track, out_w: int, out_h: int, side: int) -> str:
     return f"crop={cw}:{ch}:{x}:{y}"
 
 
-def geometry(track: Track, out_w: int, out_h: int, *, tracks=None, turns_=None) -> dict:
+def geometry(track: Track, out_w: int, out_h: int, *, tracks=None, turns_=None,
+             focus: str = "auto") -> dict:
     """Every layout's crop boxes for this clip, in source pixels.
 
     The editor draws its own preview, so it needs the same numbers the render
@@ -628,7 +640,7 @@ def geometry(track: Track, out_w: int, out_h: int, *, tracks=None, turns_=None) 
     max_x = max(0, sw - cw)
     pan = [[ms, max(0, min(max_x, int(round(centre * sw - cw / 2))))]
            for ms, centre in track.samples]
-    chosen = plan(track, tracks, turns_, out_w, out_h)
+    chosen = plan(track, tracks, turns_, out_w, out_h, focus)
     return {
         "source": {"w": sw, "h": sh},
         "strategy": track.strategy,

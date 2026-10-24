@@ -203,7 +203,7 @@ def _find(s: Session, job: Job, asset: Asset, params: dict) -> list[finder.Momen
         mode="energy" if mode == "visual" else mode,
         coverage=coverage, genre=params.get("genre", "auto"), prompt=params.get("prompt", ""),
         must_include=params.get("must_include") or [], keep_qa=params.get("keep_qa", True),
-        envelope=envelope,
+        title_brief=params.get("title_brief", ""), envelope=envelope,
     )
     # Sparse speech can yield sentences but no viable speech-sized clip. Auto
     # must then use the real source's audio peaks, not finish with zero projects.
@@ -258,7 +258,7 @@ def _cut(s: Session, job: Job, asset: Asset, params: dict) -> None:
             aspect=params.get("aspect", "9:16"), layout=formats[0],
             caption_style_id=params.get("caption_style_id") or "bold_white",
             caption_options={"enabled": params.get("edit_level", "full") != "clips"},
-            framing={"mode": params.get("framing", "auto")},
+            framing={"mode": params.get("framing", "auto"), "focus": m.focus},
             edits=params.get("edits") or {},
             score=m.score, grades=m.grades, scene_analysis=m.scene_analysis, reason=m.reason,
             title={"text": m.title, "style": "bold_band",

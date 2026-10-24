@@ -130,3 +130,59 @@ def test_a_cheaper_inference_key_needs_nothing_else(cfg):
     assert base == "https://api.cheaperinference.com/v1"
     assert model == "gpt-5.6-luna"
     assert key.startswith("ci_live_")
+
+
+def test_the_finder_reports_what_each_moment_is_about():
+    """So "every time they react to each other" can reach the composition."""
+    import json
+
+    from app.pipeline.find import parse_moments
+
+    data = {"moments": [
+        {"start": "00:10", "end": "00:30", "title": "A", "focus": "reaction"},
+        {"start": "00:40", "end": "01:00", "title": "B", "focus": "speaker"},
+        {"start": "01:10", "end": "01:30", "title": "C"},
+    ]}
+    got = [m.focus for m in parse_moments(json.dumps(data))]
+    assert got == ["reaction", "speaker", "auto"]
+
+
+def test_a_made_up_focus_is_ignored_rather_than_obeyed():
+    import json
+
+    from app.pipeline.find import parse_moments
+
+    data = {"moments": [{"start": "00:10", "end": "00:30", "focus": "zoom into his eyes"}]}
+    assert parse_moments(json.dumps(data))[0].focus == "auto"
+
+
+def test_the_model_is_told_to_set_a_focus():
+    from app.pipeline.find import _claude_prompt
+
+    text = _claude_prompt([{"start_ms": 0, "end_ms": 1000, "text": "hello"}], 1, 20000,
+                          genre="auto", prompt="every time they react to each other",
+                          must_include=[], coverage="best", keep_qa=True)
+    assert "reaction" in text and "focus" in text
+    assert "every time they react to each other" in text
+
+
+def test_titles_are_written_as_hooks_by_default():
+    """The headline is read in the half second before someone keeps watching."""
+    from app.pipeline.find import _claude_prompt
+
+    text = _claude_prompt([{"start_ms": 0, "end_ms": 1000, "text": "hi"}], 3, 20000,
+                          genre="auto", prompt="", must_include=[], coverage="best",
+                          keep_qa=True)
+    assert "half second" in text
+    assert "never promise something the clip does not deliver" in text
+
+
+def test_a_title_brief_reaches_the_model_and_comes_last():
+    """The creator's own words win where they disagree with the house rules."""
+    from app.pipeline.find import _claude_prompt
+
+    text = _claude_prompt([{"start_ms": 0, "end_ms": 1000, "text": "hi"}], 3, 20000,
+                          genre="auto", prompt="", must_include=[], coverage="best",
+                          keep_qa=True, title_brief="always phrase it as a question")
+    assert "always phrase it as a question" in text
+    assert text.index("half second") < text.index("always phrase it as a question")

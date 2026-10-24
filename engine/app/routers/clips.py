@@ -71,6 +71,9 @@ class AutoClipBody(BaseModel):
     genre: str = "auto"
     mode: str = "auto"
     prompt: str = ""
+    #: How the creator wants the on-video headline written. Not what it should
+    #: say — the AI takes that from the clip — but the kind of line it is.
+    title_brief: str = ""
     must_include: list[str] = Field(default_factory=list)
     headline_top_n: int = 0
     alternates: bool = False
@@ -287,8 +290,9 @@ def project_framing(project_id: str, aspect: str = "") -> dict:
         tracks, turns_, _cuts = framing.speech(path, in_ms=p.in_ms, out_ms=p.out_ms)
         track = framing.follow_speaker(track, path, in_ms=p.in_ms, out_ms=p.out_ms)
         w, h = ASPECTS[want]
-        return ok(aspect=want, layout=p.layout,
-                  **framing.geometry(track, w, h, tracks=tracks, turns_=turns_))
+        focus = (p.framing or {}).get("focus", "auto")
+        return ok(aspect=want, layout=p.layout, focus=focus,
+                  **framing.geometry(track, w, h, tracks=tracks, turns_=turns_, focus=focus))
 
 
 class ExportBody(BaseModel):

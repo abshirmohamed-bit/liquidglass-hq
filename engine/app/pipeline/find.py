@@ -31,6 +31,15 @@ class Moment:
     scene_analysis: str = ""
     grades: dict[str, str] = field(default_factory=dict)
     alternate_of: str | None = None
+    #: What the moment is about, which decides who has to be on screen for it
+    #: to work. "speaker" — whoever is talking carries it. "reaction" — the
+    #: point is how the other person takes it, so cropping to the talker
+    #: throws the clip away. "everyone" — the exchange itself. "auto" leaves
+    #: it to the faces. Asking for "every time they react to each other" and
+    #: getting a tight shot of one man talking is the failure this prevents.
+    #: Kept last: a field added mid-list silently reassigns every positional
+    #: construction below it, which is exactly how this went wrong once.
+    focus: str = "auto"
 
     @property
     def duration_ms(self) -> int:
@@ -84,7 +93,9 @@ def snap(moments: list[Moment], sentences: list[dict], target_ms: int,
             continue
         if any(start < o.end_ms and o.start_ms < end for o in out):
             continue
-        out.append(Moment(start, end, m.title, m.score, m.reason, m.scene_analysis, m.grades, m.alternate_of))
+        out.append(Moment(start_ms=start, end_ms=end, title=m.title, score=m.score,
+                          reason=m.reason, scene_analysis=m.scene_analysis,
+                          grades=m.grades, alternate_of=m.alternate_of, focus=m.focus))
     return sorted(out, key=lambda x: x.start_ms)
 
 
@@ -288,8 +299,23 @@ SYSTEM = (
 )
 
 
+#: What a headline is for, when the creator has not said otherwise. The
+#: headline is read in the half second before someone decides to keep
+#: watching, so it has to earn that half second — a reason to stay, not a
+#: summary of what they would have seen anyway.
+HOOK_RULES = (
+    "The title is the headline burned onto the clip. It is read in the half "
+    "second before someone decides whether to keep watching, so write it to "
+    "win that half second: open a question the clip answers, name the stake, "
+    "or lead with the line that makes someone stop. Take it from what is "
+    "actually said — never promise something the clip does not deliver, and "
+    "no ALL CAPS or \"you won't believe\"."
+)
+
+
 def _claude_prompt(sentences: list[dict], count: int, target_ms: int, *, genre: str,
-                   prompt: str, must_include: list[str], coverage: str, keep_qa: bool) -> str:
+                   prompt: str, must_include: list[str], coverage: str, keep_qa: bool,
+                   title_brief: str = "") -> str:
     lines = "\n".join(f"[{mmss(s['start_ms'])}] {s['text']}" for s in sentences)
     want = (
         f"Partition the whole transcript into consecutive self-contained segments of about "
@@ -297,7 +323,11 @@ def _claude_prompt(sentences: list[dict], count: int, target_ms: int, *, genre: 
         if coverage == "whole"
         else f"Pick the {count} strongest moments, each about {target_ms // 1000}s."
     )
-    extras = [want]
+    extras = [want, HOOK_RULES]
+    if title_brief:
+        # The creator's own words come after the general rules so they win
+        # where the two disagree.
+        extras.append(f"How the creator wants titles written: {title_brief}")
     if genre and genre != "auto":
         extras.append(f"Genre: {genre}. Judge what counts as strong the way that genre's audience would.")
     if keep_qa:
@@ -310,14 +340,32 @@ def _claude_prompt(sentences: list[dict], count: int, target_ms: int, *, genre: 
         '{"moments":[{"start":"MM:SS","end":"MM:SS","title":"<=60 chars, a hook, no clickbait caps",'
         '"score":0-100,"grades":{"hook":"A+..D","flow":"A+..D","value":"A+..D","trend":"A+..D"},'
         '"scene_analysis":"two sentences on what happens and why it works",'
+        '"focus":"speaker|reaction|everyone",'
         '"reason":"<=120 chars"}]}'
+    )
+    extras.append(
+        "For each moment set focus to who has to be on screen for it to land: "
+        "\"speaker\" when the words carry it; \"reaction\" when the point is how "
+        "someone else takes it, so a tight shot of the talker would throw the "
+        "moment away; \"everyone\" when the exchange between them is the moment. "
+        "Choose it from what the creator asked for as much as from the transcript."
     )
     return "\n\n".join(["\n".join(extras), f"Reply ONLY with JSON of this shape: {schema}", "TRANSCRIPT:", lines])
 
 
+#: What a model is allowed to say a moment is about. Anything else is a
+#: hallucinated layout instruction and is ignored rather than obeyed.
+FOCUS = {"speaker", "reaction", "everyone", "auto"}
+
+
+def _focus(value) -> str:
+    text = str(value or "auto").strip().lower()
+    return text if text in FOCUS else "auto"
+
+
 def ai_find(sentences: list[dict], count: int, target_ms: int, *, genre: str = "auto",
             prompt: str = "", must_include: list[str] | None = None, coverage: str = "best",
-            keep_qa: bool = True, http=None) -> list[Moment]:
+            keep_qa: bool = True, title_brief: str = "", http=None) -> list[Moment]:
     """One call per 20-minute window, against whichever provider has a key.
 
     Two request shapes cover essentially everything: the chat-completions API
@@ -337,7 +385,8 @@ def ai_find(sentences: list[dict], count: int, target_ms: int, *, genre: str = "
     try:
         for window in windows:
             user = _claude_prompt(window, count, target_ms, genre=genre, prompt=prompt,
-                                  must_include=must_include or [], coverage=coverage, keep_qa=keep_qa)
+                                  must_include=must_include or [], coverage=coverage,
+                                  keep_qa=keep_qa, title_brief=title_brief)
             if kind == "anthropic":
                 r = client.post(
                     f"{base}/v1/messages",
@@ -409,6 +458,7 @@ def parse_moments(text: str) -> list[Moment]:
             score=float(raw.get("score") or 70),
             reason=str(raw.get("reason") or "")[:200],
             scene_analysis=str(raw.get("scene_analysis") or "")[:600],
+            focus=_focus(raw.get("focus")),
             grades={k: str(v)[:2] for k, v in grades.items()},
         ))
     return out
@@ -470,7 +520,7 @@ def _fill_to_count(found: list[Moment], sentences: list[dict], target_ms: int,
 def find(sentences: list[dict], *, count: int, target_ms: int, mode: str = "auto",
          coverage: str = "best", genre: str = "auto", prompt: str = "",
          must_include: list[str] | None = None, keep_qa: bool = True,
-         envelope: list[float] | None = None) -> list[Moment]:
+         title_brief: str = "", envelope: list[float] | None = None) -> list[Moment]:
     """Pick moments with whichever provider is configured, then snap them."""
     cfg = settings()
     provider = cfg.resolve_finder()
@@ -479,7 +529,8 @@ def find(sentences: list[dict], *, count: int, target_ms: int, mode: str = "auto
     elif provider in ("ai", "claude"):
         try:
             raw = ai_find(sentences, count, target_ms, genre=genre, prompt=prompt,
-                          must_include=must_include, coverage=coverage, keep_qa=keep_qa)
+                          must_include=must_include, coverage=coverage, keep_qa=keep_qa,
+                          title_brief=title_brief)
             if not raw:
                 raw = rules_find(sentences, count, target_ms, coverage)
         except Exception:

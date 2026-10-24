@@ -90,3 +90,24 @@ describe("an Engine that has not heard of a layout", () => {
     expect(seen).toEqual([["split"]]);
   });
 });
+
+describe("the headline brief reaching the Engine", () => {
+  it("is sent with the job, from the video's own override", async () => {
+    seen.length = 0;
+    const bodies: any[] = [];
+    const srv = createServer((req, res) => {
+      let body = ""; req.on("data", (c) => (body += c));
+      req.on("end", () => { bodies.push(JSON.parse(body || "{}"));
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ id: "ej_2", status: "queued" })); });
+    });
+    await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+    process.env["ENGINE_URL"] = `http://127.0.0.1:${(srv.address() as any).port}`;
+    const { advanceActiveJobs } = await import("@/lib/clip-engine.server");
+    const row = job(["auto"]);
+    row["edits"] = { title_brief: "phrase it as a question" };
+    await advanceActiveJobs(fakeDb([row]) as never, 1);
+    srv.close();
+    expect(bodies[0].title_brief).toBe("phrase it as a question");
+  });
+});
