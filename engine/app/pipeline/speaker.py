@@ -1,0 +1,409 @@
+"""Who is actually speaking, from the picture and the sound together.
+
+Detecting a face is not the same as knowing who is talking. The engine could
+see two people and had no way to tell which one the audio belonged to, so a
+clip of a host listening looked exactly like a clip of the host answering.
+
+Two signals, neither convincing alone, are convincing together:
+
+  * the mouth region of a face moves while that person talks, and
+  * the audio is loud at the same moments.
+
+A face whose mouth moves in time with the speech is the speaker. A face that
+holds still through it is listening. A mouth that moves through silence —
+chewing, laughing, nodding — scores nothing, because the score only counts
+motion during speech.
+
+This is deliberately not a neural active-speaker model. Those want a GPU and
+a licence; this runs in the decode pass the engine already makes, which is
+what a machine that sleeps between clips can afford.
+
+Nothing here decides a layout. It reports who is speaking and how sure it is,
+and leaves the composition to the caller.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+
+#: How often faces are detected. Detection is the expensive part.
+DETECT_MS = 500
+#: How often mouths are measured. Speech moves a mouth several times a second,
+#: so this has to be finer than detection; between detections a track keeps
+#: its last box, which is accurate enough over a tenth of a second.
+MOTION_FPS = 10
+#: Mouth region, as a share of the face box: centred horizontally, below the
+#: middle, about half as wide as the face.
+MOUTH = (0.00, 0.22, 0.55, 0.33)      # dx, dy, w, h relative to the face
+#: A detection joins an existing track if it is no further than this (a share
+#: of frame width) from where that track last was.
+LINK_DISTANCE = 0.10
+#: A track survives this long without a detection before it is closed, so a
+#: head turn or a hand across the face does not start a new person.
+TRACK_GAP_MS = 1500
+
+
+@dataclass
+class FaceTrack:
+    """One person, followed through the clip."""
+    id: int
+    #: (ms, (centre_x, centre_y, w, h)) — all 0..1 of the frame.
+    boxes: list[tuple[int, tuple[float, float, float, float]]] = field(default_factory=list)
+    #: (ms, how much the mouth region changed since the previous frame)
+    motion: list[tuple[int, float]] = field(default_factory=list)
+
+    @property
+    def first_ms(self) -> int:
+        return self.boxes[0][0] if self.boxes else 0
+
+    @property
+    def last_ms(self) -> int:
+        return self.boxes[-1][0] if self.boxes else 0
+
+    def box_at(self, ms: int) -> tuple[float, float, float, float] | None:
+        if not self.boxes:
+            return None
+        return min(self.boxes, key=lambda b: abs(b[0] - ms))[1]
+
+    def visible_at(self, ms: int, slack_ms: int = TRACK_GAP_MS) -> bool:
+        return any(abs(b[0] - ms) <= slack_ms for b in self.boxes)
+
+    @property
+    def share(self) -> float:
+        """How much of the clip this person was on screen for."""
+        return float(len(self.boxes))
+
+
+@dataclass
+class Turn:
+    """A stretch of the clip, and who was talking through it."""
+    start_ms: int
+    end_ms: int
+    #: The track that was speaking, or None when nobody could be named.
+    track_id: int | None
+    #: 0..1. Low means the evidence did not separate the people, and the
+    #: caller should prefer a composition that does not have to choose.
+    confidence: float
+    #: Why, when there is no track: "silence" (nobody is talking),
+    #: "overlap" (more than one mouth is plainly going), "unseen" (someone is
+    #: talking but no face here accounts for it — turned away, off camera).
+    #: These want different layouts, so the difference is worth keeping.
+    reason: str = "speaking"
+
+
+def _mouth_patch(grey, box: tuple[float, float, float, float], size: int = 24):
+    """The mouth region of one face, as a small brightness-normalised patch.
+
+    Resized to a fixed size so a face near the camera and a face across the
+    room produce comparable numbers, and with the mean taken out so a change
+    in the lighting is not mistaken for a moving mouth.
+    """
+    import cv2
+    import numpy as np
+
+    fh, fw = grey.shape[:2]
+    cx, cy, bw, bh = box
+    dx, dy, mw, mh = MOUTH
+    half_w = mw * bw * fw / 2
+    half_h = mh * bh * fh / 2
+    x0 = int((cx + dx) * fw - half_w)
+    y0 = int((cy + dy * bh) * fh - half_h)
+    x1 = int(x0 + half_w * 2)
+    y1 = int(y0 + half_h * 2)
+    x0, y0 = max(0, x0), max(0, y0)
+    x1, y1 = min(fw, x1), min(fh, y1)
+    if x1 - x0 < 3 or y1 - y0 < 3:
+        return None
+    patch = cv2.resize(grey[y0:y1, x0:x1], (size, max(2, size * 2 // 3))).astype("float32")
+    return patch - float(np.mean(patch))
+
+
+def face_tracks(video: Path, *, in_ms: int = 0, out_ms: int | None = None,
+                detect_ms: int = DETECT_MS, fps: int = MOTION_FPS) -> list[FaceTrack]:
+    """Follow each person through the clip, measuring their mouth as we go.
+
+    One decode pass. Faces are detected a couple of times a second — that is
+    the slow part — and the mouths are measured on every frame in between,
+    each track keeping the last box it was seen at. Over a tenth of a second
+    a head does not move far enough for that to matter.
+    """
+    import cv2
+    import numpy as np
+
+    from .. import media
+    from ..config import settings
+    from .frame import _detector
+
+    name, detect = _detector()
+    if detect is None:
+        return []
+
+    from tempfile import TemporaryDirectory
+    with TemporaryDirectory(prefix="speaker-") as directory:
+        proxy = Path(directory) / "proxy.mp4"
+        span = max(1, (out_ms if out_ms is not None else 0) - in_ms)
+        args = ["-ss", f"{in_ms / 1000:.3f}"]
+        if out_ms is not None:
+            args += ["-t", f"{span / 1000:.3f}"]
+        media.ffmpeg([*args, "-i", str(video), "-an", "-vf", f"scale=480:-2,fps={fps}",
+                      "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", str(proxy)],
+                     timeout=600)
+
+        cv2.setNumThreads(settings().worker_threads())
+        cap = cv2.VideoCapture(str(proxy))
+        if not cap.isOpened():
+            return []
+        step = max(1, int(round(fps * detect_ms / 1000)))
+        tracks: list[FaceTrack] = []
+        last_patch: dict[int, object] = {}
+        index = -1
+        while True:
+            ok, bgr = cap.read()
+            if not ok:
+                break
+            index += 1
+            ms = int(index / fps * 1000) + in_ms
+            grey = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+
+            if index % step == 0:
+                fh, fw = bgr.shape[:2]
+                found = detect(bgr) or []
+                boxes = [((x + w / 2) / fw, (y + h / 2) / fh, w / fw, h / fh)
+                         for x, y, w, h in found]
+                _link(tracks, boxes, ms)
+
+            for t in tracks:
+                if ms - t.last_ms > TRACK_GAP_MS:
+                    continue
+                box = t.box_at(ms)
+                if box is None:
+                    continue
+                patch = _mouth_patch(grey, box)
+                if patch is None:
+                    continue
+                before = last_patch.get(t.id)
+                if before is not None and getattr(before, "shape", None) == patch.shape:
+                    t.motion.append((ms, float(np.mean(np.abs(patch - before)))))
+                last_patch[t.id] = patch
+        cap.release()
+    # Someone glimpsed for a moment is not a participant.
+    return [t for t in tracks if len(t.boxes) >= 2]
+
+
+def _link(tracks: list[FaceTrack], boxes: list[tuple[float, float, float, float]], ms: int) -> None:
+    """Attach this frame's detections to the people already being followed.
+
+    Nearest open track wins, one detection each. A detection that matches
+    nobody starts a new person; a track nobody matched simply goes unseen for
+    this frame and waits, which is what a head turning away looks like.
+    """
+    open_tracks = [t for t in tracks if ms - t.last_ms <= TRACK_GAP_MS]
+    taken: set[int] = set()
+    for box in boxes:
+        best, best_d = None, LINK_DISTANCE
+        for t in open_tracks:
+            if t.id in taken:
+                continue
+            was = t.boxes[-1][1]
+            d = abs(was[0] - box[0]) + abs(was[1] - box[1]) * 0.5
+            if d < best_d:
+                best, best_d = t, d
+        if best is None:
+            best = FaceTrack(id=len(tracks) + 1)
+            tracks.append(best)
+            open_tracks.append(best)
+        taken.add(best.id)
+        best.boxes.append((ms, box))
+
+
+def energy(video: Path, *, in_ms: int = 0, out_ms: int | None = None,
+           window_ms: int = 1000 // MOTION_FPS) -> list[tuple[int, float]]:
+    """Loudness per window over the clip range, as (ms, rms).
+
+    media.loudness_envelope walks the samples in Python and reads the whole
+    file; this needs only the clip, at ten windows a second, so it cuts the
+    range in ffmpeg and sums in numpy.
+    """
+    import wave
+    from tempfile import TemporaryDirectory
+
+    import numpy as np
+
+    from .. import media
+
+    with TemporaryDirectory(prefix="energy-") as directory:
+        wav = Path(directory) / "a.wav"
+        args = ["-ss", f"{in_ms / 1000:.3f}"]
+        if out_ms is not None:
+            args += ["-t", f"{max(1, out_ms - in_ms) / 1000:.3f}"]
+        try:
+            media.ffmpeg([*args, "-i", str(video), "-vn", "-ac", "1", "-ar", "8000",
+                          "-c:a", "pcm_s16le", str(wav)], timeout=600)
+            with wave.open(str(wav), "rb") as w:
+                rate = w.getframerate()
+                raw = w.readframes(w.getnframes())
+        except Exception:
+            return []                      # a clip with no audio is not a failure
+    if not raw:
+        return []
+    samples = np.frombuffer(raw, dtype="<i2").astype("float32")
+    step = max(1, int(rate * window_ms / 1000))
+    usable = (len(samples) // step) * step
+    if usable < step:
+        return []
+    blocks = samples[:usable].reshape(-1, step)
+    rms = np.sqrt((blocks * blocks).mean(axis=1))
+    return [(in_ms + i * window_ms, float(v)) for i, v in enumerate(rms)]
+
+
+def _speech_mask(rms: list[tuple[int, float]]):
+    """Which windows carry speech rather than room tone.
+
+    The threshold is taken from the clip itself: quiet rooms and loud studios
+    have nothing in common but the gap between their own silence and their
+    own speech.
+    """
+    import numpy as np
+
+    if not rms:
+        return None, None
+    times = np.array([t for t, _ in rms])
+    values = np.array([v for _, v in rms], dtype="float64")
+    floor = float(np.percentile(values, 20))
+    ceiling = float(np.percentile(values, 95))
+    if ceiling <= floor:
+        return times, np.zeros(len(values), dtype=bool)
+    return times, values > floor + 0.25 * (ceiling - floor)
+
+
+#: A turn has to last this long to be worth cutting to. Below it the layout
+#: would flick between people on every "mm-hm".
+MIN_TURN_MS = 1200
+#: How far ahead the winner must be to be called.
+MIN_MARGIN = 0.15
+#: A mouth at this level is plainly going, measured against the liveliest
+#: mouth in the clip. If the RUNNER-UP is also this active then two people
+#: are talking over each other, and naming one of them would be a guess
+#: dressed up as an answer — the margin alone does not catch this, because
+#: one of two talkers is usually a little ahead of the other.
+OVERLAP_LEVEL = 0.30
+#: Below this, no mouth in the clip accounts for the speech: whoever is
+#: talking is turned away or out of frame.
+SEEN_LEVEL = 0.12
+
+
+def turns(tracks: list[FaceTrack], rms: list[tuple[int, float]], *,
+          window_ms: int = 600, min_turn_ms: int = MIN_TURN_MS) -> list[Turn]:
+    """Who is speaking, window by window, merged into turns.
+
+    A track scores for a window by how much its mouth moved *while the audio
+    was loud*. Motion during silence earns nothing, which is what keeps a
+    nodding listener or a laughing guest from being called the speaker.
+
+    The answer is a track id only when one person is clearly ahead. Both
+    talking, nobody facing the camera, or a face too small to read all come
+    back as None with a low confidence — an honest "cannot tell", which the
+    layout can answer with a composition that shows everyone.
+    """
+    import numpy as np
+
+    times, speech = _speech_mask(rms)
+    if times is None or speech is None or not tracks:
+        return []
+    span_start = int(times[0])
+    span_end = int(times[-1])
+    if span_end <= span_start:
+        return []
+
+    # Each face has its own noise floor — grain, compression, a slight sway —
+    # so take that away before comparing. The remainder is then divided by one
+    # scale shared by everyone: dividing each track by its OWN peak instead
+    # would stretch a silent face's noise up to the size of a talking face's
+    # mouth and make every pair of people look equally likely.
+    residual = {}
+    for t in tracks:
+        if len(t.motion) < 3:
+            continue
+        m_times = np.array([ms for ms, _ in t.motion])
+        m_values = np.array([v for _, v in t.motion], dtype="float64")
+        floor = float(np.percentile(m_values, 20))
+        residual[t.id] = (m_times, np.maximum(0.0, m_values - floor))
+    if not residual:
+        return []
+    scale = max((float(np.percentile(v, 90)) for _, v in residual.values()), default=0.0) or 1.0
+    series = {tid: (ts, vals / scale) for tid, (ts, vals) in residual.items()}
+
+    out: list[Turn] = []
+    for start in range(span_start, span_end, window_ms):
+        end = min(span_end, start + window_ms)
+        loud = speech[(times >= start) & (times < end)]
+        if not loud.size or not loud.any():
+            out.append(Turn(start, end, None, 0.0, "silence"))
+            continue
+        scores: list[tuple[float, int]] = []
+        for tid, (m_times, m_values) in series.items():
+            inside = (m_times >= start) & (m_times < end)
+            if not inside.any():
+                continue
+            # Only motion that coincides with speech counts.
+            speaking = np.interp(m_times[inside], times, speech.astype("float64")) > 0.5
+            if not speaking.any():
+                continue
+            scores.append((float(m_values[inside][speaking].mean()), tid))
+        if not scores:
+            out.append(Turn(start, end, None, 0.0, "unseen"))
+            continue
+        scores.sort(reverse=True)
+        top, tid = scores[0]
+        runner = scores[1][0] if len(scores) > 1 else 0.0
+        margin = (top - runner) / (top + runner) if (top + runner) > 0 else 0.0
+        if top < SEEN_LEVEL:
+            out.append(Turn(start, end, None, round(margin, 3), "unseen"))
+        elif runner >= OVERLAP_LEVEL:
+            out.append(Turn(start, end, None, round(margin, 3), "overlap"))
+        elif margin < MIN_MARGIN:
+            out.append(Turn(start, end, None, round(margin, 3), "overlap"))
+        else:
+            out.append(Turn(start, end, tid, round(margin, 3), "speaking"))
+
+    return _merge(out, min_turn_ms)
+
+
+def _coalesce(windows: list[Turn]) -> list[Turn]:
+    """Join neighbouring stretches that say the same thing."""
+    out: list[Turn] = []
+    for w in windows:
+        if out and w.track_id == out[-1].track_id and w.reason == out[-1].reason:
+            out[-1] = Turn(out[-1].start_ms, w.end_ms, out[-1].track_id,
+                           max(out[-1].confidence, w.confidence), out[-1].reason)
+        else:
+            out.append(w)
+    return out
+
+
+def _merge(windows: list[Turn], min_turn_ms: int) -> list[Turn]:
+    """Turn per-window answers into turns worth cutting to.
+
+    Absorbing a flicker leaves the stretches either side of it adjacent and
+    identical, so the join has to run again afterwards — otherwise one
+    interjection splits a single answer into two turns for good.
+    """
+    if not windows:
+        return []
+    kept: list[Turn] = []
+    for turn in _coalesce(windows):
+        short = turn.end_ms - turn.start_ms < min_turn_ms
+        if kept and short and turn.track_id != kept[-1].track_id:
+            kept[-1] = Turn(kept[-1].start_ms, turn.end_ms, kept[-1].track_id,
+                            kept[-1].confidence, kept[-1].reason)
+        else:
+            kept.append(turn)
+    return _coalesce(kept)
+
+
+def speaker_at(turns_: list[Turn], ms: int) -> Turn | None:
+    """The turn covering this moment, or None if it falls outside them all."""
+    for t in turns_:
+        if t.start_ms <= ms < t.end_ms:
+            return t
+    return None
