@@ -45,6 +45,24 @@ export const WATERMARK_POS = ["top-left", "top-right", "bottom-left", "bottom-ri
 export type WatermarkPos = (typeof WATERMARK_POS)[number];
 export const ASPECTS = ["9:16", "1:1", "4:5", "16:9"] as const;
 
+/**
+ * Layouts offered in the editor, in Engine spelling. "auto" lets the Engine
+ * read the faces and choose: one speaker gets a tracked crop, two sitting
+ * apart get stacked, because a single window cannot hold both.
+ */
+export const LAYOUTS = ["auto", "full-video", "split", "streamer", "black-box"] as const;
+export type LayoutId = (typeof LAYOUTS)[number];
+export const LAYOUT_NAMES: Record<LayoutId, string> = {
+  auto: "Auto", "full-video": "Full", split: "Split", streamer: "Streamer", "black-box": "Box",
+};
+export const LAYOUT_HINTS: Record<LayoutId, string> = {
+  auto: "Let the Engine frame it from the faces it finds",
+  "full-video": "One tracked crop that follows the speaker",
+  split: "A cell per speaker, stacked — for two people sitting apart",
+  streamer: "The clip over a blurred fill of itself",
+  "black-box": "The whole frame, letterboxed",
+};
+
 export type Cue = { start_ms: number; end_ms: number; text: string };
 export type Word = { start_ms: number; end_ms: number; text: string };
 

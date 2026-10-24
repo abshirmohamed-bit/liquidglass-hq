@@ -52,6 +52,7 @@ const finishPatch = z.object({
   caption_options: z.object({ enabled: z.boolean() }).optional(), title_text: z.string().max(140).optional(), title_style: z.enum(["bold_band", "boxed", "minimal", "headline"]).optional(),
   overlays: z.object({ title: z.object({ y: z.number().min(0).max(100), highlight_word: z.string().max(40).optional(), highlight: z.enum(["red", "yellow", "blue"]).optional() }).optional(), watermark: z.object({ pos: z.enum(["top-left", "top-right", "bottom-left", "bottom-right", "centre-below-captions"]), opacity: z.number().min(0.1).max(1) }).optional() }).optional(),
   watermark_text: z.string().max(60).optional(), aspect: z.enum(["9:16", "1:1", "4:5", "16:9"]).optional(),
+  layout: z.enum(["auto", "full-video", "split", "streamer", "black-box", "title-subtitles"]).optional(),
 });
 
 /** Saves Finish settings on one clip, or the style/position/title/watermark on several at once. Captions text stays per clip. */

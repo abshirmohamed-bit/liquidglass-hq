@@ -33,7 +33,7 @@ export type Coverage = "BEST_MOMENTS" | "WHOLE_VIDEO" | "DONT_CLIP";
 export type ClipMode = "AUTO" | "SPEECH" | "ENERGY" | "VISUAL";
 export type EditLevel = "cuts_only" | "captions" | "cropped" | "full";
 export type Aspect = "9:16" | "1:1" | "4:5" | "16:9";
-export type LayoutValue = "full_video" | "streamer" | "split" | "two_up" | "three_up" | "four_up" | "screenshare" | "black_box" | "title_subtitles";
+export type LayoutValue = "auto" | "full_video" | "streamer" | "split" | "two_up" | "three_up" | "four_up" | "screenshare" | "black_box" | "title_subtitles";
 export type ClipLength = "auto" | number | { min_s: number; max_s: number };
 
 export const COVERAGE_OPTIONS: { value: Coverage; label: string; hint: string }[] = [
@@ -61,6 +61,7 @@ export const EDIT_LEVELS: { value: EditLevel; label: string }[] = [
 export const ASPECT_OPTIONS: Aspect[] = ["9:16", "1:1", "4:5", "16:9"];
 
 export const LAYOUT_OPTIONS: { value: LayoutValue; label: string }[] = [
+  { value: "auto", label: "Auto (pick from the faces)" },
   { value: "full_video", label: "Full video" },
   { value: "streamer", label: "Streamer" },
   { value: "split", label: "Split" },
@@ -208,7 +209,7 @@ export function clampMoments<T extends { start_ms: number; end_ms: number }>(mom
 export function jobSummary(job: {
   coverage: string | null; clip_length: ClipLength | null; edit_level: string | null; formats: unknown; aspect: string | null;
 }): string {
-  let firstLayout = "streamer";
+  let firstLayout = "auto";
   if (job.formats && typeof job.formats === "object" && Array.isArray((job.formats as { layouts?: unknown }).layouts)) {
     const first = ((job.formats as { layouts: unknown[] }).layouts)[0];
     if (typeof first === "string" && LAYOUT_OPTIONS.some((l) => l.value === first)) firstLayout = first;

@@ -18,6 +18,7 @@ type Row = {
   start_ms: number | null;
   end_ms: number | null;
   aspect: string | null;
+  layout: string | null;
   caption_style_id: string | null;
   title_text: string | null;
   title_style: string | null;
@@ -27,7 +28,7 @@ type Row = {
 };
 
 const SELECT =
-  "id,start_ms,end_ms,aspect,caption_style_id,title_text,title_style,watermark_text,engine_project_id,edits";
+  "id,start_ms,end_ms,aspect,layout,caption_style_id,title_text,title_style,watermark_text,engine_project_id,edits";
 
 /** The clip as it looks here, in the shape the Engine's PATCH expects. */
 function patchFor(c: Row): Record<string, unknown> {
@@ -38,6 +39,8 @@ function patchFor(c: Row): Record<string, unknown> {
     p["out_ms"] = c.end_ms;
   }
   if (c.aspect) p["aspect"] = c.aspect;
+  // Without this the layout chosen in the editor never reaches the render.
+  if (c.layout) p["layout"] = c.layout;
   if (c.caption_style_id) p["caption_style_id"] = c.caption_style_id;
   if (c.title_text?.trim())
     p["title"] = { text: c.title_text.trim(), style: c.title_style || "bold_band" };

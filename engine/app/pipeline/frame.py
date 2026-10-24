@@ -241,6 +241,102 @@ def _faces_from(boxes: list[tuple[int, tuple[float, float, float, float]]]) -> l
     return sorted(faces, key=lambda f: -f.share)[:4]
 
 
+#: A face has to be on screen this much of the time to count as someone the
+#: clip is about, rather than a passer-by or a false positive.
+MIN_SHARE = 0.18
+#: And this far from anyone already counted, as a share of the width. Faces
+#: closer than this are one person the detector saw twice, or two people close
+#: enough that a single crop holds both.
+MIN_GAP = 0.15
+
+
+def people(track: Track, *, min_share: float = MIN_SHARE,
+           min_gap: float = MIN_GAP, limit: int = 2) -> list[Face]:
+    """The distinct speakers in the clip, most present first.
+
+    `track.faces` is every cluster the detector produced, including fleeting
+    ones. This is the subset worth building a layout around.
+    """
+    out: list[Face] = []
+    for f in track.faces:
+        if f.share < min_share:
+            continue
+        if any(abs(f.x - g.x) < min_gap for g in out):
+            continue
+        out.append(f)
+        if len(out) == limit:
+            break
+    return out
+
+
+def suggest_layout(track: Track | None) -> str:
+    """Which layout the faces call for.
+
+    A split is for people a single window cannot hold. Two faces closer
+    together than the window is wide already fit in one tracked crop, and
+    stacking them there would zoom into two halves of the same shot. Further
+    apart than that, holding both means framing the gap between them — the
+    shot of the backs of two heads — so stack them instead.
+    """
+    if track is None or not track.faces:
+        return "full-video"
+    who = people(track)
+    if len(who) < 2:
+        return "full-video"
+    spread = max(f.x for f in who) - min(f.x for f in who)
+    return "split" if spread > WINDOW_SHARE else "full-video"
+
+
+#: How much of a cell's width a face should fill. Faces are cropped to this
+#: rather than to the widest box that fits, which leaves the subject a speck
+#: in the middle of the cell.
+FACE_SHARE = 0.20
+#: Keep this much of the frame between a crop's edge and the next person's
+#: face, so a cell never shows a slice of someone else.
+FACE_MARGIN = 0.02
+
+
+def cell_crops(track: Track, out_w: int, out_h: int, rows: int = 2) -> list[str]:
+    """One crop per person, each the shape of its cell in a stack of `rows`.
+
+    Every cell is framed on its own face and fenced off from the neighbouring
+    one, so the subject fills the cell and nobody appears twice. Returns
+    ffmpeg crop filters top first, or nothing when the faces do not support a
+    split and the caller should fall back.
+    """
+    sw, sh = track.width, track.height
+    if not sw or not sh or rows < 1:
+        return []
+    who = people(track, limit=rows)
+    if len(who) < rows:
+        return []
+    who = sorted(who, key=lambda f: f.x)      # left-hand speaker on top
+    target = out_w / (out_h / rows)
+    crops = []
+    for i, f in enumerate(who):
+        # The band this cell may draw from: up to the next person's face, so a
+        # shoulder can show but a second head cannot.
+        lo = 0.0 if i == 0 else (who[i - 1].x + who[i - 1].w / 2 + FACE_MARGIN) * sw
+        hi = float(sw) if i == len(who) - 1 else (f.x + (who[i + 1].x - f.x) / 2) * sw
+        hi = min(float(sw), max(hi, lo + 2))
+        cw = min(hi - lo, float(sw), max(f.w * sw / FACE_SHARE, 16.0))
+        ch = cw / target
+        if ch > sh:                            # too tall for the source: fit height
+            ch = float(sh)
+            cw = ch * target
+        cw = max(2, int(cw) - int(cw) % 2)
+        ch = max(2, int(ch) - int(ch) % 2)
+        x = int(round(f.x * sw - cw / 2))
+        x = max(int(lo), min(int(hi) - cw, x))
+        x = max(0, min(sw - cw, x))
+        # Aim a little above the face centre: a head sits better high in frame
+        # than dead centre, and it leaves room for the shoulders.
+        y = int(round((f.y - f.h * 0.15) * sh - ch / 2))
+        y = max(0, min(sh - ch, y))
+        crops.append(f"crop={cw}:{ch}:{x}:{y}")
+    return crops
+
+
 def crop_filter(track: Track, out_w: int, out_h: int, duration_ms: int,
                 name: str = "subject") -> tuple[str, str | None]:
     """An ffmpeg crop that follows the subject.

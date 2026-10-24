@@ -107,7 +107,7 @@ function ClipJobForm({ sources, music, defaults, queue, initialSourceId, onDone 
     alternates: false,
     editLevel: (t?.editLevel as FormState["editLevel"]) ?? "full",
     aspect: (defaults?.default_aspect as FormState["aspect"]) ?? "9:16",
-    layouts: [defaults?.default_layout ?? "streamer"],
+    layouts: [defaults?.default_layout ?? "auto"],
     framing: ((t?.framing as FormState["framing"]) ?? "auto"),
     language: "auto", captionLanguage: "same",
     removeSilences: !!t?.removeSilences, removeFillers: !!t?.removeFillers,
@@ -140,7 +140,7 @@ function ClipJobForm({ sources, music, defaults, queue, initialSourceId, onDone 
     genre: f.genre === "Auto" && source?.niche ? defaultGenreFor(source.niche) : f.genre,
     mode: f.mode, prompt: f.prompt, mustInclude: mustList.slice(0, MAX_MUST_INCLUDE),
     headlineTopN: f.headlineTopN, alternates: f.alternates, editLevel: f.editLevel, aspect: f.aspect,
-    layouts: f.layouts as ("full_video" | "streamer" | "split" | "two_up" | "three_up" | "four_up" | "screenshare" | "black_box" | "title_subtitles")[],
+    layouts: f.layouts as ("auto" | "full_video" | "streamer" | "split" | "two_up" | "three_up" | "four_up" | "screenshare" | "black_box" | "title_subtitles")[],
     framing: (f.framing === "auto" ? "AUTO" as const : f.framing === "centre" ? "CENTER" as const : "BOTH" as const), language: f.language, captionLanguage: f.captionLanguage,
     extras: { removeSilences: f.removeSilences, removeFillers: f.removeFillers, zoom: f.zoom, autoTransitions: f.autoTransitions, soundEffects: f.soundEffects, grade: f.grade, keywordHighlight: f.keywordHighlight, emojis: f.emojis, autoBroll: f.autoBroll },
     brollAssetId: null, musicAssetId: f.musicAssetId || null,
@@ -154,7 +154,7 @@ function ClipJobForm({ sources, music, defaults, queue, initialSourceId, onDone 
   async function saveDefaults() {
     try {
       await save({ data: {
-        aspect: f.aspect, layout: f.layouts[0] as "streamer",
+        aspect: f.aspect, layout: f.layouts[0] as "auto",
         aiToggles: { coverage: f.coverage, mode: f.mode, editLevel: f.editLevel, lengthPreset: f.lengthPreset, framing: (f.framing === "auto" ? "AUTO" : f.framing === "centre" ? "CENTER" : "BOTH"), removeSilences: f.removeSilences, removeFillers: f.removeFillers, zoom: f.zoom, autoTransitions: f.autoTransitions, soundEffects: f.soundEffects, grade: f.grade, keywordHighlight: f.keywordHighlight, emojis: f.emojis, headlineTopN: f.headlineTopN },
       } });
       toast.success("Saved as your defaults");

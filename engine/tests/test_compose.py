@@ -229,3 +229,83 @@ def test_a_title_is_never_empty():
 
     assert _title_from("") == "Clip"
     assert _title_from("so  and  but") != ""
+
+
+# --- face-driven layout -------------------------------------------------
+
+def _track(*faces, width=1920, height=1080):
+    from app.pipeline import frame as F
+    return F.Track("yunet", width, height, [(0, 0.5)],
+                   [F.Face(i + 1, x, y, w, 0.2, share) for i, (x, y, w, share) in enumerate(faces)])
+
+
+def test_suggest_layout_stacks_two_people_sitting_apart():
+    from app.pipeline import frame as F
+    t = _track((0.27, 0.45, 0.10, 0.5), (0.73, 0.45, 0.10, 0.5))
+    assert F.suggest_layout(t) == "split"
+
+
+def test_suggest_layout_keeps_one_crop_when_a_single_window_holds_both():
+    """Faces closer than the window is wide already fit; stacking them there
+    would zoom into two halves of the same shot."""
+    from app.pipeline import frame as F
+    t = _track((0.45, 0.45, 0.10, 0.5), (0.58, 0.45, 0.10, 0.5))
+    assert F.suggest_layout(t) == "full-video"
+
+
+def test_suggest_layout_ignores_a_fleeting_face():
+    from app.pipeline import frame as F
+    t = _track((0.30, 0.45, 0.10, 0.94), (0.80, 0.45, 0.10, 0.06))
+    assert F.suggest_layout(t) == "full-video"
+
+
+def test_suggest_layout_without_faces():
+    from app.pipeline import frame as F
+    assert F.suggest_layout(None) == "full-video"
+    assert F.suggest_layout(_track()) == "full-video"
+
+
+def test_cell_crops_frame_each_face_and_exclude_the_other():
+    from app.pipeline import frame as F
+    t = _track((0.27, 0.45, 0.10, 0.5), (0.73, 0.45, 0.10, 0.5))
+    cells = F.cell_crops(t, 1080, 1920, 2)
+    assert len(cells) == 2
+    boxes = [tuple(int(v) for v in c.removeprefix("crop=").split(":")) for c in cells]
+    (w0, h0, x0, y0), (w1, h1, x1, y1) = boxes
+    for w, h, x, y in boxes:
+        assert w % 2 == 0 and h % 2 == 0
+        assert 0 <= x and x + w <= t.width
+        assert 0 <= y and y + h <= t.height
+        assert abs(w / h - 1080 / 960) < 0.02       # the shape of its cell
+    # top cell is the left-hand speaker, and neither cell holds the other face
+    assert x0 < x1
+    assert x0 + w0 < 0.73 * t.width
+    assert x1 > 0.27 * t.width
+
+
+def test_cell_crops_need_one_face_per_cell():
+    from app.pipeline import frame as F
+    assert F.cell_crops(_track((0.3, 0.45, 0.1, 1.0)), 1080, 1920, 2) == []
+
+
+def test_split_falls_back_when_the_faces_cannot_support_it(tmp_path, monkeypatch):
+    """A split with nothing to split must not stack a crop on top of itself."""
+    from app.pipeline import compose, frame as F
+    monkeypatch.setattr(compose.framing, "track",
+                        lambda *a, **k: _track((0.3, 0.45, 0.1, 1.0)))
+    r = compose.Render(out=tmp_path / "o.mp4", source=tmp_path / "in.mp4",
+                       in_ms=0, out_ms=2000, layout="split")
+    args, _ = compose.build(r, tmp_path / "w")
+    assert "vstack" not in " ".join(args)
+
+
+def test_auto_layout_builds_a_stack_for_two_people(tmp_path, monkeypatch):
+    from app.pipeline import compose
+    monkeypatch.setattr(compose.framing, "track",
+                        lambda *a, **k: _track((0.27, 0.45, 0.10, 0.5), (0.73, 0.45, 0.10, 0.5)))
+    r = compose.Render(out=tmp_path / "o.mp4", source=tmp_path / "in.mp4",
+                       in_ms=0, out_ms=2000, layout="auto")
+    args, _ = compose.build(r, tmp_path / "w")
+    graph = " ".join(args)
+    assert "vstack=inputs=2" in graph
+    assert graph.count("crop=") >= 2

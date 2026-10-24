@@ -46,7 +46,7 @@ const STAGE: Record<string, string> = {
 };
 
 const LAYOUT: Record<string, string> = {
-  full_video: "full-video", streamer: "streamer", split: "split",
+  auto: "auto", full_video: "full-video", streamer: "streamer", split: "split",
   black_box: "black-box", title_subtitles: "title-subtitles",
   two_up: "split", three_up: "split", four_up: "split", screenshare: "full-video",
 };
@@ -62,7 +62,7 @@ function lengthSeconds(cl: unknown): number | "auto" | { min_s: number; max_s: n
 /** Everything the Engine needs to cut this job, from the row the app stored. */
 function requestFor(job: JobRow, engineAssetId: string) {
   const formats = (job.formats ?? {}) as { layouts?: string[] };
-  const layouts = (formats.layouts ?? ["streamer"]).map((l) => LAYOUT[l] ?? "full-video");
+  const layouts = (formats.layouts ?? ["auto"]).map((l) => LAYOUT[l] ?? "full-video");
   return {
     asset_id: engineAssetId,
     coverage: job.coverage === "WHOLE_VIDEO" ? "whole" : job.coverage === "DONT_CLIP" ? "single" : "best",

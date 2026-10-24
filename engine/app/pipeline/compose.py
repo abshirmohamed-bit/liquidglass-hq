@@ -15,7 +15,7 @@ from . import frame as framing
 from .caption import BY_ID, Style, build_ass
 
 ASPECTS = {"9:16": (1080, 1920), "1:1": (1080, 1080), "4:5": (1080, 1350), "16:9": (1920, 1080)}
-LAYOUTS = {"full-video", "streamer", "black-box", "title-subtitles", "split"}
+LAYOUTS = {"auto", "full-video", "streamer", "black-box", "title-subtitles", "split"}
 
 
 @dataclass
@@ -296,7 +296,15 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
                           in_ms=render.in_ms, out_ms=render.out_ms) if render.framing_mode != "center" else None
     sendcmd_path = workdir / "pan.cmd"
 
-    if render.layout in {"full-video", "title-subtitles"}:
+    # "auto" asks the faces what shape the clip wants. A split that the faces
+    # cannot support falls back to tracking whoever is there, rather than
+    # stacking a cropped frame on top of itself.
+    layout = framing.suggest_layout(track) if render.layout == "auto" else render.layout
+    cells = framing.cell_crops(track, w, h, 2) if layout == "split" and track else []
+    if layout == "split" and not cells:
+        layout = "full-video"
+
+    if layout in {"full-video", "title-subtitles"}:
         crop, commands = framing.crop_filter(
             track or framing.Track("center", 0, 0, [], []), w, h, render.out_ms - render.in_ms)
         pan = _shift(commands, sendcmd_path, render.in_ms)
@@ -304,10 +312,13 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
             chain.append(pan.rstrip(","))
         chain.append(crop)
         chain.append(f"scale={w}:{h}:flags=lanczos")
-    elif render.layout == "streamer":
+    elif layout == "streamer":
         # the clip over a blurred, filled copy of itself
         return _two_layer(render, workdir, blur=True, track=track)
-    elif render.layout == "black-box":
+    elif layout == "split":
+        # one cell per speaker, each framed on their own face
+        return _split_stack(render, workdir, cells)
+    elif layout == "black-box":
         chain.append(f"scale={w}:-2:flags=lanczos")
         chain.append(f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:black")
     else:
@@ -374,6 +385,47 @@ def _two_layer(render: Render, workdir: Path, blur: bool,
         fg,
         "[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base]",
     ]
+    last = _overlays(render, workdir, chain, w, h)
+    args = ["-ss", f"{render.in_ms / 1000:.3f}", "-t", f"{dur_s:.3f}", "-i", str(render.source),
+            "-filter_complex", ";".join(chain), "-map", f"[{last}]", "-map", "0:a?"]
+    if render.loudnorm:
+        args += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
+    args += _encode_args(render)
+    args.append(str(render.out))
+    return args, sendcmd_path
+
+
+def _split_stack(render: Render, workdir: Path, cells: list[str]) -> tuple[list[str], Path]:
+    """Split layout: each speaker gets their own cell, stacked top to bottom.
+
+    One 9:16 window cannot hold two people sitting apart — centring on both
+    frames the gap between them. Each cell is cropped around its own face
+    instead, so a two-person interview reads as two close-ups.
+    """
+    w, h = render.size
+    dur_s = max(0.1, (render.out_ms - render.in_ms) / 1000)
+    rows = len(cells)
+    cell_h = max(2, (h // rows) - ((h // rows) % 2))
+    chain = [f"[0:v]{crop},scale={w}:{cell_h}:flags=lanczos,setsar=1[cell{i}]"
+             for i, crop in enumerate(cells)]
+    chain.append("".join(f"[cell{i}]" for i in range(rows))
+                 + f"vstack=inputs={rows},scale={w}:{h}:flags=lanczos,setsar=1[base]")
+    last = _overlays(render, workdir, chain, w, h)
+    args = ["-ss", f"{render.in_ms / 1000:.3f}", "-t", f"{dur_s:.3f}", "-i", str(render.source),
+            "-filter_complex", ";".join(chain), "-map", f"[{last}]", "-map", "0:a?"]
+    if render.loudnorm:
+        args += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
+    args += _encode_args(render)
+    args.append(str(render.out))
+    return args, workdir / "pan.cmd"
+
+
+def _overlays(render: Render, workdir: Path, chain: list[str], w: int, h: int) -> str:
+    """Append captions, title and watermark to a filter_complex graph.
+
+    Takes the graph ending in [base] and returns the name of the last link, so
+    the caller can map it.
+    """
     last = "base"
     if render.captions_enabled and render.words:
         style = BY_ID.get(render.caption_style_id, BY_ID["bold_white"])
@@ -386,13 +438,7 @@ def _two_layer(render: Render, workdir: Path, blur: bool,
         if f:
             chain.append(f"[{last}]{f}[{name}]")
             last = name
-    args = ["-ss", f"{render.in_ms / 1000:.3f}", "-t", f"{dur_s:.3f}", "-i", str(render.source),
-            "-filter_complex", ";".join(chain), "-map", f"[{last}]", "-map", "0:a?"]
-    if render.loudnorm:
-        args += ["-af", "loudnorm=I=-16:TP=-1.5:LRA=11"]
-    args += _encode_args(render)
-    args.append(str(render.out))
-    return args, sendcmd_path
+    return last
 
 
 def _encode_args(render: Render) -> list[str]:

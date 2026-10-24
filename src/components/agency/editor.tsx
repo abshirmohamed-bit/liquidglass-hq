@@ -6,7 +6,7 @@ import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Pau
 import { Button } from "@/components/ui/button";
 import { editorData, saveFinish, transcribeChunk } from "@/lib/finish.functions";
 import { setClipStatus, startExport } from "@/lib/review.functions";
-import { CAPTION_PRESETS, TITLE_STYLES, TITLE_STYLE_NAMES, HIGHLIGHTS, WATERMARK_POS, ASPECTS, styleFor, wordsFromChunks, cuesFromWords, wordsFromCues, cueAt, type CaptionStyle, type Cue, type Overlays, type TitleStyle, type WatermarkPos } from "@/lib/finish-rules";
+import { CAPTION_PRESETS, TITLE_STYLES, TITLE_STYLE_NAMES, HIGHLIGHTS, WATERMARK_POS, ASPECTS, LAYOUTS, LAYOUT_NAMES, LAYOUT_HINTS, type LayoutId, styleFor, wordsFromChunks, cuesFromWords, wordsFromCues, cueAt, type CaptionStyle, type Cue, type Overlays, type TitleStyle, type WatermarkPos } from "@/lib/finish-rules";
 import { Distribute } from "./posts";
 
 const err = (e: unknown) => toast.error(e instanceof Error ? e.message : "Something went wrong");
@@ -53,6 +53,7 @@ export function Editor({ clipId }: { clipId: string }) {
   const [title, setTitle] = useState(""); const [titleStyle, setTitleStyle] = useState<TitleStyle>("bold_band");
   const [ov, setOv] = useState<Overlays>({});
   const [mark, setMark] = useState(""); const [aspect, setAspect] = useState("9:16");
+  const [layout, setLayout] = useState<LayoutId>("auto");
   const [busy, setBusy] = useState(""); const [applyTo, setApplyTo] = useState<string[]>([]); const [posting, setPosting] = useState(false);
   const [now, setNow] = useState(0);
   const loaded = useRef(false);
@@ -66,6 +67,7 @@ export function Editor({ clipId }: { clipId: string }) {
     setCaptionsOn((c.caption_options as { enabled?: boolean } | null)?.enabled !== false);
     setTitle(c.title_text ?? c.title ?? ""); setTitleStyle((TITLE_STYLES as readonly string[]).includes(c.title_style ?? "") ? (c.title_style as TitleStyle) : "bold_band");
     setOv((c.overlays as Overlays | null) ?? {}); setMark(c.watermark_text ?? q.data?.brand?.handle ?? ""); setAspect(c.aspect ?? "9:16");
+    setLayout((LAYOUTS as readonly string[]).includes(c.layout ?? "") ? (c.layout as LayoutId) : "auto");
   }, [c, q.data]);
   const style = useMemo(() => styleFor(presetId, custom), [presetId, custom]);
   /**
@@ -88,7 +90,7 @@ export function Editor({ clipId }: { clipId: string }) {
   if (!c) return <div className="page"><p>Clip not found.</p></div>;
   const start = c.start_ms ?? 0, end = c.end_ms ?? 0;
   const src = q.data!.source?.playUrl ?? null;
-  const patch = () => ({ caption_style_id: presetId, caption_style: custom, captions: cues, caption_options: { enabled: captionsOn }, title_text: title, title_style: titleStyle, overlays: ov, watermark_text: mark, aspect: aspect as (typeof ASPECTS)[number] });
+  const patch = () => ({ caption_style_id: presetId, caption_style: custom, captions: cues, caption_options: { enabled: captionsOn }, title_text: title, title_style: titleStyle, overlays: ov, watermark_text: mark, aspect: aspect as (typeof ASPECTS)[number], layout });
 
   async function save(ids = [clipId], saveAsBrand = false) {
     try { const n = await saveFinish({ data: { ids, patch: patch(), saveAsBrand } }); await qc.invalidateQueries({ queryKey: ["review"] }); await qc.invalidateQueries({ queryKey: ["editor", clipId] }); toast.success(ids.length > 1 ? `Applied to ${n} clips` : "Saved"); } catch (e) { err(e); }
@@ -181,6 +183,8 @@ export function Editor({ clipId }: { clipId: string }) {
         <div className="ed-dock glass-panel" role="toolbar" aria-label="Picture controls">
           <div className="ed-dock-group"><span className="ed-dock-label">Format</span>
             <div className="ed-seg">{ASPECTS.map((a) => <button key={a} aria-pressed={aspect === a} onClick={() => setAspect(a)}><i className="ed-ratio" style={{ aspectRatio: ratio(a) }} />{a}</button>)}</div></div>
+          <div className="ed-dock-group"><span className="ed-dock-label">Layout</span>
+            <div className="ed-seg">{LAYOUTS.map((l) => <button key={l} aria-pressed={layout === l} title={LAYOUT_HINTS[l]} onClick={() => setLayout(l)}>{LAYOUT_NAMES[l]}</button>)}</div></div>
           <div className="ed-dock-group"><span className="ed-dock-label">Captions</span>
             <div className="ed-seg">
               <button aria-pressed={captionsOn} onClick={() => setCaptionsOn(!captionsOn)}>{captionsOn ? <Eye size={13} /> : <EyeOff size={13} />}{captionsOn ? "On" : "Off"}</button>

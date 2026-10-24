@@ -12,7 +12,7 @@ import {
 
 const coverageEnum = z.enum(["BEST_MOMENTS", "WHOLE_VIDEO", "DONT_CLIP"]);
 const modeEnum = z.enum(["AUTO", "SPEECH", "ENERGY", "VISUAL"]);
-const layoutEnum = z.enum(["full_video", "streamer", "split", "two_up", "three_up", "four_up", "screenshare", "black_box", "title_subtitles"]);
+const layoutEnum = z.enum(["auto", "full_video", "streamer", "split", "two_up", "three_up", "four_up", "screenshare", "black_box", "title_subtitles"]);
 const editLevelEnum = z.enum(["cuts_only", "captions", "cropped", "full"]);
 const aspectEnum = z.enum(["9:16", "1:1", "4:5", "16:9"]);
 const zoomEnum = z.enum(["Subtle", "Balanced", "Dynamic", "Max"]);
@@ -47,7 +47,7 @@ const jobFormSchema = z.object({
   alternates: z.boolean().default(false),
   editLevel: editLevelEnum.default("full"),
   aspect: aspectEnum.default("9:16"),
-  layouts: z.array(layoutEnum).min(1).max(5).default(["streamer"]),
+  layouts: z.array(layoutEnum).min(1).max(5).default(["auto"]),
   framing: z.enum(["AUTO", "BOTH", "CENTER"]).default("AUTO"),
   language: z.string().trim().max(12).default("auto"),
   captionLanguage: z.string().trim().max(12).default("same"),

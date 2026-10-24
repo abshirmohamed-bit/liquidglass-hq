@@ -150,7 +150,7 @@ export function NewJob() {
           alternates: false,
           editLevel: "full",
           aspect: opts.aspect as "9:16" | "1:1" | "4:5" | "16:9",
-          layouts: ["streamer"],
+          layouts: ["auto"],
           framing: "AUTO",
           language: details.language || "auto",
           captionLanguage: "same",
