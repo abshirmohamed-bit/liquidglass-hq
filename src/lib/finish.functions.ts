@@ -133,6 +133,8 @@ export type Framing = {
   tracked: { x: number; y: number; w: number; h: number; pan: [number, number][] };
   /** One per speaker for a split; empty when the clip does not support one. */
   cells: { x: number; y: number; w: number; h: number }[];
+  /** One side of a split-screen source, when the clip is about that side alone. */
+  feed: { x: number; y: number; w: number; h: number } | null;
 };
 
 export const clipFraming = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth])
@@ -151,6 +153,6 @@ export const clipFraming = createServerFn({ method: "GET" }).middleware([require
     const d = r.data;
     return {
       source: d.source, seam: d.seam ?? null, suggested: d.suggested ?? "full-video",
-      faces: d.faces ?? [], tracked: d.tracked, cells: d.cells ?? [],
+      faces: d.faces ?? [], tracked: d.tracked, cells: d.cells ?? [], feed: d.feed ?? null,
     } satisfies Framing;
   });

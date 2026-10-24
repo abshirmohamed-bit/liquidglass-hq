@@ -165,3 +165,64 @@ def test_a_head_turning_away_does_not_become_a_new_person():
     S._link(tracks, [], 1000)
     S._link(tracks, [(0.3, 0.5, 0.1, 0.25)], 1200)      # and found again
     assert len(tracks) == 1
+
+
+# --- aiming the crop at the speaker -------------------------------------
+
+def test_focus_aims_at_whoever_is_talking():
+    left = track(1, 0.25, motion=still)
+    right = track(2, 0.75, motion=still)
+    turns_ = [S.Turn(0, 3000, 1, 0.9), S.Turn(3000, 6000, 2, 0.9)]
+    aimed = dict(S.focus([left, right], turns_, fallback=[(0, 0.5)]))
+    assert aimed[1000] == pytest.approx(0.25)
+    assert aimed[4000] == pytest.approx(0.75)
+
+
+def test_focus_holds_on_a_speaker_who_turns_away():
+    """The face stops being detected; the person has not gone anywhere.
+
+    This is the frame that started all of this: the crop must stay on the
+    speaker rather than wander to whoever happens to be facing the camera.
+    """
+    speaking = S.FaceTrack(id=1)
+    for ms in range(0, 1500, 500):                 # seen only at the start
+        speaking.boxes.append((ms, (0.25, 0.5, 0.1, 0.25)))
+    listener = track(2, 0.75, motion=still)        # visible throughout
+    turns_ = [S.Turn(0, 6000, 1, 0.9)]             # but track 1 holds the floor
+    aimed = dict(S.focus([speaking, listener], turns_, fallback=[(0, 0.75)]))
+    assert aimed[5000] == pytest.approx(0.25)      # still on the speaker
+
+
+def test_focus_falls_back_when_nobody_can_be_named():
+    left = track(1, 0.25, motion=still)
+    unclear = [S.Turn(0, 6000, None, 0.0, "overlap")]
+    assert S.focus([left], unclear, fallback=[(0, 0.5)]) == [(0, 0.5)]
+    assert S.focus([], [], fallback=[(0, 0.5)]) == [(0, 0.5)]
+
+
+def test_panel_time_totals_each_side_of_the_join():
+    left = track(1, 0.25, motion=still)
+    right = track(2, 0.75, motion=still)
+    turns_ = [S.Turn(0, 8000, 2, 0.9), S.Turn(8000, 10000, 1, 0.9)]
+    held = S.panel_time([left, right], turns_, 0.5)
+    assert held == {0: 2000, 1: 8000}
+
+
+def test_one_feed_wins_when_it_carries_the_conversation():
+    left = track(1, 0.25, motion=still)
+    right = track(2, 0.75, motion=still)
+    mostly_right = [S.Turn(0, 9000, 2, 0.9), S.Turn(9000, 10000, 1, 0.9)]
+    assert S.dominant_panel([left, right], mostly_right, 0.5) == 1
+
+
+def test_a_back_and_forth_needs_both_feeds():
+    left = track(1, 0.25, motion=still)
+    right = track(2, 0.75, motion=still)
+    even = [S.Turn(0, 5000, 1, 0.9), S.Turn(5000, 10000, 2, 0.9)]
+    assert S.dominant_panel([left, right], even, 0.5) is None
+
+
+def test_no_named_speaker_means_no_dominant_feed():
+    left = track(1, 0.25, motion=still)
+    unclear = [S.Turn(0, 10000, None, 0.0, "unseen")]
+    assert S.dominant_panel([left], unclear, 0.5) is None

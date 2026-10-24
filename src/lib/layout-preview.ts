@@ -46,6 +46,14 @@ export function drawFrame(ctx: Ctx, video: Src, framing: Framing | null,
   ctx.fillRect(0, 0, W, H);
   const resolved = resolveLayout(layout, framing);
 
+  // One side of a split-screen source, shown on its own because that is the
+  // side doing the talking. Drawn only from a box the Engine gave us.
+  if (resolved === "one-feed" && framing?.feed) {
+    const f = framing.feed;
+    ctx.drawImage(video, f.x, f.y, f.w, f.h, 0, 0, W, H);
+    return;
+  }
+
   // Two speakers, a cell each. Only ever drawn from cells the Engine gave us:
   // guessing the cut would show a split that the export does not produce.
   if (resolved === "split" && framing && framing.cells.length >= 2) {

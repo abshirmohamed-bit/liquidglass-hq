@@ -505,7 +505,111 @@ def cell_crops(track: Track, out_w: int, out_h: int, rows: int = 2) -> list[str]
     return crops
 
 
-def geometry(track: Track, out_w: int, out_h: int) -> dict:
+def plan(track: Track | None, tracks, turns_, out_w: int, out_h: int) -> dict:
+    """The one place a layout is chosen, so the render and the preview agree.
+
+    The editor draws its own preview and the Engine renders the clip; if they
+    worked this out separately they would drift, and the preview would stop
+    being worth looking at. Both ask here.
+    """
+    from .speaker import dominant_panel
+
+    if track is None:
+        return {"layout": "full-video", "cells": [], "feed": None}
+    layout = suggest_layout(track)
+    if layout == "split" and track.seam is not None and turns_:
+        side = dominant_panel(tracks or [], turns_, track.seam)
+        if side is not None:
+            crop = feed_crop(track, out_w, out_h, side)
+            if crop:
+                return {"layout": "one-feed", "cells": [], "feed": _box(crop), "side": side}
+    cells = cell_crops(track, out_w, out_h, 2) if layout == "split" else []
+    if layout == "split" and not cells:
+        layout = "full-video"
+    return {"layout": layout, "cells": [_box(c) for c in cells], "feed": None}
+
+
+#: Speech analyses already done. Same reasoning as _CACHE: decoding a clip to
+#: read its mouths costs seconds and the answer cannot change unless the file
+#: or the range does.
+_SPEECH: "OrderedDict[tuple, tuple]" = OrderedDict()
+
+
+def speech(video: Path, *, in_ms: int = 0, out_ms: int | None = None):
+    """Who is on screen and who is talking, computed once per clip."""
+    from . import speaker as sp
+
+    key = _key(video, "speech", 0, in_ms, out_ms)
+    if key is not None and key in _SPEECH:
+        _SPEECH.move_to_end(key)
+        return _SPEECH[key]
+    tracks = sp.face_tracks(video, in_ms=in_ms, out_ms=out_ms)
+    turns = sp.turns(tracks, sp.energy(video, in_ms=in_ms, out_ms=out_ms)) if tracks else []
+    result = (tracks, turns)
+    if key is not None:
+        _SPEECH[key] = result
+        while len(_SPEECH) > CACHE_MAX:
+            _SPEECH.popitem(last=False)
+    return result
+
+
+def follow_speaker(track: Track, video: Path, *, in_ms: int = 0,
+                   out_ms: int | None = None) -> Track:
+    """Point the crop at whoever is talking, rather than at everyone at once.
+
+    Worth the decoding only when there is someone to choose between: with one
+    person on screen the existing tracking is already aimed at them.
+    """
+    from . import speaker as sp
+
+    if len(people(track)) < 2 and track.seam is None:
+        return track
+    tracks, turns_ = speech(video, in_ms=in_ms, out_ms=out_ms)
+    if not tracks or not turns_:
+        return track
+    aimed = sp.focus(tracks, turns_, fallback=track.samples)
+    if not aimed:
+        return track
+    return Track(track.strategy, track.width, track.height, _smooth(aimed),
+                 track.faces, track.seam)
+
+
+def feed_crop(track: Track, out_w: int, out_h: int, side: int) -> str:
+    """One feed of a composite, cropped to fill the frame on its own.
+
+    When a clip is really about one side of a split-screen — a guest
+    answering at length while the host listens — this beats two half-height
+    cells, one of which is somebody sitting quietly.
+    """
+    sw, sh = track.width, track.height
+    edge = int(round((track.seam or 0.5) * sw))
+    lo, hi = (0, edge) if side == 0 else (edge, sw)
+    span = hi - lo
+    if span < 2 or not sh:
+        return ""
+    target = out_w / out_h
+    cw = min(float(span), sh * target)
+    ch = cw / target
+    if ch > sh:
+        ch = float(sh)
+        cw = ch * target
+    cw = max(2, int(cw) - int(cw) % 2)
+    ch = max(2, int(ch) - int(ch) % 2)
+    here = [f for f in track.faces if lo <= f.x * sw < hi and f.share >= MIN_SHARE]
+    if here:
+        aim = max(here, key=lambda f: f.share)
+        x = int(round(aim.x * sw - cw / 2))
+        y = int(round((aim.y - aim.h * 0.15) * sh - ch / 2))
+    else:
+        x = lo + (span - cw) // 2
+        y = (sh - ch) // 2
+    x = max(lo, min(hi - cw, x))
+    x = max(0, min(sw - cw, x))
+    y = max(0, min(sh - ch, y))
+    return f"crop={cw}:{ch}:{x}:{y}"
+
+
+def geometry(track: Track, out_w: int, out_h: int, *, tracks=None, turns_=None) -> dict:
     """Every layout's crop boxes for this clip, in source pixels.
 
     The editor draws its own preview, so it needs the same numbers the render
@@ -524,18 +628,19 @@ def geometry(track: Track, out_w: int, out_h: int) -> dict:
     max_x = max(0, sw - cw)
     pan = [[ms, max(0, min(max_x, int(round(centre * sw - cw / 2))))]
            for ms, centre in track.samples]
-    cells = [_box(c) for c in cell_crops(track, out_w, out_h, 2)]
+    chosen = plan(track, tracks, turns_, out_w, out_h)
     return {
         "source": {"w": sw, "h": sh},
         "strategy": track.strategy,
         "seam": seam_of(track),
         "faces": [{"x": f.x, "y": f.y, "w": f.w, "h": f.h, "share": f.share} for f in track.faces],
-        "suggested": suggest_layout(track),
+        "suggested": chosen["layout"],
+        "feed": chosen["feed"],
         # full-video follows the subject, so it is a box plus where it sits
         # over time; the rest hold still.
         "tracked": {"w": cw, "h": ch, "y": max(0, (sh - ch) // 2),
                     "x": pan[0][1] if pan else max_x // 2, "pan": pan},
-        "cells": cells,
+        "cells": chosen["cells"],
     }
 
 

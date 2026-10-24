@@ -374,3 +374,53 @@ def test_seam_from_finds_a_lone_full_height_edge():
     g = np.zeros(400)
     g[199] = 10.0                                        # full coverage over 10 frames
     assert F._seam_from(g, 10) == 0.5
+
+
+# --- one feed of a composite --------------------------------------------
+
+def test_feed_crop_stays_inside_the_feed_it_chose():
+    from app.pipeline import frame as F
+    t = F.Track("yunet", 1920, 1080, [(0, 0.5)],
+                [F.Face(1, 0.25, 0.45, 0.09, 0.2, 0.5),
+                 F.Face(2, 0.75, 0.45, 0.09, 0.2, 0.5)], 0.5)
+    left = F.feed_crop(t, 1080, 1920, 0)
+    right = F.feed_crop(t, 1080, 1920, 1)
+    lw, lh, lx, ly = (int(v) for v in left.removeprefix("crop=").split(":"))
+    rw, rh, rx, ry = (int(v) for v in right.removeprefix("crop=").split(":"))
+    assert lx + lw <= 960 and rx >= 960          # neither crosses the join
+    assert abs(lw / lh - 1080 / 1920) < 0.02     # and both are 9:16
+    assert abs(rw / rh - 1080 / 1920) < 0.02
+
+
+def test_a_composite_carried_by_one_speaker_renders_as_one_feed(tmp_path, monkeypatch):
+    from app.pipeline import compose, frame as F, speaker as S
+    t = F.Track("yunet", 1920, 1080, [(0, 0.5)],
+                [F.Face(1, 0.25, 0.45, 0.09, 0.2, 0.5),
+                 F.Face(2, 0.75, 0.45, 0.09, 0.2, 0.5)], 0.5)
+    tracks = [S.FaceTrack(id=1, boxes=[(0, (0.25, 0.45, 0.09, 0.2))]),
+              S.FaceTrack(id=2, boxes=[(0, (0.75, 0.45, 0.09, 0.2))])]
+    turns = [S.Turn(0, 9000, 2, 0.9), S.Turn(9000, 10000, 1, 0.9)]
+    monkeypatch.setattr(compose.framing, "track", lambda *a, **k: t)
+    monkeypatch.setattr(compose.framing, "speech", lambda *a, **k: (tracks, turns))
+    monkeypatch.setattr(compose.framing, "follow_speaker", lambda tr, *a, **k: tr)
+    r = compose.Render(out=tmp_path / "o.mp4", source=tmp_path / "in.mp4",
+                       in_ms=0, out_ms=10000, layout="auto")
+    graph = " ".join(compose.build(r, tmp_path / "w")[0])
+    assert "vstack" not in graph                 # not two half-height cells
+    assert "crop=" in graph
+
+
+def test_a_composite_with_a_back_and_forth_stays_split(tmp_path, monkeypatch):
+    from app.pipeline import compose, frame as F, speaker as S
+    t = F.Track("yunet", 1920, 1080, [(0, 0.5)],
+                [F.Face(1, 0.25, 0.45, 0.09, 0.2, 0.5),
+                 F.Face(2, 0.75, 0.45, 0.09, 0.2, 0.5)], 0.5)
+    tracks = [S.FaceTrack(id=1, boxes=[(0, (0.25, 0.45, 0.09, 0.2))]),
+              S.FaceTrack(id=2, boxes=[(0, (0.75, 0.45, 0.09, 0.2))])]
+    turns = [S.Turn(0, 5000, 1, 0.9), S.Turn(5000, 10000, 2, 0.9)]
+    monkeypatch.setattr(compose.framing, "track", lambda *a, **k: t)
+    monkeypatch.setattr(compose.framing, "speech", lambda *a, **k: (tracks, turns))
+    monkeypatch.setattr(compose.framing, "follow_speaker", lambda tr, *a, **k: tr)
+    r = compose.Render(out=tmp_path / "o.mp4", source=tmp_path / "in.mp4",
+                       in_ms=0, out_ms=10000, layout="auto")
+    assert "vstack=inputs=2" in " ".join(compose.build(r, tmp_path / "w")[0])

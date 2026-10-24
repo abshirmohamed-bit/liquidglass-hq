@@ -282,8 +282,13 @@ def project_framing(project_id: str, aspect: str = "") -> dict:
         path = storage.local_path(source.mezzanine_key or source.storage_key)
         mode = (p.framing or {}).get("mode", "auto")
         track = framing.track(path, mode=mode, in_ms=p.in_ms, out_ms=p.out_ms)
+        # The voices decide as much as the faces do, and the preview has to
+        # see the same thing the render will.
+        tracks, turns_ = framing.speech(path, in_ms=p.in_ms, out_ms=p.out_ms)
+        track = framing.follow_speaker(track, path, in_ms=p.in_ms, out_ms=p.out_ms)
         w, h = ASPECTS[want]
-        return ok(aspect=want, layout=p.layout, **framing.geometry(track, w, h))
+        return ok(aspect=want, layout=p.layout,
+                  **framing.geometry(track, w, h, tracks=tracks, turns_=turns_))
 
 
 class ExportBody(BaseModel):

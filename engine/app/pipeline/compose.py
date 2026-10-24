@@ -296,13 +296,34 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
                           in_ms=render.in_ms, out_ms=render.out_ms) if render.framing_mode != "center" else None
     sendcmd_path = workdir / "pan.cmd"
 
-    # "auto" asks the faces what shape the clip wants. A split that the faces
-    # cannot support falls back to tracking whoever is there, rather than
-    # stacking a cropped frame on top of itself.
-    layout = framing.suggest_layout(track) if render.layout == "auto" else render.layout
+    # "auto" asks the faces and the voices what shape the clip wants. The
+    # decision itself lives in framing.plan, which the editor's preview also
+    # calls — worked out separately they would drift, and a preview that does
+    # not match the render is worse than none.
+    one_feed = ""
+    layout = render.layout
+    if track is not None and render.source is not None:
+        # Point the crop at whoever is talking rather than at the average of
+        # everyone on screen, which on a two-person interview is the gap
+        # between them. Only worth the decoding when there is a choice.
+        track = framing.follow_speaker(track, render.source,
+                                       in_ms=render.in_ms, out_ms=render.out_ms)
+    if layout == "auto":
+        tracks, turns_ = ((), ())
+        if track is not None and render.source is not None:
+            tracks, turns_ = framing.speech(render.source,
+                                            in_ms=render.in_ms, out_ms=render.out_ms)
+        chosen = framing.plan(track, tracks, turns_, w, h)
+        layout = chosen["layout"]
+        if chosen["feed"]:
+            f = chosen["feed"]
+            one_feed = f"crop={f['w']}:{f['h']}:{f['x']}:{f['y']}"
+
     cells = framing.cell_crops(track, w, h, 2) if layout == "split" and track else []
     if layout == "split" and not cells:
         layout = "full-video"
+    if layout == "one-feed" and not one_feed:
+        layout = "split" if cells else "full-video"
 
     if layout in {"full-video", "title-subtitles"}:
         crop, commands = framing.crop_filter(
@@ -315,6 +336,10 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
     elif layout == "streamer":
         # the clip over a blurred, filled copy of itself
         return _two_layer(render, workdir, blur=True, track=track)
+    elif layout == "one-feed":
+        # the side of the composite the clip is actually about
+        chain.append(one_feed)
+        chain.append(f"scale={w}:{h}:flags=lanczos")
     elif layout == "split":
         # one cell per speaker, each framed on their own face
         return _split_stack(render, workdir, cells)

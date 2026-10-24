@@ -26,6 +26,7 @@ const framing = (over: Partial<Framing> = {}): Framing => ({
   faces: [],
   tracked: { x: 400, y: 0, w: 608, h: 1080, pan: [[0, 100], [1000, 500], [2000, 900]] },
   cells: [],
+  feed: null,
   ...over,
 });
 
@@ -97,5 +98,21 @@ describe("drawFrame", () => {
     const { ctx, draws } = recorder();
     drawFrame(ctx, video, null, "auto", 0);
     expect(draws).toHaveLength(1);
+  });
+});
+
+describe("one feed of a split-screen source", () => {
+  it("fills the frame from the side that is doing the talking", () => {
+    const { ctx, draws } = recorder();
+    const feed = { x: 1090, y: 0, w: 606, h: 1080 };
+    drawFrame(ctx, video, framing({ feed, suggested: "one-feed" }), "auto", 0);
+    expect(draws).toHaveLength(1);
+    expect(draws[0]).toEqual([1090, 0, 606, 1080, 0, 0, 540, 960]);
+  });
+
+  it("will not invent a feed the Engine did not choose", () => {
+    const { ctx, draws } = recorder();
+    drawFrame(ctx, video, framing({ feed: null }), "one-feed", 0);
+    expect(draws[0]!.slice(0, 4)).not.toEqual([1090, 0, 606, 1080]);
   });
 });

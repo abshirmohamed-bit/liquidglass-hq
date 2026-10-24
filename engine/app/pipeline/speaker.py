@@ -407,3 +407,85 @@ def speaker_at(turns_: list[Turn], ms: int) -> Turn | None:
         if t.start_ms <= ms < t.end_ms:
             return t
     return None
+
+
+def focus(tracks: list[FaceTrack], turns_: list[Turn], *,
+          fallback: list[tuple[int, float]], step_ms: int = 250,
+          ) -> list[tuple[int, float]]:
+    """Where the crop should look over time: at whoever is talking.
+
+    The old answer was the average of every face on screen, which on a
+    two-person interview is the gap between them — a crop centred on nobody.
+    This aims at the speaker instead.
+
+    The important case is the awkward one. When a speaker turns away, their
+    face stops being detected, but they have not gone anywhere: the track
+    keeps its last position, so the crop holds on them rather than wandering
+    off to whoever happens to be facing the camera. Through silence or a
+    scramble the crop simply holds still, because moving to nobody in
+    particular is worse than staying put.
+    """
+    if not tracks or not turns_:
+        return fallback
+    by_id = {t.id: t for t in tracks}
+    spans = [t for t in turns_ if t.track_id is not None]
+    if not spans:
+        return fallback
+    start = min(t.start_ms for t in turns_)
+    end = max(t.end_ms for t in turns_)
+    picked: list[tuple[int, float]] = []
+    held: float | None = None
+    for ms in range(start, end, step_ms):
+        turn = speaker_at(turns_, ms)
+        who = by_id.get(turn.track_id) if turn and turn.track_id else None
+        if who is not None:
+            box = who.box_at(ms)
+            if box is not None:
+                held = box[0]
+        if held is None:
+            near = [x for t, x in fallback if abs(t - ms) <= step_ms * 2]
+            if near:
+                held = near[0]
+        if held is not None:
+            picked.append((ms, held))
+    return picked or fallback
+
+
+def panel_time(tracks: list[FaceTrack], turns_: list[Turn], seam: float) -> dict[int, int]:
+    """How long each side of a composite's join held the speaker, in ms.
+
+    A composite is two cameras, and whoever is talking belongs to one of them
+    whether or not their face is turned to it at that moment. Totalling the
+    speaking time per side says which feed the clip is actually about.
+    """
+    by_id = {t.id: t for t in tracks}
+    out = {0: 0, 1: 0}
+    for turn in turns_:
+        if turn.track_id is None:
+            continue
+        who = by_id.get(turn.track_id)
+        box = who.box_at(turn.start_ms) if who else None
+        if box is None:
+            continue
+        out[0 if box[0] < seam else 1] += turn.end_ms - turn.start_ms
+    return out
+
+
+#: One feed has to hold this much of the named speaking time before the clip
+#: is treated as being about that feed alone.
+DOMINANT_SHARE = 0.75
+
+
+def dominant_panel(tracks: list[FaceTrack], turns_: list[Turn], seam: float) -> int | None:
+    """The one feed worth showing on its own, or None if the clip needs both.
+
+    A guest answering at length is better as one big shot of their feed than
+    as two half-height cells, one of which is a host sitting quietly. A
+    back-and-forth needs both.
+    """
+    held = panel_time(tracks, turns_, seam)
+    total = held[0] + held[1]
+    if total <= 0:
+        return None
+    side = 0 if held[0] >= held[1] else 1
+    return side if held[side] / total >= DOMINANT_SHARE else None
