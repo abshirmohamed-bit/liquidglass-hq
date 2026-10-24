@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Save, Send, SlidersHorizontal, Type, Wand2 } from "lucide-react";
+import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Pause, Play, Save, Send, SlidersHorizontal, Type, Volume2, VolumeX, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { editorData, saveFinish, transcribeChunk } from "@/lib/finish.functions";
 import { startExport } from "@/lib/review.functions";
@@ -25,6 +25,12 @@ export function toClipTime(cues: Cue[], startMs: number): Cue[] {
   if (!cues.length || startMs <= 0 || cues[0]!.start_ms < startMs) return cues;
   return cues.map((c) => ({ ...c, start_ms: c.start_ms - startMs, end_ms: c.end_ms - startMs }));
 }
+
+/** m:ss, for a clock that counts the clip rather than the whole video. */
+const clock = (ms: number) => {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
 
 const ratio = (a: string) => { const [w, h] = a.split(":").map(Number); return `${w} / ${h}`; };
 let fontLoaded = false;
@@ -231,6 +237,7 @@ export function Editor({ clipId }: { clipId: string }) {
 
 function Preview({ ctl, src, videoUrl, start, end, aspect, style, cues, title, titleStyle, ov, mark, onTime, onMove }: { ctl: React.MutableRefObject<((ms: number) => void) | null>; src: string | null; videoUrl: string | null; start: number; end: number; aspect: string; style: CaptionStyle; cues: Cue[]; title: string; titleStyle: TitleStyle; ov: Overlays; mark: string; onTime: (ms: number) => void; onMove: (x: number, y: number) => void }) {
   const box = useRef<HTMLDivElement>(null); const [w, setW] = useState(360); const [t, setT] = useState(start); const drag = useRef(false); const vid = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false); const [muted, setMuted] = useState(false);
   // Cue times are in source time. Translate to whatever is actually playing:
   // the exported clip starts at zero, the full source does not. Keying this
   // off "is there a source" instead of "what is on screen" sent every cue
@@ -258,17 +265,49 @@ function Preview({ ctl, src, videoUrl, start, end, aspect, style, cues, title, t
   // and seeking that lands instantly. The source, played through a media
   // fragment, was making the editor stream the whole video to show a sliver
   // of it. Falling back to the source still covers a clip never exported.
-  const clipOnly = !!videoUrl;
-  const url = videoUrl ?? (src ? `${src}#t=${start / 1000},${end / 1000}` : null);
+  // The editor previews settings that have not been rendered yet, so it needs
+  // a video with nothing drawn on it. The exported clip has the captions,
+  // title and handle already burned in — playing that put two of everything
+  // on screen. The source is the only clean copy, and the browser fetches it
+  // by range, so seeking into the middle does not pull down the whole file.
+  //
+  // With no source at all the export beats a black box, but its overlays are
+  // baked in, so ours stay off rather than doubling up.
+  const clipOnly = !src && !!videoUrl;
+  const burnedIn = clipOnly;
+  const url = src ? `${src}#t=${start / 1000},${end / 1000}` : videoUrl;
+  const dur = Math.max(1, end - start);
+  const at = Math.min(dur, Math.max(0, t));
+  const seekTo = (msClip: number) => {
+    const v = vid.current;
+    if (!v) return;
+    v.currentTime = (clipOnly ? msClip : msClip + start) / 1000;
+    setT(msClip);
+  };
   const hw = (ov.title?.highlight_word ?? "").toLowerCase();
   const pos = ov.watermark?.pos ?? "centre-below-captions";
   return <section className="ed-stage">
     <div ref={box} className="editor-frame ed-frame" style={{ aspectRatio: ratio(aspect), width: `min(100%, calc(60vh * ${aspect.split(":").map(Number).reduce((w, h) => w / h)}))` }} onPointerMove={move} onPointerUp={() => (drag.current = false)} onPointerLeave={() => (drag.current = false)}>
-      {url ? <video ref={vid} src={url} controls playsInline onTimeUpdate={(e) => { const ms = clipOnly ? e.currentTarget.currentTime * 1000 : e.currentTarget.currentTime * 1000 - start; setT(ms); onTime(ms); if (!clipOnly && ms >= end - start) { e.currentTarget.pause(); } }} /> : <p className="muted">No video available.</p>}
-      {title.trim() && <div className={`ed-title ed-${titleStyle}`} style={{ top: `${ov.title?.y ?? 14}%`, fontSize: 66 * k }}>{title.split(/\s+/).map((x, i) => <span key={i} style={titleStyle === "headline" && hw && x.toLowerCase().replace(/[^\w']/g, "") === hw.replace(/[^\w']/g, "") ? { color: HIGHLIGHTS[ov.title?.highlight ?? "yellow"] } : undefined}>{x} </span>)}</div>}
-      {text && <div className="ed-caption" onPointerDown={(e) => { drag.current = true; e.preventDefault(); }} style={{ left: `${style.x}%`, top: `${style.y}%`, fontSize: style.size * k, color: style.fill, WebkitTextStroke: style.box ? undefined : `${style.outlineW * k}px ${style.outline}`, paintOrder: "stroke fill", textShadow: style.shadow && !style.box ? `0 ${3 * k}px ${4 * k}px rgba(0,0,0,.5)` : undefined, background: style.box ? `color-mix(in srgb, ${style.boxColor} ${style.boxOpacity * 100}%, transparent)` : undefined }}>
+      {url ? <video ref={vid} src={url} playsInline onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(e) => { const ms = clipOnly ? e.currentTarget.currentTime * 1000 : e.currentTarget.currentTime * 1000 - start; setT(ms); onTime(ms); if (!clipOnly && ms >= end - start) { e.currentTarget.pause(); } }} /> : <p className="muted">No video available.</p>}
+      {!burnedIn && title.trim() && <div className={`ed-title ed-${titleStyle}`} style={{ top: `${ov.title?.y ?? 14}%`, fontSize: 66 * k }}>{title.split(/\s+/).map((x, i) => <span key={i} style={titleStyle === "headline" && hw && x.toLowerCase().replace(/[^\w']/g, "") === hw.replace(/[^\w']/g, "") ? { color: HIGHLIGHTS[ov.title?.highlight ?? "yellow"] } : undefined}>{x} </span>)}</div>}
+      {!burnedIn && text && <div className="ed-caption" onPointerDown={(e) => { drag.current = true; e.preventDefault(); }} style={{ left: `${style.x}%`, top: `${style.y}%`, fontSize: style.size * k, color: style.fill, WebkitTextStroke: style.box ? undefined : `${style.outlineW * k}px ${style.outline}`, paintOrder: "stroke fill", textShadow: style.shadow && !style.box ? `0 ${3 * k}px ${4 * k}px rgba(0,0,0,.5)` : undefined, background: style.box ? `color-mix(in srgb, ${style.boxColor} ${style.boxOpacity * 100}%, transparent)` : undefined }}>
         {shown.map((x, i) => <span key={i} style={style.active && style.animation === "karaoke" && i === activeIdx ? { color: style.active } : undefined}>{x} </span>)}</div>}
-      {mark.trim() && <div className={`ed-mark ed-${pos}`} style={{ fontSize: 34 * k, opacity: ov.watermark?.opacity ?? 0.5, ...(pos === "centre-below-captions" ? { top: `calc(${style.y}% + ${style.size * k * 1.4}px)` } : {}) }}>{mark}</div>}
+      {!burnedIn && mark.trim() && <div className={`ed-mark ed-${pos}`} style={{ fontSize: 34 * k, opacity: ov.watermark?.opacity ?? 0.5, ...(pos === "centre-below-captions" ? { top: `calc(${style.y}% + ${style.size * k * 1.4}px)` } : {}) }}>{mark}</div>}
+    </div>
+    {/* The clip's own clock. Native controls report the whole source, which
+        read "0:05 / 46:32" on a three minute clip. */}
+    <div className="ed-transport">
+      <button type="button" className="ed-play" aria-label={playing ? "Pause" : "Play"}
+        onClick={() => { const v = vid.current; if (!v) return; if (v.paused) void v.play().catch(() => {}); else v.pause(); }}>
+        {playing ? <Pause size={15} /> : <Play size={15} />}
+      </button>
+      <input className="ed-seek" type="range" min={0} max={dur} step={50} value={at}
+        aria-label="Position in clip" onChange={(e) => seekTo(+e.target.value)} />
+      <span className="ed-clock">{clock(at)} / {clock(dur)}</span>
+      <button type="button" className="ed-mute" aria-label={muted ? "Unmute" : "Mute"}
+        onClick={() => { const v = vid.current; if (!v) return; v.muted = !v.muted; setMuted(v.muted); }}>
+        {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+      </button>
     </div>
     <p className="caption ed-hint">{cues.length ? "Drag the caption on the video to place it anywhere." : "Transcribe to see captions on the video."}</p>
   </section>;
