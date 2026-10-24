@@ -315,42 +315,59 @@ def _claude_prompt(sentences: list[dict], count: int, target_ms: int, *, genre: 
     return "\n\n".join(["\n".join(extras), f"Reply ONLY with JSON of this shape: {schema}", "TRANSCRIPT:", lines])
 
 
-def claude_find(sentences: list[dict], count: int, target_ms: int, *, genre: str = "auto",
-                prompt: str = "", must_include: list[str] | None = None, coverage: str = "best",
-                keep_qa: bool = True, http=None) -> list[Moment]:
-    """One call per 20-minute window, then a re-rank if there was more than one."""
+def ai_find(sentences: list[dict], count: int, target_ms: int, *, genre: str = "auto",
+            prompt: str = "", must_include: list[str] | None = None, coverage: str = "best",
+            keep_qa: bool = True, http=None) -> list[Moment]:
+    """One call per 20-minute window, against whichever provider has a key.
+
+    Two request shapes cover essentially everything: the chat-completions API
+    that OpenAI, Groq, OpenRouter, Together, DeepSeek and most others speak,
+    and Anthropic's own. Which one is used comes from the key (see KEY_SHAPES),
+    so a single pasted key is normally the whole configuration.
+    """
     import httpx
 
     cfg = settings()
-    if not cfg.anthropic_api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+    kind, base, model, key = cfg.ai_target()
+    if not kind:
+        raise RuntimeError("No AI key is set — set AI_API_KEY (and AI_BASE_URL for an unlisted provider)")
     windows = _windows(sentences, 20 * 60 * 1000)
     client = http or httpx.Client(timeout=120)
     found: list[Moment] = []
     try:
         for window in windows:
-            body = {
-                "model": cfg.claude_model,
-                "max_tokens": 4096,
-                "system": SYSTEM,
-                "messages": [{"role": "user", "content": _claude_prompt(
-                    window, count, target_ms, genre=genre, prompt=prompt,
-                    must_include=must_include or [], coverage=coverage, keep_qa=keep_qa)}],
-            }
-            r = client.post(
-                "https://api.anthropic.com/v1/messages",
-                json=body,
-                headers={"x-api-key": cfg.anthropic_api_key,
-                         "anthropic-version": "2023-06-01",
-                         "content-type": "application/json"},
-            )
-            r.raise_for_status()
-            text = "".join(part.get("text", "") for part in r.json().get("content", []))
+            user = _claude_prompt(window, count, target_ms, genre=genre, prompt=prompt,
+                                  must_include=must_include or [], coverage=coverage, keep_qa=keep_qa)
+            if kind == "anthropic":
+                r = client.post(
+                    f"{base}/v1/messages",
+                    json={"model": model, "max_tokens": 4096, "system": SYSTEM,
+                          "messages": [{"role": "user", "content": user}]},
+                    headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                             "content-type": "application/json"},
+                )
+                r.raise_for_status()
+                text = "".join(part.get("text", "") for part in r.json().get("content", []))
+            else:
+                r = client.post(
+                    f"{base}/chat/completions",
+                    json={"model": model, "max_tokens": 4096,
+                          "messages": [{"role": "system", "content": SYSTEM},
+                                       {"role": "user", "content": user}]},
+                    headers={"authorization": f"Bearer {key}", "content-type": "application/json"},
+                )
+                r.raise_for_status()
+                choices = r.json().get("choices") or [{}]
+                text = (choices[0].get("message") or {}).get("content") or ""
             found.extend(parse_moments(text))
     finally:
         if http is None:
             client.close()
     return found
+
+
+#: The name this had when Anthropic was the only option.
+claude_find = ai_find
 
 
 def _windows(sentences: list[dict], span_ms: int) -> list[list[dict]]:
@@ -459,10 +476,10 @@ def find(sentences: list[dict], *, count: int, target_ms: int, mode: str = "auto
     provider = cfg.resolve_finder()
     if mode == "energy" or (mode == "auto" and not sentences):
         raw = energy_find(envelope or [], count, target_ms)
-    elif provider == "claude":
+    elif provider in ("ai", "claude"):
         try:
-            raw = claude_find(sentences, count, target_ms, genre=genre, prompt=prompt,
-                              must_include=must_include, coverage=coverage, keep_qa=keep_qa)
+            raw = ai_find(sentences, count, target_ms, genre=genre, prompt=prompt,
+                          must_include=must_include, coverage=coverage, keep_qa=keep_qa)
             if not raw:
                 raw = rules_find(sentences, count, target_ms, coverage)
         except Exception:

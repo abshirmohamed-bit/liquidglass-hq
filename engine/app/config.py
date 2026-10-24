@@ -7,6 +7,16 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+#: How to reach a provider from the shape of its key, so pasting one key is
+#: usually all it takes. Longest prefixes first: "sk-or-" is also "sk-".
+KEY_SHAPES: tuple[tuple[str, str, str, str], ...] = (
+    ("sk-ant-", "https://api.anthropic.com", "anthropic", "claude-sonnet-4-5"),
+    ("sk-or-", "https://openrouter.ai/api/v1", "openai", "openai/gpt-4o-mini"),
+    ("gsk_", "https://api.groq.com/openai/v1", "openai", "openai/gpt-oss-20b"),
+    ("sk-", "https://api.openai.com/v1", "openai", "gpt-4o-mini"),
+)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -77,7 +87,14 @@ class Settings(BaseSettings):
         return "groq" if self.groq_api_key else "faster-whisper"
 
     # moment finding
-    finder_provider: str = "claude"  # claude | rules
+    # Moment finding. "rules" needs no key and no network; anything else uses
+    # whatever AI key is set. One key is enough — the host and a sensible model
+    # are worked out from the key's shape, so most providers need nothing else.
+    finder_provider: str = "ai"  # ai | rules
+    ai_api_key: str = ""
+    ai_base_url: str = ""   # only needed for a provider we cannot recognise
+    ai_model: str = ""      # only needed to override the default for that host
+    # The original Anthropic-only settings still work.
     anthropic_api_key: str = ""
     claude_model: str = "claude-sonnet-4-5"
 
@@ -104,11 +121,34 @@ class Settings(BaseSettings):
     def media_root(self) -> Path:
         return self.data_dir / "media"
 
+    def ai_target(self) -> tuple[str, str, str, str]:
+        """(kind, base_url, model, key) for the finder. Empty kind means none.
+
+        `kind` is "openai" for the chat-completions shape that nearly every
+        provider speaks, or "anthropic" for its own messages API.
+        """
+        key = (self.ai_api_key or self.anthropic_api_key or "").strip()
+        if not key:
+            return ("", "", "", "")
+        base = self.ai_base_url.strip().rstrip("/")
+        model = self.ai_model.strip()
+        kind = ""
+        for prefix, host, shape, default_model in KEY_SHAPES:
+            if key.startswith(prefix):
+                kind, base, model = shape, base or host, model or default_model
+                break
+        if not kind:
+            # Unrecognised key: assume the common shape, but we need an address.
+            if not base:
+                return ("", "", "", "")
+            kind, model = "openai", model or "gpt-4o-mini"
+        return (kind, base, model, key)
+
     def resolve_finder(self) -> str:
         """Without a key there is nothing to call, so fall back rather than fail."""
-        if self.finder_provider == "claude" and not self.anthropic_api_key:
+        if self.finder_provider == "rules":
             return "rules"
-        return self.finder_provider
+        return "ai" if self.ai_target()[0] else "rules"
 
 
     def _adopt_fly_storage(self) -> None:

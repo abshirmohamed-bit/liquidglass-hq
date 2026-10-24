@@ -40,8 +40,29 @@ Setting a secret restarts the machine, which is how it takes effect.
 | Object storage | Tigris bucket `long-glitter-1327` for finished clips |
 | Secrets | `ENGINE_API_KEYS`, `WEBHOOK_SECRET`, `WEBHOOK_URL`, `PUBLIC_BASE_URL`, `S3_PUBLIC_BASE_URL`, plus the five Fly set for Tigris |
 
-The only one still missing is `ANTHROPIC_API_KEY`, which upgrades moment-finding
-from transcript rules to AI judgement. Everything works without it.
+The only one still missing is `AI_API_KEY`, which upgrades moment-finding from
+transcript heuristics to real judgement — and is also what makes the "look for
+specific moments" box mean anything. Everything works without it; the Engine
+reports `finder: rules` until it is set.
+
+Any provider will do. The key's shape says where to send it, so this is
+usually the entire setup:
+
+```bash
+fly secrets set AI_API_KEY="gsk_..."        # Groq, already in use for audio
+fly secrets set AI_API_KEY="sk-ant-..."     # Anthropic
+fly secrets set AI_API_KEY="sk-or-..."      # OpenRouter
+fly secrets set AI_API_KEY="sk-..."         # OpenAI
+```
+
+For anything else — a self-hosted model, a gateway, a provider not listed —
+add the address of the API that has `/chat/completions` under it:
+
+```bash
+fly secrets set AI_API_KEY="..." AI_BASE_URL="https://llm.example.com/v1" AI_MODEL="your-model"
+```
+
+Check it took with `GET /v1/health`: `finder` flips from `rules` to `ai`.
 
 ---
 
