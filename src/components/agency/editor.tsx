@@ -4,8 +4,9 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Pause, Play, Save, Send, SlidersHorizontal, Type, Volume2, VolumeX, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { editorData, saveFinish, transcribeChunk } from "@/lib/finish.functions";
+import { clipFraming, editorData, saveFinish, transcribeChunk, type Framing } from "@/lib/finish.functions";
 import { setClipStatus, startExport } from "@/lib/review.functions";
+import { drawFrame, resolveLayout } from "@/lib/layout-preview";
 import { CAPTION_PRESETS, TITLE_STYLES, TITLE_STYLE_NAMES, HIGHLIGHTS, WATERMARK_POS, ASPECTS, LAYOUTS, LAYOUT_NAMES, LAYOUT_HINTS, type LayoutId, styleFor, wordsFromChunks, cuesFromWords, wordsFromCues, cueAt, type CaptionStyle, type Cue, type Overlays, type TitleStyle, type WatermarkPos } from "@/lib/finish-rules";
 import { Distribute } from "./posts";
 
@@ -69,6 +70,17 @@ export function Editor({ clipId }: { clipId: string }) {
     setOv((c.overlays as Overlays | null) ?? {}); setMark(c.watermark_text ?? q.data?.brand?.handle ?? ""); setAspect(c.aspect ?? "9:16");
     setLayout((LAYOUTS as readonly string[]).includes(c.layout ?? "") ? (c.layout as LayoutId) : "auto");
   }, [c, q.data]);
+  /**
+   * Where each layout would crop, straight from the Engine. Fetched in the
+   * background and never awaited: the editor opens and works without it, and
+   * the preview sharpens from "the whole frame" to "the actual crop" when it
+   * lands. Keyed by aspect because the crop shape depends on it.
+   */
+  const framing = useQuery({
+    queryKey: ["framing", clipId, aspect],
+    queryFn: () => clipFraming({ data: { id: clipId, aspect: aspect as "9:16" } }),
+    staleTime: 5 * 60_000, retry: false,
+  });
   const style = useMemo(() => styleFor(presetId, custom), [presetId, custom]);
   /**
    * Picking a style re-flows the words to that style's line length. Without
@@ -197,7 +209,7 @@ export function Editor({ clipId }: { clipId: string }) {
             </div></div>
         </div>
 
-        <Preview ctl={seek} src={src} videoUrl={c.video_url} start={start} end={end} aspect={aspect} style={style} cues={captionsOn ? cues : []} title={title} titleStyle={titleStyle} ov={ov} mark={mark} onTime={setNow} onMove={(x, y) => setCustom((s) => ({ ...s, x, y }))} />
+        <Preview ctl={seek} src={src} videoUrl={c.video_url} start={start} end={end} aspect={aspect} layout={layout} framing={framing.data ?? null} style={style} cues={captionsOn ? cues : []} title={title} titleStyle={titleStyle} ov={ov} mark={mark} onTime={setNow} onMove={(x, y) => setCustom((s) => ({ ...s, x, y }))} />
 
         <section className="glass-panel ed-script">
           <div className="ed-sec-head"><div><h2>Caption text</h2><p className="caption">{cues.length ? `${cues.length} lines · ${words.length} words — click a time to jump there, type to fix a word.` : "No captions yet."}</p></div>
@@ -267,8 +279,12 @@ export function Editor({ clipId }: { clipId: string }) {
   </div>;
 }
 
-function Preview({ ctl, src, videoUrl, start, end, aspect, style, cues, title, titleStyle, ov, mark, onTime, onMove }: { ctl: React.MutableRefObject<((ms: number) => void) | null>; src: string | null; videoUrl: string | null; start: number; end: number; aspect: string; style: CaptionStyle; cues: Cue[]; title: string; titleStyle: TitleStyle; ov: Overlays; mark: string; onTime: (ms: number) => void; onMove: (x: number, y: number) => void }) {
+function Preview({ ctl, src, videoUrl, start, end, aspect, layout, framing, style, cues, title, titleStyle, ov, mark, onTime, onMove }: { ctl: React.MutableRefObject<((ms: number) => void) | null>; src: string | null; videoUrl: string | null; start: number; end: number; aspect: string; layout: string; framing: Framing | null; style: CaptionStyle; cues: Cue[]; title: string; titleStyle: TitleStyle; ov: Overlays; mark: string; onTime: (ms: number) => void; onMove: (x: number, y: number) => void }) {
   const box = useRef<HTMLDivElement>(null); const [w, setW] = useState(360); const [t, setT] = useState(start); const drag = useRef(false); const vid = useRef<HTMLVideoElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  // Only hide the video once the canvas has actually drawn: a browser that
+  // gives us no 2d context should fall back to the plain video, not a void.
+  const [painted, setPainted] = useState(false);
   const [playing, setPlaying] = useState(false); const [muted, setMuted] = useState(false);
   // Cue times are in source time. Translate to whatever is actually playing:
   // the exported clip starts at zero, the full source does not. Keying this
@@ -318,9 +334,49 @@ function Preview({ ctl, src, videoUrl, start, end, aspect, style, cues, title, t
   };
   const hw = (ov.title?.highlight_word ?? "").toLowerCase();
   const pos = ov.watermark?.pos ?? "centre-below-captions";
+  /**
+   * Composite the frame ourselves so a layout change shows up at once.
+   *
+   * Format, captions and overlays are instant because they are CSS over the
+   * video. A layout is a crop — sometimes two — which CSS cannot express, so
+   * picking one used to change nothing on screen until you exported. Drawing
+   * the frame here, from the Engine's own numbers, puts Layout on the same
+   * footing as the other controls.
+   */
+  useEffect(() => {
+    const cv = canvas.current, v = vid.current;
+    if (!cv || !v) return;
+    const [aw, ah] = aspect.split(":").map(Number) as [number, number];
+    cv.width = 540;
+    cv.height = Math.round((540 * ah) / aw);
+    const ctx = cv.getContext("2d");
+    if (!ctx) return;
+    let frame = 0;
+    const paint = () => {
+      // Source time: the pan samples are keyed to the original video, and the
+      // exported clip starts at zero while the source does not.
+      if (v.readyState >= 2) {
+        const sourceMs = (clipOnly ? v.currentTime * 1000 + start : v.currentTime * 1000);
+        try {
+          // An exported clip already has its layout rendered into it. Cropping
+          // it again by layout would stack an already-stacked frame.
+          if (burnedIn) drawFrame(ctx, v, null, "full-video", sourceMs);
+          else drawFrame(ctx, v, framing, layout, sourceMs);
+          if (!painted) setPainted(true);
+        } catch { /* frame not ready */ }
+      }
+      frame = requestAnimationFrame(paint);
+    };
+    frame = requestAnimationFrame(paint);
+    return () => cancelAnimationFrame(frame);
+  }, [aspect, layout, framing, clipOnly, burnedIn, start, url, painted]);
   return <section className="ed-stage">
-    <div ref={box} className="editor-frame ed-frame" style={{ aspectRatio: ratio(aspect), width: `min(100%, calc(60vh * ${aspect.split(":").map(Number).reduce((w, h) => w / h)}))` }} onPointerMove={move} onPointerUp={() => (drag.current = false)} onPointerLeave={() => (drag.current = false)}>
+    <div ref={box} className={`editor-frame ed-frame${painted ? " ed-composited" : ""}`} style={{ aspectRatio: ratio(aspect), width: `min(100%, calc(60vh * ${aspect.split(":").map(Number).reduce((w, h) => w / h)}))` }} onPointerMove={move} onPointerUp={() => (drag.current = false)} onPointerLeave={() => (drag.current = false)}>
       {url ? <video ref={vid} src={url} playsInline onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(e) => { const ms = clipOnly ? e.currentTarget.currentTime * 1000 : e.currentTarget.currentTime * 1000 - start; setT(ms); onTime(ms); if (!clipOnly && ms >= end - start) { e.currentTarget.pause(); } }} /> : <p className="muted">No video available.</p>}
+      {/* The video keeps playing and stays the source of truth for time and
+          audio; the canvas is what you actually see, laid out as the Engine
+          will render it. */}
+      {url && <canvas ref={canvas} className="ed-canvas" />}
       {!burnedIn && title.trim() && <div className={`ed-title ed-${titleStyle}`} style={{ top: `${ov.title?.y ?? 14}%`, fontSize: 66 * k }}>{title.split(/\s+/).map((x, i) => <span key={i} style={titleStyle === "headline" && hw && x.toLowerCase().replace(/[^\w']/g, "") === hw.replace(/[^\w']/g, "") ? { color: HIGHLIGHTS[ov.title?.highlight ?? "yellow"] } : undefined}>{x} </span>)}</div>}
       {!burnedIn && text && <div className="ed-caption" onPointerDown={(e) => { drag.current = true; e.preventDefault(); }} style={{ left: `${style.x}%`, top: `${style.y}%`, fontSize: style.size * k, color: style.fill, WebkitTextStroke: style.box ? undefined : `${style.outlineW * k}px ${style.outline}`, paintOrder: "stroke fill", textShadow: style.shadow && !style.box ? `0 ${3 * k}px ${4 * k}px rgba(0,0,0,.5)` : undefined, background: style.box ? `color-mix(in srgb, ${style.boxColor} ${style.boxOpacity * 100}%, transparent)` : undefined }}>
         {shown.map((x, i) => <span key={i} style={style.active && style.animation === "karaoke" && i === activeIdx ? { color: style.active } : undefined}>{x} </span>)}</div>}

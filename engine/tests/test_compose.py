@@ -309,3 +309,68 @@ def test_auto_layout_builds_a_stack_for_two_people(tmp_path, monkeypatch):
     graph = " ".join(args)
     assert "vstack=inputs=2" in graph
     assert graph.count("crop=") >= 2
+
+
+# --- composite sources --------------------------------------------------
+
+def _seamed(seam, *faces, width=1920, height=1080):
+    from app.pipeline import frame as F
+    return F.Track("yunet", width, height, [(0, 0.5)],
+                   [F.Face(i + 1, x, y, w, 0.2, share) for i, (x, y, w, share) in enumerate(faces)],
+                   seam)
+
+
+def test_a_composite_splits_even_with_nobody_facing_the_camera():
+    """The case the face rule cannot reach: two feeds, both heads turned away."""
+    from app.pipeline import frame as F
+    t = _seamed(0.5)
+    assert t.faces == []
+    assert F.suggest_layout(t) == "split"
+    assert len(F.cell_crops(t, 1080, 1920, 2)) == 2
+
+
+def test_a_line_with_everyone_on_one_side_is_scenery_not_a_join():
+    from app.pipeline import frame as F
+    t = _seamed(0.45, (0.30, 0.45, 0.10, 1.0))
+    assert F.seam_of(t) is None
+    assert F.suggest_layout(t) == "full-video"
+
+
+def test_a_join_with_a_face_each_side_is_trusted():
+    from app.pipeline import frame as F
+    t = _seamed(0.5, (0.25, 0.45, 0.09, 0.5), (0.75, 0.45, 0.09, 0.5))
+    assert F.seam_of(t) == 0.5
+    assert F.suggest_layout(t) == "split"
+
+
+def test_seam_cells_cut_at_the_join():
+    from app.pipeline import frame as F
+    cells = F.cell_crops(_seamed(0.5), 1080, 1920, 2)
+    boxes = [tuple(int(v) for v in c.removeprefix("crop=").split(":")) for c in cells]
+    (w0, _, x0, _), (w1, _, x1, _) = boxes
+    assert x0 + w0 <= 960            # the top cell stays in the left feed
+    assert x1 >= 960                 # the bottom cell stays in the right feed
+
+
+def test_an_off_centre_join_is_respected():
+    from app.pipeline import frame as F
+    cells = F.cell_crops(_seamed(0.62), 1080, 1920, 2)
+    boxes = [tuple(int(v) for v in c.removeprefix("crop=").split(":")) for c in cells]
+    assert boxes[0][2] + boxes[0][0] <= int(0.62 * 1920)
+    assert boxes[1][2] >= int(0.62 * 1920)
+
+
+def test_seam_from_ignores_a_flat_or_tiny_profile():
+    from app.pipeline import frame as F
+    import numpy as np
+    assert F._seam_from(None, 10) is None
+    assert F._seam_from(np.zeros(200), 2) is None        # too few frames
+    assert F._seam_from(np.zeros(200), 10) is None       # nothing stands out
+
+
+def test_seam_from_finds_a_lone_full_height_edge():
+    from app.pipeline import frame as F
+    import numpy as np
+    g = np.zeros(400)
+    g[199] = 10.0                                        # full coverage over 10 frames
+    assert F._seam_from(g, 10) == 0.5

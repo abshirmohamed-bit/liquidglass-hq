@@ -11,6 +11,7 @@ become an ffmpeg sendcmd script, so the crop pans smoothly instead of jumping.
 from __future__ import annotations
 
 import os
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,6 +42,9 @@ class Track:
     height: int
     samples: list[tuple[int, float]]      # (ms, centre_x as 0..1)
     faces: list[Face]
+    #: x of a composite seam as 0..1, when the source is two feeds laid side
+    #: by side rather than one camera. None when it is a single shot.
+    seam: float | None = None
 
     def centre_at(self, ms: int) -> float:
         if not self.samples:
@@ -80,9 +84,49 @@ def _detector():
     return None, None
 
 
+#: Analyses already done, keyed by source and range. Decoding a clip to find
+#: the faces costs seconds; the answer cannot change unless the file or the
+#: range does, and every preview, re-render and export of a clip asks for the
+#: same one. Small, because each entry holds only a few hundred samples.
+_CACHE: "OrderedDict[tuple, Track]" = OrderedDict()
+CACHE_MAX = 64
+
+
+def _key(video: Path, mode: str, sample_ms: int, in_ms: int, out_ms: int | None):
+    try:
+        st = video.stat()
+        stamp = (st.st_size, int(st.st_mtime))
+    except OSError:
+        return None
+    return (str(video), stamp, mode, sample_ms, in_ms, out_ms)
+
+
+def forget(video: Path | None = None) -> None:
+    """Drop cached analyses, for one source or all of them."""
+    if video is None:
+        _CACHE.clear()
+        return
+    for k in [k for k in _CACHE if k[0] == str(video)]:
+        del _CACHE[k]
+
+
 def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
           in_ms: int = 0, out_ms: int | None = None) -> Track:
     """Walk the clip and work out where the subject is over time."""
+    key = _key(video, mode, sample_ms, in_ms, out_ms)
+    if key is not None and key in _CACHE:
+        _CACHE.move_to_end(key)
+        return _CACHE[key]
+    result = _track(video, mode=mode, sample_ms=sample_ms, in_ms=in_ms, out_ms=out_ms)
+    if key is not None:
+        _CACHE[key] = result
+        while len(_CACHE) > CACHE_MAX:
+            _CACHE.popitem(last=False)
+    return result
+
+
+def _track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
+           in_ms: int = 0, out_ms: int | None = None) -> Track:
     if out_ms is not None:
         from tempfile import TemporaryDirectory
         from .. import media
@@ -97,7 +141,8 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
             ], timeout=300)
             result = track(proxy, mode=mode, sample_ms=sample_ms)
         return Track(result.strategy, info.width, info.height,
-                     [(ms + in_ms, x) for ms, x in result.samples], result.faces)
+                     [(ms + in_ms, x) for ms, x in result.samples], result.faces,
+                     result.seam)
     import cv2
     import numpy as np
 
@@ -122,6 +167,10 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
     # order to decide between holding everyone and choosing one.
     spread: list[tuple[int, list[tuple[float, float]]]] = []
     prev_grey = None
+    # Per column, how much of the frame height is a hard edge — totalled over
+    # the sampled frames for _seam_from below.
+    gradient = None
+    seen = 0
     # Walk the file in order and keep every Nth frame. Seeking per sample with
     # CAP_PROP_POS_MSEC hands back the same frame on many builds and codecs,
     # which silently made every diff zero and every clip a centre crop.
@@ -141,6 +190,19 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
         scale = 480 / max(1, frame.shape[1])
         small = cv2.resize(frame, (0, 0), fx=scale, fy=scale) if scale < 1 else frame
 
+        grey_small = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        # For each column, the share of rows where it differs hard from the
+        # next one. A composite's join is a hard edge down the WHOLE height of
+        # the same column in every frame. Scenery edges — a doorframe, the
+        # side of a bookcase — cover only part of the height, or move.
+        d = np.abs(np.diff(grey_small.astype("float32"), axis=1))
+        col = (d > max(6.0, 2.0 * float(d.mean()))).mean(axis=0)
+        if gradient is None or gradient.shape != col.shape:
+            gradient, seen = col.copy(), 1
+        else:
+            gradient += col
+            seen += 1
+
         centre = None
         if detect:
             found = detect(small)
@@ -154,7 +216,7 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
                 spread.append((ms, [(b[0], b[2]) for b in norm]))
                 centre = sum(b[0] for b in norm) / len(norm)
         if centre is None and strategy == "motion":
-            grey = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            grey = grey_small
             if prev_grey is not None and prev_grey.shape == grey.shape:
                 diff = cv2.absdiff(grey, prev_grey)
                 columns = diff.sum(axis=0).astype("float64")
@@ -167,7 +229,8 @@ def track(video: Path, *, mode: str = "auto", sample_ms: int = SAMPLE_MS,
     cap.release()
 
     smoothed = _smooth(_aim(spread, raw))
-    return Track(strategy, width, height, smoothed, _faces_from(boxes))
+    return Track(strategy, width, height, smoothed, _faces_from(boxes),
+                 _seam_from(gradient, seen))
 
 
 #: How much of a 16:9 frame a 9:16 window covers. Faces spread wider than
@@ -241,6 +304,47 @@ def _faces_from(boxes: list[tuple[int, tuple[float, float, float, float]]]) -> l
     return sorted(faces, key=lambda f: -f.share)[:4]
 
 
+#: A composite joins near the middle; an edge out at the margin is scenery.
+SEAM_BAND = (0.30, 0.70)
+#: The join has to run down essentially the whole frame, in essentially every
+#: frame. This is what separates it from anything that is merely in shot.
+SEAM_COVERAGE = 0.80
+#: And stand clear of its neighbours, so a soft or wide edge is not a join.
+SEAM_CONTRAST = 2.5
+#: Two feeds are usually laid out in exact halves; snap to that when close.
+SEAM_SNAP = 0.02
+
+
+def _seam_from(gradient, seen: int) -> float | None:
+    """Where two feeds are joined, if this is a composite rather than a shot.
+
+    `gradient` totals, per column, how much of the frame height is a hard
+    edge at that column, over every frame sampled. A join scores near 1: it
+    runs the full height, in the same column, all the way through. Nothing
+    that is merely in the picture does that.
+    """
+    import numpy as np
+
+    if gradient is None or seen < 4 or gradient.size < 32:
+        return None
+    g = np.asarray(gradient, dtype="float64") / seen
+    lo, hi = int(g.size * SEAM_BAND[0]), int(g.size * SEAM_BAND[1])
+    if hi - lo < 2:
+        return None
+    x = lo + int(g[lo:hi].argmax())
+    peak = float(g[x])
+    if peak < SEAM_COVERAGE:
+        return None
+    # A join is razor thin. Compare it with the columns on either side,
+    # skipping the few the edge itself bleeds into.
+    near = np.concatenate([g[max(0, x - 12):max(0, x - 3)], g[x + 4:x + 13]])
+    if near.size and peak < max(float(near.mean()), 0.02) * SEAM_CONTRAST:
+        return None
+
+    pos = (x + 1) / (g.size + 1)      # column x sits between pixels x and x+1
+    return 0.5 if abs(pos - 0.5) < SEAM_SNAP else round(pos, 4)
+
+
 #: A face has to be on screen this much of the time to count as someone the
 #: clip is about, rather than a passer-by or a false positive.
 MIN_SHARE = 0.18
@@ -269,6 +373,25 @@ def people(track: Track, *, min_share: float = MIN_SHARE,
     return out
 
 
+def seam_of(track: Track) -> float | None:
+    """The composite join, once the faces have had a chance to veto it.
+
+    A thin dark bar in one shot — a doorframe, the side of a bookcase — looks
+    exactly like a join, and no measurement of the edge itself separates the
+    two. The people do: in a real composite the feeds hold a person each, so
+    if every face found sits on the same side of the line, the line is
+    scenery and cutting there would halve one shot.
+    """
+    if track.seam is None:
+        return None
+    known = [f for f in track.faces if f.share >= MIN_SHARE]
+    if known:
+        sides = {f.x > track.seam for f in known}
+        if len(sides) < 2:
+            return None
+    return track.seam
+
+
 def suggest_layout(track: Track | None) -> str:
     """Which layout the faces call for.
 
@@ -278,7 +401,13 @@ def suggest_layout(track: Track | None) -> str:
     apart than that, holding both means framing the gap between them — the
     shot of the backs of two heads — so stack them instead.
     """
-    if track is None or not track.faces:
+    if track is None:
+        return "full-video"
+    # A composite is two feeds already: nobody has to be facing the camera for
+    # the join to be the right place to cut.
+    if seam_of(track) is not None:
+        return "split"
+    if not track.faces:
         return "full-video"
     who = people(track)
     if len(who) < 2:
@@ -296,6 +425,43 @@ FACE_SHARE = 0.20
 FACE_MARGIN = 0.02
 
 
+def _seam_cells(track: Track, out_w: int, out_h: int) -> list[str]:
+    """Two cells cut at a composite's join, one per feed.
+
+    Each feed is cropped to the shape of its cell, aimed at the face in that
+    half when one was found and at the middle of the feed when none was —
+    which is the point of cutting on the join rather than on faces.
+    """
+    sw, sh = track.width, track.height
+    edge = int(round((track.seam or 0.5) * sw))
+    target = out_w / (out_h / 2)
+    crops = []
+    for lo, hi in ((0, edge), (edge, sw)):
+        span = hi - lo
+        if span < 2:
+            return []
+        cw = min(span, sw)
+        ch = cw / target
+        if ch > sh:                            # the feed is wider than its cell
+            ch = float(sh)
+            cw = min(float(span), ch * target)
+        cw = max(2, int(cw) - int(cw) % 2)
+        ch = max(2, int(ch) - int(ch) % 2)
+        here = [f for f in track.faces if lo <= f.x * sw < hi and f.share >= MIN_SHARE]
+        if here:
+            aim = max(here, key=lambda f: f.share)
+            x = int(round(aim.x * sw - cw / 2))
+            y = int(round((aim.y - aim.h * 0.15) * sh - ch / 2))
+        else:
+            x = lo + (span - cw) // 2
+            y = (sh - ch) // 2
+        x = max(lo, min(hi - cw, x))
+        x = max(0, min(sw - cw, x))
+        y = max(0, min(sh - ch, y))
+        crops.append(f"crop={cw}:{ch}:{x}:{y}")
+    return crops
+
+
 def cell_crops(track: Track, out_w: int, out_h: int, rows: int = 2) -> list[str]:
     """One crop per person, each the shape of its cell in a stack of `rows`.
 
@@ -307,6 +473,8 @@ def cell_crops(track: Track, out_w: int, out_h: int, rows: int = 2) -> list[str]
     sw, sh = track.width, track.height
     if not sw or not sh or rows < 1:
         return []
+    if rows == 2 and seam_of(track) is not None:
+        return _seam_cells(track, out_w, out_h)
     who = people(track, limit=rows)
     if len(who) < rows:
         return []
@@ -335,6 +503,45 @@ def cell_crops(track: Track, out_w: int, out_h: int, rows: int = 2) -> list[str]
         y = max(0, min(sh - ch, y))
         crops.append(f"crop={cw}:{ch}:{x}:{y}")
     return crops
+
+
+def geometry(track: Track, out_w: int, out_h: int) -> dict:
+    """Every layout's crop boxes for this clip, in source pixels.
+
+    The editor draws its own preview, so it needs the same numbers the render
+    will use. Sending them all at once means switching layout is a redraw
+    rather than a round trip — the point being that choosing a layout should
+    feel like choosing a caption colour, not like exporting.
+    """
+    sw, sh = track.width or out_w, track.height or out_h
+    target = out_w / out_h
+    if sw / sh > target:
+        cw, ch = int(sh * target), sh
+    else:
+        cw, ch = sw, int(sw / target)
+    cw -= cw % 2
+    ch -= ch % 2
+    max_x = max(0, sw - cw)
+    pan = [[ms, max(0, min(max_x, int(round(centre * sw - cw / 2))))]
+           for ms, centre in track.samples]
+    cells = [_box(c) for c in cell_crops(track, out_w, out_h, 2)]
+    return {
+        "source": {"w": sw, "h": sh},
+        "strategy": track.strategy,
+        "seam": seam_of(track),
+        "faces": [{"x": f.x, "y": f.y, "w": f.w, "h": f.h, "share": f.share} for f in track.faces],
+        "suggested": suggest_layout(track),
+        # full-video follows the subject, so it is a box plus where it sits
+        # over time; the rest hold still.
+        "tracked": {"w": cw, "h": ch, "y": max(0, (sh - ch) // 2),
+                    "x": pan[0][1] if pan else max_x // 2, "pan": pan},
+        "cells": cells,
+    }
+
+
+def _box(crop: str) -> dict:
+    w, h, x, y = (int(v) for v in crop.removeprefix("crop=").split(":"))
+    return {"x": x, "y": y, "w": w, "h": h}
 
 
 def crop_filter(track: Track, out_w: int, out_h: int, duration_ms: int,

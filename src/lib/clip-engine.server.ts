@@ -97,6 +97,11 @@ async function failJob(db: Db, job: JobRow, message: string) {
 }
 
 /** Hand a queued job to the Engine. */
+/** Did the Engine reject the request only because it has not heard of a layout? */
+function unknownLayout(error: { code?: string; message?: string }): boolean {
+  return error.code === "VALIDATION_ERROR" && /\bformats must be\b/i.test(error.message ?? "");
+}
+
 async function submit(db: Db, job: JobRow): Promise<boolean> {
   const engineAssetId = job.source_assets?.engine_asset_id;
   if (!engineAssetId) {
@@ -104,8 +109,15 @@ async function submit(db: Db, job: JobRow): Promise<boolean> {
       "This source was not uploaded through the Engine, so it cannot be clipped. Re-upload it from the Library.");
     return true;
   }
-  const r = await engineClient<{ id: string; status: string }>(
-    "POST", "/v1/autoclip", requestFor(job, engineAssetId));
+  const request = requestFor(job, engineAssetId);
+  let r = await engineClient<{ id: string; status: string }>("POST", "/v1/autoclip", request);
+  // The app and the Engine deploy separately, so the app can know a layout
+  // the running Engine does not. That is a reason to render the clip a
+  // little differently, never a reason to refuse to cut the video at all.
+  if (!r.ok && unknownLayout(r.error)) {
+    r = await engineClient<{ id: string; status: string }>(
+      "POST", "/v1/autoclip", { ...request, formats: ["full-video"] });
+  }
   if (!r.ok) {
     // A missing Engine is a setup problem, not a broken job: leave it queued.
     if (r.error.code === "ENGINE_NOT_CONFIGURED" || r.error.code === "ENGINE_UNREACHABLE") return false;

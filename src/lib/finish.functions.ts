@@ -113,3 +113,44 @@ export const transcribeChunk = createServerFn({ method: "POST" }).middleware([re
     for (const line of buf.split("\n")) { if (!line.startsWith("data:")) continue; try { const ev = JSON.parse(line.slice(5).trim()) as { type?: string; text?: string; delta?: string }; if (ev.type === "transcript.text.done" && ev.text != null) done = ev.text; else if (ev.delta) deltas += ev.delta; } catch { /* not JSON */ } }
     return (done || deltas).trim();
   });
+
+/**
+ * Where each layout would place its crop on this clip, in source pixels.
+ *
+ * The editor draws its own preview from these, so picking a layout is a
+ * redraw rather than a render on the Engine — the difference between a
+ * button that feels like the caption buttons and one that feels like Export.
+ * The Engine caches the analysis per source and range, so this is cheap after
+ * the first clip of a video, and it is fetched in the background: the editor
+ * works without it and simply shows the uncropped source until it lands.
+ */
+export type Framing = {
+  source: { w: number; h: number };
+  seam: number | null;
+  suggested: string;
+  faces: { x: number; y: number; w: number; h: number; share: number }[];
+  /** full-video follows the subject: a box, plus where it sits over time. */
+  tracked: { x: number; y: number; w: number; h: number; pan: [number, number][] };
+  /** One per speaker for a split; empty when the clip does not support one. */
+  cells: { x: number; y: number; w: number; h: number }[];
+};
+
+export const clipFraming = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth])
+  .inputValidator(z.object({ id: z.string().uuid(), aspect: z.enum(["9:16", "1:1", "4:5", "16:9"]) }))
+  .handler(async ({ context, data }) => {
+    const db = context.supabase;
+    const row = must(await db.from("clips").select("engine_project_id").eq("id", data.id).single());
+    const pid = row.engine_project_id;
+    if (!pid) return null;
+    const { engineClient } = await import("./engine.server");
+    const r = await engineClient<Framing & { success?: boolean }>(
+      "GET", `/v1/projects/${pid}/framing?aspect=${encodeURIComponent(data.aspect)}`);
+    // An Engine that is asleep, older, or simply unreachable costs the editor
+    // its exact preview, not its ability to edit.
+    if (!r.ok || !r.data?.source?.w) return null;
+    const d = r.data;
+    return {
+      source: d.source, seam: d.seam ?? null, suggested: d.suggested ?? "full-video",
+      faces: d.faces ?? [], tracked: d.tracked, cells: d.cells ?? [],
+    } satisfies Framing;
+  });

@@ -14,6 +14,7 @@ from ..responses import ok
 from ..ids import new_id
 from ..models import Asset, Export, Job, Project, Transcript
 from ..pipeline import exports as export_pipeline
+from ..pipeline import frame as framing
 from ..pipeline import jobs as job_pipeline
 from ..pipeline.compose import ASPECTS, LAYOUTS
 from ..pipeline.find import GENRES
@@ -259,6 +260,30 @@ def make_preview(project_id: str) -> dict:
         if p.preview_key:
             return ok(preview_url=storage.public_url(p.preview_key))
         return ok(preview_url=export_pipeline.preview(s, p))
+
+
+@router.get("/v1/projects/{project_id}/framing")
+def project_framing(project_id: str, aspect: str = "") -> dict:
+    """Where every layout would put its crop, so the editor can draw its own.
+
+    The analysis behind this is cached per source and range, so asking for it
+    costs nothing after the first clip of a video.
+    """
+    with session() as s:
+        p = s.get(Project, project_id)
+        if not p or p.deleted_at:
+            raise EngineError("NOT_FOUND", "No clip with that id.")
+        want = aspect or p.aspect
+        if want not in ASPECTS:
+            raise EngineError("VALIDATION_ERROR", f"aspect must be one of {sorted(ASPECTS)}.")
+        source = s.get(Asset, p.asset_id)
+        if not source:
+            raise EngineError("NOT_FOUND", "The source for that clip no longer exists.")
+        path = storage.local_path(source.mezzanine_key or source.storage_key)
+        mode = (p.framing or {}).get("mode", "auto")
+        track = framing.track(path, mode=mode, in_ms=p.in_ms, out_ms=p.out_ms)
+        w, h = ASPECTS[want]
+        return ok(aspect=want, layout=p.layout, **framing.geometry(track, w, h))
 
 
 class ExportBody(BaseModel):

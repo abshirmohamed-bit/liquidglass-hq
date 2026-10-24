@@ -732,6 +732,10 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
 .editor-preview { position: sticky; top: var(--s4); display: grid; justify-items: center; gap: var(--s2); }
 .editor-frame { position: relative; width: min(100%, 420px); max-height: 75vh; background: #000; border-radius: var(--r-lg); overflow: hidden; touch-action: none; border: var(--hairline) solid var(--border); }
 .editor-frame video { width: 100%; height: 100%; object-fit: cover; }
+/* The editor composites the layout onto a canvas, so the video itself is
+   only a decoder and a clock: it sits underneath, never seen. */
+.ed-composited video { visibility: hidden; }
+.ed-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .ed-caption { position: absolute; transform: translate(-50%, -50%); font-family: Montserrat, sans-serif; font-weight: 800; text-align: center; line-height: 1.15; max-width: 90%; padding: .1em .3em; border-radius: .2em; cursor: grab; user-select: none; }
 .ed-title { position: absolute; left: 50%; transform: translate(-50%, -50%); font-family: Montserrat, sans-serif; font-weight: 800; color: #fff; text-align: center; width: 90%; -webkit-text-stroke: .06em #000; paint-order: stroke fill; pointer-events: none; }
 .ed-bold_band, .ed-headline { text-transform: uppercase; }
