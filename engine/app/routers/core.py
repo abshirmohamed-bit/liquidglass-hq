@@ -25,7 +25,25 @@ def health() -> dict:
         storage_backend=cfg.storage_backend,
         # The resolved provider, not the setting: "auto" tells nobody anything.
         transcribe_provider=cfg.resolve_transcriber(), finder=cfg.resolve_finder(),
+        # Which build is actually answering. The app and the Engine deploy
+        # separately, and "is the Engine running my change yet?" has had to be
+        # guessed from behaviour more than once; a deploy that forgot to
+        # happen looks exactly like a change that did not work. FLY_IMAGE_REF
+        # is set by Fly and moves on every deploy, so it needs nobody to
+        # remember anything. GIT_SHA is better when the build passes one.
+        build=_build_id(),
     )
+
+
+def _build_id() -> str:
+    """Something that changes on every deploy, for telling builds apart."""
+    import os
+
+    sha = os.environ.get("GIT_SHA", "").strip()
+    if sha:
+        return sha[:12]
+    ref = os.environ.get("FLY_IMAGE_REF", "").strip()
+    return ref.rsplit(":", 1)[-1][:24] if ref else "unknown"
 
 
 @router.get("/v1/account")

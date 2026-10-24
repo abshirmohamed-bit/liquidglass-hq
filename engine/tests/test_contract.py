@@ -83,3 +83,28 @@ def test_without_a_bucket_storage_stays_local(monkeypatch):
     s = Settings()
     s._adopt_fly_storage()
     assert s.storage_backend == "local"
+
+
+def test_health_names_the_build_that_is_answering():
+    """Which build is live had to be guessed from behaviour; a deploy that
+    forgot to happen looks exactly like a change that did not work."""
+    import os
+
+    from app.routers.core import _build_id
+
+    was = {k: os.environ.get(k) for k in ("GIT_SHA", "FLY_IMAGE_REF")}
+    try:
+        os.environ.pop("GIT_SHA", None)
+        os.environ["FLY_IMAGE_REF"] = "registry.fly.io/app:deployment-01ABC"
+        assert _build_id() == "deployment-01ABC"
+        os.environ["GIT_SHA"] = "abcdef1234567890"
+        assert _build_id() == "abcdef123456"        # a real commit wins
+        os.environ.pop("GIT_SHA")
+        os.environ.pop("FLY_IMAGE_REF")
+        assert _build_id() == "unknown"             # and never blows up
+    finally:
+        for k, v in was.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
