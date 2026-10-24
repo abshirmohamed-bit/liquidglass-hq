@@ -41,6 +41,12 @@ LINK_DISTANCE = 0.10
 #: A track survives this long without a detection before it is closed, so a
 #: head turn or a hand across the face does not start a new person.
 TRACK_GAP_MS = 1500
+#: A whole frame changing this much at once is a camera cut rather than
+#: anything moving inside the shot. Measured in grey levels, 0..255.
+CUT_MIN_DIFF = 18.0
+#: And this many times the recent normal. Both have to hold: a dark clip
+#: changes by little in absolute terms, a busy one changes a lot all the time.
+CUT_FACTOR = 4.0
 
 
 @dataclass
@@ -119,13 +125,22 @@ def _mouth_patch(grey, box: tuple[float, float, float, float], size: int = 24):
 
 
 def face_tracks(video: Path, *, in_ms: int = 0, out_ms: int | None = None,
-                detect_ms: int = DETECT_MS, fps: int = MOTION_FPS) -> list[FaceTrack]:
+                detect_ms: int = DETECT_MS, fps: int = MOTION_FPS,
+                ) -> tuple[list[FaceTrack], list[int]]:
     """Follow each person through the clip, measuring their mouth as we go.
 
     One decode pass. Faces are detected a couple of times a second — that is
     the slow part — and the mouths are measured on every frame in between,
     each track keeping the last box it was seen at. Over a tenth of a second
     a head does not move far enough for that to matter.
+
+    Camera cuts are found in the same pass and matter twice over. A face in
+    the new shot is a different person from the face standing in the same
+    place in the old one, so tracks must not reach across a cut. And the
+    whole frame changing at once looks, to a mouth, exactly like a mouth
+    moving — so no motion is measured across one either.
+
+    Returns the people and the times they were cut between.
     """
     import cv2
     import numpy as np
@@ -136,7 +151,7 @@ def face_tracks(video: Path, *, in_ms: int = 0, out_ms: int | None = None,
 
     name, detect = _detector()
     if detect is None:
-        return []
+        return [], []
 
     from tempfile import TemporaryDirectory
     with TemporaryDirectory(prefix="speaker-") as directory:
@@ -152,10 +167,15 @@ def face_tracks(video: Path, *, in_ms: int = 0, out_ms: int | None = None,
         cv2.setNumThreads(settings().worker_threads())
         cap = cv2.VideoCapture(str(proxy))
         if not cap.isOpened():
-            return []
+            return [], []
         step = max(1, int(round(fps * detect_ms / 1000)))
         tracks: list[FaceTrack] = []
         last_patch: dict[int, object] = {}
+        last_box: dict[int, tuple] = {}
+        cuts: list[int] = []
+        recent: list[float] = []
+        previous = None
+        since = in_ms
         index = -1
         while True:
             ok, bgr = cap.read()
@@ -165,15 +185,29 @@ def face_tracks(video: Path, *, in_ms: int = 0, out_ms: int | None = None,
             ms = int(index / fps * 1000) + in_ms
             grey = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
 
+            if previous is not None and previous.shape == grey.shape:
+                change = float(np.mean(np.abs(grey.astype("float32")
+                                              - previous.astype("float32"))))
+                usual = float(np.median(recent)) if recent else change
+                if change > max(CUT_MIN_DIFF, CUT_FACTOR * usual) and recent:
+                    cuts.append(ms)
+                    since = ms              # nobody from the old shot carries over
+                    last_patch.clear()      # and no mouth is measured across it
+                    last_box.clear()
+                recent.append(change)
+                if len(recent) > 25:
+                    recent.pop(0)
+            previous = grey
+
             if index % step == 0:
                 fh, fw = bgr.shape[:2]
                 found = detect(bgr) or []
                 boxes = [((x + w / 2) / fw, (y + h / 2) / fh, w / fw, h / fh)
                          for x, y, w, h in found]
-                _link(tracks, boxes, ms)
+                _link(tracks, boxes, ms, since=since)
 
             for t in tracks:
-                if ms - t.last_ms > TRACK_GAP_MS:
+                if ms - t.last_ms > TRACK_GAP_MS or t.last_ms < since:
                     continue
                 box = t.box_at(ms)
                 if box is None:
@@ -182,22 +216,34 @@ def face_tracks(video: Path, *, in_ms: int = 0, out_ms: int | None = None,
                 if patch is None:
                     continue
                 before = last_patch.get(t.id)
-                if before is not None and getattr(before, "shape", None) == patch.shape:
+                # Every re-detection nudges the box, which moves the window we
+                # are cutting the mouth out of. Two patches taken from
+                # different places are not comparable — the difference between
+                # them is the box moving, not the mouth, and it measures as
+                # large as real speech. Re-seed on those frames instead.
+                moved = last_box.get(t.id) != box
+                if before is not None and not moved \
+                        and getattr(before, "shape", None) == patch.shape:
                     t.motion.append((ms, float(np.mean(np.abs(patch - before)))))
                 last_patch[t.id] = patch
+                last_box[t.id] = box
         cap.release()
     # Someone glimpsed for a moment is not a participant.
-    return [t for t in tracks if len(t.boxes) >= 2]
+    return [t for t in tracks if len(t.boxes) >= 2], cuts
 
 
-def _link(tracks: list[FaceTrack], boxes: list[tuple[float, float, float, float]], ms: int) -> None:
+def _link(tracks: list[FaceTrack], boxes: list[tuple[float, float, float, float]],
+          ms: int, *, since: int = 0) -> None:
     """Attach this frame's detections to the people already being followed.
 
     Nearest open track wins, one detection each. A detection that matches
     nobody starts a new person; a track nobody matched simply goes unseen for
     this frame and waits, which is what a head turning away looks like.
     """
-    open_tracks = [t for t in tracks if ms - t.last_ms <= TRACK_GAP_MS]
+    # A track from before the last cut is not a candidate: whoever stands
+    # there now is someone else.
+    open_tracks = [t for t in tracks
+                   if ms - t.last_ms <= TRACK_GAP_MS and t.last_ms >= since]
     taken: set[int] = set()
     for box in boxes:
         best, best_d = None, LINK_DISTANCE
@@ -256,6 +302,13 @@ def energy(video: Path, *, in_ms: int = 0, out_ms: int | None = None,
     return [(in_ms + i * window_ms, float(v)) for i, v in enumerate(rms)]
 
 
+#: Below this the clip is room tone, not speech. 16-bit samples, so silence
+#: sits near zero and even a quiet room reads well above it.
+SILENT_RMS = 40.0
+#: A clip whose loudness varies less than this across its range never pauses.
+FLAT_RANGE = 0.15
+
+
 def _speech_mask(rms: list[tuple[int, float]]):
     """Which windows carry speech rather than room tone.
 
@@ -271,8 +324,15 @@ def _speech_mask(rms: list[tuple[int, float]]):
     values = np.array([v for _, v in rms], dtype="float64")
     floor = float(np.percentile(values, 20))
     ceiling = float(np.percentile(values, 95))
-    if ceiling <= floor:
+    if ceiling < SILENT_RMS:
+        # Nothing but room tone from end to end.
         return times, np.zeros(len(values), dtype=bool)
+    if ceiling - floor < FLAT_RANGE * ceiling:
+        # Loud throughout, with nothing resembling a pause. Splitting a level
+        # signal at some percentile would invent quiet moments that are not
+        # there, and anything measured "during the silence" would really be
+        # measured during the talking.
+        return times, np.ones(len(values), dtype=bool)
     return times, values > floor + 0.25 * (ceiling - floor)
 
 
@@ -287,9 +347,14 @@ MIN_MARGIN = 0.15
 #: dressed up as an answer — the margin alone does not catch this, because
 #: one of two talkers is usually a little ahead of the other.
 OVERLAP_LEVEL = 0.30
-#: Below this, no mouth in the clip accounts for the speech: whoever is
-#: talking is turned away or out of frame.
-SEEN_LEVEL = 0.12
+#: How far a mouth region must actually move before it counts as moving at
+#: all, in grey levels. This one is ABSOLUTE on purpose. Everything else here
+#: is measured against the liveliest mouth in the clip, which is what makes
+#: it work across different faces and framings — but it also means that in a
+#: clip where nobody's mouth moves, the encoder noise becomes the liveliest
+#: mouth and gets stretched up to look exactly like speech. Talking measures
+#: around 12; a still frame's noise around 1.
+MIN_MOTION = 3.0
 
 
 def turns(tracks: list[FaceTrack], rms: list[tuple[int, float]], *,
@@ -316,22 +381,27 @@ def turns(tracks: list[FaceTrack], rms: list[tuple[int, float]], *,
         return []
 
     # Each face has its own noise floor — grain, compression, a slight sway —
-    # so take that away before comparing. The remainder is then divided by one
-    # scale shared by everyone: dividing each track by its OWN peak instead
-    # would stretch a silent face's noise up to the size of a talking face's
-    # mouth and make every pair of people look equally likely.
+    # so take that away before comparing. The floor is read from the moments
+    # the room is QUIET, which is the only time we know a mouth should be
+    # still. Taking it from the track's own low percentile instead looks
+    # equivalent and is not: someone who talks right through the clip has no
+    # low percentile to speak of, and subtracting it removes the very signal
+    # being measured.
+    quiet = ~speech
     residual = {}
     for t in tracks:
         if len(t.motion) < 3:
             continue
         m_times = np.array([ms for ms, _ in t.motion])
         m_values = np.array([v for _, v in t.motion], dtype="float64")
-        floor = float(np.percentile(m_values, 20))
+        still = np.interp(m_times, times, quiet.astype("float64")) > 0.5
+        floor = float(np.median(m_values[still])) if int(still.sum()) >= 3 else 0.0
         residual[t.id] = (m_times, np.maximum(0.0, m_values - floor))
     if not residual:
         return []
-    scale = max((float(np.percentile(v, 90)) for _, v in residual.values()), default=0.0) or 1.0
-    series = {tid: (ts, vals / scale) for tid, (ts, vals) in residual.items()}
+    scale = max((float(np.percentile(v, 90)) for _, v in residual.values()), default=0.0)
+    scale = max(scale, MIN_MOTION)
+    series = residual
 
     out: list[Turn] = []
     for start in range(span_start, span_end, window_ms):
@@ -357,9 +427,11 @@ def turns(tracks: list[FaceTrack], rms: list[tuple[int, float]], *,
         top, tid = scores[0]
         runner = scores[1][0] if len(scores) > 1 else 0.0
         margin = (top - runner) / (top + runner) if (top + runner) > 0 else 0.0
-        if top < SEEN_LEVEL:
+        # Raw for "did anything move", scaled for "who moved most".
+        runner_level = runner / scale
+        if top < MIN_MOTION:
             out.append(Turn(start, end, None, round(margin, 3), "unseen"))
-        elif runner >= OVERLAP_LEVEL:
+        elif runner_level >= OVERLAP_LEVEL:
             out.append(Turn(start, end, None, round(margin, 3), "overlap"))
         elif margin < MIN_MARGIN:
             out.append(Turn(start, end, None, round(margin, 3), "overlap"))

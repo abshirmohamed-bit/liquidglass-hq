@@ -117,9 +117,26 @@ def test_speech_mask_takes_its_threshold_from_the_clip():
     assert not mask2[:30].any() and mask2[30:].all()
 
 
-def test_speech_mask_on_a_flat_signal_finds_no_speech():
-    _, mask = S._speech_mask([(ms, 100.0) for ms in range(0, 3000, 100)])
+def test_a_clip_that_never_pauses_is_speech_throughout():
+    """Someone talking without a breath. Splitting a level signal at a
+    percentile would invent pauses that are not there — and the mouth
+    measured "during the silence" would really be measured mid-sentence."""
+    _, mask = S._speech_mask([(ms, 9000.0) for ms in range(0, 6000, 100)])
+    assert mask.all()
+
+
+def test_a_clip_that_is_only_room_tone_is_silence_throughout():
+    _, mask = S._speech_mask([(ms, 8.0) for ms in range(0, 6000, 100)])
     assert not mask.any()
+
+
+def test_a_continuous_talker_is_still_found():
+    """Their quiet moments cannot supply a noise floor, because there are
+    none; taking one from their own low percentile removes the signal."""
+    nonstop = track(1, 0.3, motion=talking((0, 8000)))
+    quiet_one = track(2, 0.7, motion=still)
+    out = S.turns([nonstop, quiet_one], loud((0, 8000)))
+    assert 1 in {t.track_id for t in out if t.reason == "speaking"}
 
 
 def test_no_tracks_means_no_claims():
@@ -226,3 +243,23 @@ def test_no_named_speaker_means_no_dominant_feed():
     left = track(1, 0.25, motion=still)
     unclear = [S.Turn(0, 10000, None, 0.0, "unseen")]
     assert S.dominant_panel([left], unclear, 0.5) is None
+
+
+# --- camera cuts ---------------------------------------------------------
+
+def test_a_track_does_not_reach_across_a_cut():
+    """The face standing in that spot after the cut is a different person."""
+    tracks: list[S.FaceTrack] = []
+    S._link(tracks, [(0.3, 0.5, 0.1, 0.25)], 0)
+    S._link(tracks, [(0.3, 0.5, 0.1, 0.25)], 500)
+    S._link(tracks, [(0.3, 0.5, 0.1, 0.25)], 1000, since=1000)   # cut here
+    assert len(tracks) == 2
+    assert tracks[0].last_ms == 500
+    assert tracks[1].first_ms == 1000
+
+
+def test_linking_still_continues_a_track_when_there_was_no_cut():
+    tracks: list[S.FaceTrack] = []
+    for ms in (0, 500, 1000):
+        S._link(tracks, [(0.3, 0.5, 0.1, 0.25)], ms, since=0)
+    assert len(tracks) == 1

@@ -401,7 +401,7 @@ def test_a_composite_carried_by_one_speaker_renders_as_one_feed(tmp_path, monkey
               S.FaceTrack(id=2, boxes=[(0, (0.75, 0.45, 0.09, 0.2))])]
     turns = [S.Turn(0, 9000, 2, 0.9), S.Turn(9000, 10000, 1, 0.9)]
     monkeypatch.setattr(compose.framing, "track", lambda *a, **k: t)
-    monkeypatch.setattr(compose.framing, "speech", lambda *a, **k: (tracks, turns))
+    monkeypatch.setattr(compose.framing, "speech", lambda *a, **k: (tracks, turns, []))
     monkeypatch.setattr(compose.framing, "follow_speaker", lambda tr, *a, **k: tr)
     r = compose.Render(out=tmp_path / "o.mp4", source=tmp_path / "in.mp4",
                        in_ms=0, out_ms=10000, layout="auto")
@@ -419,7 +419,7 @@ def test_a_composite_with_a_back_and_forth_stays_split(tmp_path, monkeypatch):
               S.FaceTrack(id=2, boxes=[(0, (0.75, 0.45, 0.09, 0.2))])]
     turns = [S.Turn(0, 5000, 1, 0.9), S.Turn(5000, 10000, 2, 0.9)]
     monkeypatch.setattr(compose.framing, "track", lambda *a, **k: t)
-    monkeypatch.setattr(compose.framing, "speech", lambda *a, **k: (tracks, turns))
+    monkeypatch.setattr(compose.framing, "speech", lambda *a, **k: (tracks, turns, []))
     monkeypatch.setattr(compose.framing, "follow_speaker", lambda tr, *a, **k: tr)
     r = compose.Render(out=tmp_path / "o.mp4", source=tmp_path / "in.mp4",
                        in_ms=0, out_ms=10000, layout="auto")

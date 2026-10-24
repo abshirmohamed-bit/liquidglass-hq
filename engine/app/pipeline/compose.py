@@ -309,10 +309,10 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
         track = framing.follow_speaker(track, render.source,
                                        in_ms=render.in_ms, out_ms=render.out_ms)
     if layout == "auto":
-        tracks, turns_ = ((), ())
+        tracks, turns_ = ((), ())  # nothing known until the clip is read
         if track is not None and render.source is not None:
-            tracks, turns_ = framing.speech(render.source,
-                                            in_ms=render.in_ms, out_ms=render.out_ms)
+            tracks, turns_, _cuts = framing.speech(render.source,
+                                                   in_ms=render.in_ms, out_ms=render.out_ms)
         chosen = framing.plan(track, tracks, turns_, w, h)
         layout = chosen["layout"]
         if chosen["feed"]:

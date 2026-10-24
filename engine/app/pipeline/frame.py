@@ -543,9 +543,9 @@ def speech(video: Path, *, in_ms: int = 0, out_ms: int | None = None):
     if key is not None and key in _SPEECH:
         _SPEECH.move_to_end(key)
         return _SPEECH[key]
-    tracks = sp.face_tracks(video, in_ms=in_ms, out_ms=out_ms)
+    tracks, cuts = sp.face_tracks(video, in_ms=in_ms, out_ms=out_ms)
     turns = sp.turns(tracks, sp.energy(video, in_ms=in_ms, out_ms=out_ms)) if tracks else []
-    result = (tracks, turns)
+    result = (tracks, turns, cuts)
     if key is not None:
         _SPEECH[key] = result
         while len(_SPEECH) > CACHE_MAX:
@@ -564,7 +564,7 @@ def follow_speaker(track: Track, video: Path, *, in_ms: int = 0,
 
     if len(people(track)) < 2 and track.seam is None:
         return track
-    tracks, turns_ = speech(video, in_ms=in_ms, out_ms=out_ms)
+    tracks, turns_, _cuts = speech(video, in_ms=in_ms, out_ms=out_ms)
     if not tracks or not turns_:
         return track
     aimed = sp.focus(tracks, turns_, fallback=track.samples)
