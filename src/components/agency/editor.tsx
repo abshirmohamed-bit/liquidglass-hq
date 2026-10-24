@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Pause, Play, Save, Send, SlidersHorizontal, Type, Volume2, VolumeX, Wand2 } from "lucide-react";
+import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Pause, Play, Save, Send, SlidersHorizontal, Type, Volume2, VolumeX, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { editorData, saveFinish, transcribeChunk } from "@/lib/finish.functions";
-import { startExport } from "@/lib/review.functions";
+import { setClipStatus, startExport } from "@/lib/review.functions";
 import { CAPTION_PRESETS, TITLE_STYLES, TITLE_STYLE_NAMES, HIGHLIGHTS, WATERMARK_POS, ASPECTS, styleFor, wordsFromChunks, cuesFromWords, wordsFromCues, cueAt, type CaptionStyle, type Cue, type Overlays, type TitleStyle, type WatermarkPos } from "@/lib/finish-rules";
 import { Distribute } from "./posts";
 
@@ -109,6 +109,21 @@ export function Editor({ clipId }: { clipId: string }) {
       if (!next.length) toast.error("No speech was found in this clip."); else { setCues(next); toast.success(`${next.length} caption lines ready — edit any word below`); }
     } catch (e) { err(e); } finally { setBusy(""); }
   }
+  /**
+   * Export is gated on the clip being approved, and approval lived only in
+   * Review — so finishing a clip meant leaving the page you just edited it
+   * on, approving it there, and coming back. It belongs here.
+   */
+  async function decide(status: "APPROVED" | "REJECTED" | "FOUND") {
+    try {
+      await setClipStatus({ data: { ids: [clipId], status } });
+      await qc.invalidateQueries({ queryKey: ["editor", clipId] });
+      await qc.invalidateQueries({ queryKey: ["review"] });
+      toast.success(status === "APPROVED" ? "Approved — you can export it now"
+        : status === "REJECTED" ? "Rejected" : "Moved back to review");
+    } catch (e) { err(e); }
+  }
+
   async function exportNow() {
     try {
       // Save first so the Engine renders what is on screen, then hand it over.
@@ -133,7 +148,7 @@ export function Editor({ clipId }: { clipId: string }) {
   const exported = c.status === "READY" && !!c.video_url;
   const step = exported ? 3 : canExport ? 2 : 1;
   const posName = ([["Top", 18], ["Middle", 50], ["Lower", 72], ["Bottom", 86]] as const).find(([, y]) => Math.abs(style.y - y) < 4)?.[0];
-  const applyShared = async () => { const p = patch(); const { captions: _c, title_text: _t, ...shared } = p; try { await saveFinish({ data: { ids: applyTo, patch: shared } }); await saveFinish({ data: { ids: [clipId], patch: p } }); toast.success(`Applied to ${applyTo.length} clips`); setApplyTo([]); await qc.invalidateQueries({ queryKey: ["review"] }); } catch (e) { err(e); } };
+  const applyShared = async () => { const p = patch(); const { captions: _c, title_text: _t, ...shared } = p; try { await saveFinish({ data: { ids: applyTo, patch: shared } }); await saveFinish({ data: { ids: [clipId], patch: p } }); toast.success(`Applied to ${applyTo.length} ${applyTo.length === 1 ? "clip" : "clips"}`); setApplyTo([]); await qc.invalidateQueries({ queryKey: ["review"] }); } catch (e) { err(e); } };
 
   return <div className="page ed-page">
     <header className="ed-bar glass-panel">
@@ -146,6 +161,14 @@ export function Editor({ clipId }: { clipId: string }) {
         {["Edit", "Export", "Post"].map((s, i) => <li key={s} className={i + 1 < step ? "done" : i + 1 === step ? "now" : ""}><span>{i + 1 < step ? <Check size={11} /> : i + 1}</span>{s}</li>)}
       </ol>
       <div className="ed-bar-actions">
+        {!["APPROVED", "READY", "EXPORTING"].includes(c.status)
+          && <Button variant="outline" size="sm" onClick={() => decide("APPROVED")} title="Approve so this clip can be exported"><Check />Approve</Button>}
+        {c.status === "APPROVED"
+          && <Button variant="ghost" size="sm" onClick={() => decide("FOUND")} title="Undo the approval">Approved</Button>}
+        {!["REJECTED", "READY", "EXPORTING"].includes(c.status)
+          && <Button variant="ghost" size="sm" onClick={() => decide("REJECTED")} title="Reject this clip"><X />Reject</Button>}
+        {c.status === "REJECTED"
+          && <Button variant="ghost" size="sm" onClick={() => decide("FOUND")} title="Put this clip back">Rejected</Button>}
         <Button variant="ghost" size="sm" onClick={() => save([clipId], true)} title="Use these settings on future clips">Save as defaults</Button>
         <Button variant="outline" size="sm" onClick={() => save()}><Save />Save</Button>
         <Button size="sm" onClick={exportNow} disabled={!!busy || !canExport} title={canExport ? "Render this clip" : "Approve the clip in Review first"}><Download />Export</Button>
@@ -226,8 +249,13 @@ export function Editor({ clipId }: { clipId: string }) {
         {q.data!.others.length > 0 && <details className="glass-panel ed-sec ed-more">
           <summary><Wand2 size={14} />Use this look on other clips</summary>
           <p className="caption">Copies style, position, title style, handle and format. Each clip keeps its own words.</p>
+          <div className="ed-apply-bulk">
+            <button type="button" className="ed-link" disabled={applyTo.length === q.data!.others.length}
+              onClick={() => setApplyTo(q.data!.others.map((o) => o.id))}>Select all {q.data!.others.length}</button>
+            <button type="button" className="ed-link" disabled={!applyTo.length} onClick={() => setApplyTo([])}>Clear</button>
+          </div>
           <div className="ed-apply">{q.data!.others.map((o) => <label key={o.id} className="ed-check"><input type="checkbox" checked={applyTo.includes(o.id)} onChange={(e) => setApplyTo((x) => (e.target.checked ? [...x, o.id] : x.filter((y) => y !== o.id)))} /><span className="min-w-0 truncate">{o.title ?? "Clip"}</span><small className="muted">{o.status.toLowerCase()}</small></label>)}</div>
-          <Button size="sm" disabled={!applyTo.length} onClick={applyShared}><Wand2 />Apply to {applyTo.length || ""} selected</Button>
+          <Button size="sm" disabled={!applyTo.length} onClick={applyShared}><Wand2 />{applyTo.length ? `Apply to ${applyTo.length} ${applyTo.length === 1 ? "clip" : "clips"}` : "Apply to selected clips"}</Button>
         </details>}
       </aside>
     </div>
