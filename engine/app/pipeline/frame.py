@@ -23,6 +23,20 @@ EMA_ALPHA = 0.35
 #: 0.05 of the source is roughly 15% off centre inside the window. Smoothing
 #: is there to stop jitter, not to let someone walk out of their own clip.
 MAX_DRIFT = 0.05
+#: How far the subject may wander, as a share of the SOURCE width, before the
+#: window follows at all. A camera operator does not nudge the tripod every
+#: time someone shifts in their chair; without this the window answers every
+#: twitch of the detector and the clip never sits still, which reads as a
+#: wobble even when nobody has moved.
+DEAD_ZONE = 0.07
+#: Once it does start following it keeps going until the subject is back
+#: within this, rather than stopping the moment they re-enter the dead zone —
+#: otherwise it chatters along the boundary.
+SETTLE = 0.02
+#: A target this far away is not the same person having moved, it is a
+#: different person. Crawling there takes seconds and looks like a camera
+#: swinging around a room; cut instead, the way an editor would.
+SNAP = 0.15
 
 
 @dataclass
@@ -267,18 +281,38 @@ def _aim(spread: list[tuple[int, list[tuple[float, float]]]],
 
 def _smooth(raw: list[tuple[int, float]], alpha: float = EMA_ALPHA,
             max_drift: float = MAX_DRIFT) -> list[tuple[int, float]]:
-    """An exponential moving average, on a leash.
+    """Where the window actually sits, given where the subject actually is.
 
-    The average alone makes the window drift rather than snap, which is what
-    makes a pan watchable. On its own it also lets a subject who moves quickly
-    outrun the window and leave the frame, so the result is clamped: the
-    window may lag, but never by more than `max_drift` of the width.
+    Three behaviours, and the one that matters most is doing nothing. A
+    subject already inside the window needs no reframing, so small movements
+    — and the detector's own jitter, which is indistinguishable from them —
+    move the window not at all. Following every twitch is what made clips
+    look unsteady while nobody was moving.
+
+    When the subject does leave that margin the window eases after them and
+    keeps easing until they are back near the middle, rather than stopping on
+    the boundary and starting again a frame later.
+
+    And when the target is not that subject at all but a different person
+    across the frame, it cuts. Easing there takes several seconds of visible
+    travel, which looks like a camera being swung around a room.
     """
     out: list[tuple[int, float]] = []
     value: float | None = None
+    following = False
     for ms, x in raw:
-        value = x if value is None else value + alpha * (x - value)
-        value = min(x + max_drift, max(x - max_drift, value))
+        if value is None:
+            value = x
+        elif abs(x - value) >= SNAP:
+            value, following = x, False          # a different person: cut
+        else:
+            if abs(x - value) > DEAD_ZONE:
+                following = True
+            elif abs(x - value) <= SETTLE:
+                following = False
+            if following:
+                value = value + alpha * (x - value)
+                value = min(x + max_drift, max(x - max_drift, value))
         out.append((ms, round(value, 4)))
     return out
 

@@ -483,3 +483,45 @@ def test_a_reaction_clip_does_not_chase_the_talker(tmp_path, monkeypatch):
                                  in_ms=0, out_ms=10000, layout="auto", focus="speaker"),
                   tmp_path / "w2")
     assert called == [1]
+
+
+# --- holding still --------------------------------------------------------
+
+def test_the_window_ignores_a_subject_who_has_not_really_moved():
+    """Reported from real clips: the picture would not sit still, as if it
+    kept trying to centre someone who was already centred. The detector's
+    own jitter is indistinguishable from a small movement, and the window
+    was answering every bit of it."""
+    from app.pipeline import frame as F
+    jitter = [(ms, 0.50 + (0.004 if ms % 1000 else -0.004)) for ms in range(0, 8000, 500)]
+    out = [x for _, x in F._smooth(jitter)]
+    assert len(set(out)) == 1          # never moves at all
+
+
+def test_the_window_still_follows_someone_who_walks():
+    from app.pipeline import frame as F
+    walking = [(ms, 0.30 + ms / 20000) for ms in range(0, 8000, 500)]
+    out = [x for _, x in F._smooth(walking)]
+    assert out[-1] > out[0] + 0.15     # it kept up
+    assert out[-1] <= walking[-1][1]   # without overshooting them
+
+
+def test_a_different_person_is_a_cut_not_a_crawl():
+    """Easing across the frame takes seconds of visible travel and looks like
+    a camera being swung around the room."""
+    from app.pipeline import frame as F
+    swap = [(0, 0.25), (500, 0.25), (1000, 0.75), (1500, 0.75), (2000, 0.75)]
+    out = [x for _, x in F._smooth(swap)]
+    assert out[1] == pytest.approx(0.25)
+    assert out[2] == pytest.approx(0.75)     # arrives in one step
+    assert out[4] == pytest.approx(0.75)
+
+
+def test_following_settles_instead_of_chattering_on_the_boundary():
+    """Stopping the moment the subject re-enters the margin leaves the window
+    starting and stopping every other frame."""
+    from app.pipeline import frame as F
+    drift = [(ms, 0.50 + 0.09) for ms in range(0, 6000, 500)]
+    out = [x for _, x in F._smooth([(0, 0.50)] + drift)]
+    tail = out[-4:]
+    assert max(tail) - min(tail) < 0.01      # it arrived and stopped
