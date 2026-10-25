@@ -1056,3 +1056,14 @@ input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height:
  .ed-bar { grid-template-columns: minmax(0, 1fr) auto; }
  .ed-steps { display: none; }
 }
+
+/* Terms and Privacy. Long prose, so it gets a readable measure rather than
+   the full width of a dashboard, and headings that separate the sections a
+   reviewer will be scanning for. */
+.legal-page { max-width: 760px; }
+.legal-body { padding: 28px 32px; line-height: 1.65; }
+.legal-body h2 { margin: 28px 0 8px; font-size: 1.05rem; }
+.legal-body h2:first-child { margin-top: 0; }
+.legal-body p, .legal-body li { color: var(--text-muted, inherit); }
+.legal-body ul { margin: 8px 0 0 18px; display: grid; gap: 6px; }
+.legal-body a { text-decoration: underline; }
