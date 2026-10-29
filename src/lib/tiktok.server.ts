@@ -114,7 +114,7 @@ export const tiktokPublisher: Publisher = {
     const o = (job.options ?? {}) as TikTokOptions;
     const caption = [job.caption, ...(job.hashtags ?? []).map((h) => (h.startsWith("#") ? h : `#${h}`))].join(" ").trim();
     const r = await directPost(job.token, job.videoUrl, caption, { ...o, privacy: (o.privacy || job.privacy || "SELF_ONLY") as TikTokOptions["privacy"] });
-    const handle = job.externalAccountId;
+    const handle = job.handle;
     return { externalId: r.externalId, url: r.externalId && /^\d+$/.test(r.externalId) && handle ? `https://www.tiktok.com/@${handle}/video/${r.externalId}` : null };
   },
   async refresh(refreshToken) {

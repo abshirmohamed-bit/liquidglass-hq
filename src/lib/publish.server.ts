@@ -30,6 +30,10 @@ export type PublishJob = {
   /** A live token for the account being posted to. */
   token: string;
   externalAccountId: string | null;
+  /** Account handle without @, for building a post link. */
+  handle?: string | null;
+  /** Per-platform choices made on the post form (e.g. TikTok privacy and interactions). */
+  options?: Record<string, unknown>;
 };
 
 export type PublishResult = { externalId: string; url: string | null };
@@ -38,7 +42,7 @@ export type Publisher = {
   /** Put the clip on the platform. Throw to fail the attempt. */
   publish(job: PublishJob): Promise<PublishResult>;
   /** Swap a refresh token for a fresh access token, if the platform expires them. */
-  refresh?(refreshToken: string): Promise<{ accessToken: string; expiresAt: string | null }>;
+  refresh?(refreshToken: string): Promise<{ accessToken: string; expiresAt: string | null; refreshToken?: string }>;
 };
 
 /**
@@ -51,15 +55,22 @@ export type Publisher = {
  */
 export const PUBLISHERS: Partial<Record<Platform, Publisher>> = {};
 
+/** Register the uploaders whose apps exist. Called by the server entry points, not tests. */
+export async function registerPublishers() {
+  if (!PUBLISHERS.TIKTOK && process.env["TIKTOK_CLIENT_KEY"]) {
+    PUBLISHERS.TIKTOK = (await import("./tiktok.server")).tiktokPublisher;
+  }
+}
+
 /** Waits between attempts. Four tries over about half an hour, then it stops. */
 export const BACKOFF_MINUTES = [1, 5, 25];
 
 type PostRow = {
   id: string; platform: string; caption: string; title: string | null;
   hashtags: unknown; privacy: string | null; attempts: number | null;
-  clip_id: string; channel_id: string;
+  clip_id: string; channel_id: string; platform_options?: unknown;
   clips: { video_url: string | null } | null;
-  channels: { status: string; external_account_id: string | null } | null;
+  channels: { status: string; external_account_id: string | null; handle?: string | null } | null;
 };
 
 /** A token for this channel, refreshed first if the platform expires them. */
@@ -78,7 +89,7 @@ export async function tokenFor(
   if (!stale || !publisher.refresh || !cred.refresh_token) return cred.access_token;
   const fresh = await publisher.refresh(cred.refresh_token);
   await db.from("channel_credentials")
-    .update({ access_token: fresh.accessToken, expires_at: fresh.expiresAt })
+    .update({ access_token: fresh.accessToken, expires_at: fresh.expiresAt, ...(fresh.refreshToken ? { refresh_token: fresh.refreshToken } : {}) })
     .eq("channel_id", channelId);
   return fresh.accessToken;
 }
@@ -89,11 +100,13 @@ export async function tokenFor(
  * Called on a schedule. One post at a time per call so a platform that is
  * slow or rate-limiting cannot hold up the rest.
  */
-export async function publishDuePosts(db: SupabaseClient<Database>, limit = 5): Promise<number> {
-  const { data } = await db.from("posts")
-    .select("*,clips(video_url),channels(status,external_account_id)")
+export async function publishDuePosts(db: SupabaseClient<Database>, limit = 5, onlyId?: string): Promise<number> {
+  let query = db.from("posts")
+    .select("*,clips(video_url),channels(status,external_account_id,handle)")
     .eq("status", "QUEUED")
-    .eq("mode", "AUTO")
+    .eq("mode", "AUTO");
+  if (onlyId) query = query.eq("id", onlyId);
+  const { data } = await query
     .lte("scheduled_at", new Date().toISOString())
     .order("scheduled_at", { ascending: true })
     .limit(limit);
@@ -110,6 +123,11 @@ export async function publishDuePosts(db: SupabaseClient<Database>, limit = 5): 
       continue;
     }
     try {
+      // Claim it so a second run can't upload the same post twice.
+      await db.from("posts").update({ status: "POSTING" }).eq("id", post.id);
+      const { sign } = await import("./review-helpers");
+      const videoUrl = await sign(db as never, post.clips.video_url);
+      if (!videoUrl) throw new Error("Couldn't open the exported clip.");
       const token = await tokenFor(db, post.channel_id, publisher);
       const result = await publisher.publish({
         postId: post.id,
@@ -118,9 +136,11 @@ export async function publishDuePosts(db: SupabaseClient<Database>, limit = 5): 
         title: post.title,
         hashtags: Array.isArray(post.hashtags) ? (post.hashtags as string[]) : [],
         privacy: post.privacy,
-        videoUrl: post.clips.video_url,
+        videoUrl,
         token,
         externalAccountId: post.channels.external_account_id,
+        handle: post.channels.handle?.replace(/^@/, "") ?? null,
+        options: (post.platform_options ?? {}) as Record<string, unknown>,
       });
       await db.from("posts").update({
         status: "POSTED", external_post_id: result.externalId, post_url: result.url,
