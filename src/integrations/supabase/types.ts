@@ -1222,6 +1222,36 @@ export type Database = {
         }
         Relationships: []
       }
+      oauth_states: {
+        Row: {
+          code_verifier: string
+          created_at: string
+          owner_id: string
+          provider: string
+          return_to: string | null
+          state: string
+          user_id: string
+        }
+        Insert: {
+          code_verifier: string
+          created_at?: string
+          owner_id: string
+          provider: string
+          return_to?: string | null
+          state: string
+          user_id: string
+        }
+        Update: {
+          code_verifier?: string
+          created_at?: string
+          owner_id?: string
+          provider?: string
+          return_to?: string | null
+          state?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount: number
@@ -1315,6 +1345,7 @@ export type Database = {
           mode: string
           owner_id: string
           platform: string | null
+          platform_options: Json
           post_url: string | null
           posted_at: string | null
           privacy: string | null
@@ -1338,6 +1369,7 @@ export type Database = {
           mode?: string
           owner_id?: string
           platform?: string | null
+          platform_options?: Json
           post_url?: string | null
           posted_at?: string | null
           privacy?: string | null
@@ -1361,6 +1393,7 @@ export type Database = {
           mode?: string
           owner_id?: string
           platform?: string | null
+          platform_options?: Json
           post_url?: string | null
           posted_at?: string | null
           privacy?: string | null
