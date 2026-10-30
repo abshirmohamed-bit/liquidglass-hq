@@ -42,3 +42,4 @@
 - Download Git LFS model binaries from the media endpoint, not raw GitHub pointer files; otherwise the face detector cannot load at export time.
 
 - Review cards expose state-relevant editing and completion actions, with secondary operations in the shared dropdown menu; preview picture remains the direct entry to playback.
+- TikTok direct posting: OAuth (PKCE) via startTikTokConnect + /api/public/tiktok/callback, tokens in service-only channel_credentials, FILE_UPLOAD publisher in src/lib/tiktok.server.ts registered through registerPublishers(); UX/audit rules live in src/lib/tiktok-rules.ts so tests pin them.

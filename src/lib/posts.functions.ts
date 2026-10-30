@@ -33,7 +33,7 @@ export const removeChannel = createServerFn({ method: "POST" }).middleware([requ
 
 /** Confirm in the Distribute modal: one Post row per channel, QUEUED, AUTO for API-connected channels and MANUAL otherwise. */
 export const queuePosts = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ clipId: z.string().uuid(), scheduledAt: z.string().datetime().nullable(), items: z.array(z.object({ channelId: z.string().uuid(), caption: z.string().max(5000), title: z.string().max(200).optional(), hashtags: z.array(z.string().max(60)).max(30).optional() })).min(1).max(20) }))
+  .inputValidator(z.object({ clipId: z.string().uuid(), scheduledAt: z.string().datetime().nullable(), items: z.array(z.object({ channelId: z.string().uuid(), caption: z.string().max(5000), title: z.string().max(200).optional(), hashtags: z.array(z.string().max(60)).max(30).optional(), tiktok: z.object({ privacy: z.enum(["PUBLIC_TO_EVERYONE", "MUTUAL_FOLLOW_FRIENDS", "FOLLOWER_OF_CREATOR", "SELF_ONLY"]), allowComment: z.boolean(), allowDuet: z.boolean(), allowStitch: z.boolean(), disclose: z.boolean(), yourBrand: z.boolean(), brandedContent: z.boolean() }).optional() })).min(1).max(20) }))
   .handler(async ({ context, data }) => {
     const db = context.supabase;
     const clip = must(await db.from("clips").select("id,status,video_url").eq("id", data.clipId).single());
@@ -45,10 +45,15 @@ export const queuePosts = createServerFn({ method: "POST" }).middleware([require
       if (!ch) throw new Error("A selected channel no longer exists.");
       const issue = copyIssue(ch.platform as Platform, ch.platform === "YOUTUBE" ? it.title ?? it.caption : it.caption);
       if (issue) throw new Error(issue);
-      return { clip_id: clip.id, channel_id: ch.id, platform: ch.platform, caption: it.caption, title: it.title ?? null, hashtags: (it.hashtags ?? []) as never, scheduled_at: when, mode: ch.status === "CONNECTED" ? "AUTO" : "MANUAL", status: "QUEUED", created_by: context.userId, owner_id: context.userId };
+      if (ch.platform === "TIKTOK" && ch.status === "CONNECTED") {
+        if (!it.tiktok) throw new Error("Choose who can see the TikTok post.");
+        if (it.tiktok.brandedContent && it.tiktok.privacy === "SELF_ONLY") throw new Error("Branded content can't be private.");
+        if (it.tiktok.disclose && !it.tiktok.yourBrand && !it.tiktok.brandedContent) throw new Error("Say what the TikTok promotes.");
+      }
+      return { privacy: it.tiktok?.privacy ?? null, platform_options: (it.tiktok ?? {}) as never, clip_id: clip.id, channel_id: ch.id, platform: ch.platform, caption: it.caption, title: it.title ?? null, hashtags: (it.hashtags ?? []) as never, scheduled_at: when, mode: ch.status === "CONNECTED" ? "AUTO" : "MANUAL", status: "QUEUED", created_by: context.userId, owner_id: context.userId };
     });
-    must(await db.from("posts").insert(rows).select("id"));
-    return rows.length;
+    const made = must(await db.from("posts").insert(rows).select("id,mode"));
+    return { count: rows.length, autoIds: data.scheduledAt ? [] : made.filter((r) => r.mode === "AUTO").map((r) => r.id) };
   });
 
 async function ownPost(db: SupabaseClient<Database>, id: string) {
