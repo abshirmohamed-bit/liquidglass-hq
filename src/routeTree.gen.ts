@@ -40,6 +40,8 @@ import { Route as AuthenticatedIdeationThreadIdRouteImport } from './routes/_aut
 import { Route as ApiPublicHooksDiscordSyncRouteImport } from './routes/api/public/hooks/discord-sync'
 import { Route as ApiPublicHooksEngineRouteImport } from './routes/api/public/hooks/engine'
 import { Route as ApiPublicHooksLibraryPurgeRouteImport } from './routes/api/public/hooks/library-purge'
+import { Route as ApiPublicHooksPublishDueRouteImport } from './routes/api/public/hooks/publish-due'
+import { Route as ApiPublicTiktokCallbackRouteImport } from './routes/api/public/tiktok/callback'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -202,6 +204,17 @@ const ApiPublicHooksLibraryPurgeRoute =
     path: '/api/public/hooks/library-purge',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicHooksPublishDueRoute =
+  ApiPublicHooksPublishDueRouteImport.update({
+    id: '/api/public/hooks/publish-due',
+    path: '/api/public/hooks/publish-due',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicTiktokCallbackRoute = ApiPublicTiktokCallbackRouteImport.update({
+  id: '/api/public/tiktok/callback',
+  path: '/api/public/tiktok/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -234,6 +247,8 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/discord-sync': typeof ApiPublicHooksDiscordSyncRoute
   '/api/public/hooks/engine': typeof ApiPublicHooksEngineRoute
   '/api/public/hooks/library-purge': typeof ApiPublicHooksLibraryPurgeRoute
+  '/api/public/hooks/publish-due': typeof ApiPublicHooksPublishDueRoute
+  '/api/public/tiktok/callback': typeof ApiPublicTiktokCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -266,6 +281,8 @@ export interface FileRoutesByTo {
   '/api/public/hooks/discord-sync': typeof ApiPublicHooksDiscordSyncRoute
   '/api/public/hooks/engine': typeof ApiPublicHooksEngineRoute
   '/api/public/hooks/library-purge': typeof ApiPublicHooksLibraryPurgeRoute
+  '/api/public/hooks/publish-due': typeof ApiPublicHooksPublishDueRoute
+  '/api/public/tiktok/callback': typeof ApiPublicTiktokCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -300,6 +317,8 @@ export interface FileRoutesById {
   '/api/public/hooks/discord-sync': typeof ApiPublicHooksDiscordSyncRoute
   '/api/public/hooks/engine': typeof ApiPublicHooksEngineRoute
   '/api/public/hooks/library-purge': typeof ApiPublicHooksLibraryPurgeRoute
+  '/api/public/hooks/publish-due': typeof ApiPublicHooksPublishDueRoute
+  '/api/public/tiktok/callback': typeof ApiPublicTiktokCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -334,6 +353,8 @@ export interface FileRouteTypes {
     | '/api/public/hooks/discord-sync'
     | '/api/public/hooks/engine'
     | '/api/public/hooks/library-purge'
+    | '/api/public/hooks/publish-due'
+    | '/api/public/tiktok/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -366,6 +387,8 @@ export interface FileRouteTypes {
     | '/api/public/hooks/discord-sync'
     | '/api/public/hooks/engine'
     | '/api/public/hooks/library-purge'
+    | '/api/public/hooks/publish-due'
+    | '/api/public/tiktok/callback'
   id:
     | '__root__'
     | '/'
@@ -399,6 +422,8 @@ export interface FileRouteTypes {
     | '/api/public/hooks/discord-sync'
     | '/api/public/hooks/engine'
     | '/api/public/hooks/library-purge'
+    | '/api/public/hooks/publish-due'
+    | '/api/public/tiktok/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -413,6 +438,8 @@ export interface RootRouteChildren {
   ApiPublicHooksDiscordSyncRoute: typeof ApiPublicHooksDiscordSyncRoute
   ApiPublicHooksEngineRoute: typeof ApiPublicHooksEngineRoute
   ApiPublicHooksLibraryPurgeRoute: typeof ApiPublicHooksLibraryPurgeRoute
+  ApiPublicHooksPublishDueRoute: typeof ApiPublicHooksPublishDueRoute
+  ApiPublicTiktokCallbackRoute: typeof ApiPublicTiktokCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -634,6 +661,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicHooksLibraryPurgeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/hooks/publish-due': {
+      id: '/api/public/hooks/publish-due'
+      path: '/api/public/hooks/publish-due'
+      fullPath: '/api/public/hooks/publish-due'
+      preLoaderRoute: typeof ApiPublicHooksPublishDueRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/tiktok/callback': {
+      id: '/api/public/tiktok/callback'
+      path: '/api/public/tiktok/callback'
+      fullPath: '/api/public/tiktok/callback'
+      preLoaderRoute: typeof ApiPublicTiktokCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -699,6 +740,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksDiscordSyncRoute: ApiPublicHooksDiscordSyncRoute,
   ApiPublicHooksEngineRoute: ApiPublicHooksEngineRoute,
   ApiPublicHooksLibraryPurgeRoute: ApiPublicHooksLibraryPurgeRoute,
+  ApiPublicHooksPublishDueRoute: ApiPublicHooksPublishDueRoute,
+  ApiPublicTiktokCallbackRoute: ApiPublicTiktokCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
