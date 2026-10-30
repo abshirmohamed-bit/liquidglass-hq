@@ -5,6 +5,10 @@ import { Plus, Trash2, X, ExternalLink, Download, Copy, Sparkles, Send } from "l
 import { EmptyState, SectionHead } from "./kit";
 import { Button } from "@/components/ui/button";
 import { postsData, addManualChannel, removeChannel, queuePosts, resolveManualPost, cancelPost, writeCopy } from "@/lib/posts.functions";
+import { startTikTokConnect, publishNow } from "@/lib/tiktok.functions";
+import { TikTokPostSettings } from "./tiktok-post";
+import { DEFAULT_TIKTOK_OPTIONS, tiktokOptionsIssue, type TikTokOptions } from "@/lib/tiktok-rules";
+import { useEffect } from "react";
 import { COPY_LIMITS, copyIssue, postColumn, uploadLink, type Platform } from "@/lib/finish-rules";
 
 const err = (e: unknown) => toast.error(e instanceof Error ? e.message : "Something went wrong");
@@ -21,7 +25,7 @@ const COL_EMPTY: Record<(typeof COLS)[number], string> = {
 };
 /** Rules box per platform (Prompt 7). */
 const RULES: Record<Platform, string> = {
-  INSTAGRAM: "Reels 9:16, up to 15 min, under 1 GB.", TIKTOK: "Private posts only until TikTok audits the app.", YOUTUBE: "Shorts are 180 s or less.",
+  INSTAGRAM: "Reels 9:16, up to 15 min, under 1 GB.", TIKTOK: "Connect your account to post directly; posts stay private until TikTok approves the app.", YOUTUBE: "Shorts are 180 s or less.",
   X: "140 s and 512 MB or less; about $0.015 per post.", FACEBOOK: "Page posts.", LINKEDIN: "Feed posts.",
 };
 
@@ -38,6 +42,12 @@ export function Posts() {
   const clip = pick ? clipById.get(pick) : undefined;
   const channels = d?.channels ?? [];
   const noClips = !d?.clips.length;
+  useEffect(() => {
+    const r = new URLSearchParams(window.location.search).get("tiktok");
+    if (!r) return;
+    if (r === "connected") toast.success("TikTok connected"); else toast.error(`TikTok: ${r}`);
+    window.history.replaceState(null, "", window.location.pathname);
+  }, []);
   return <div className="page">
     <header className="page-header">
       <div>
@@ -68,6 +78,7 @@ export function Posts() {
       <div className="filter-bar" style={{ marginTop: "var(--s4)", marginBottom: 0 }}>
         <select aria-label="Platform" value={newP} onChange={(e) => setNewP(e.target.value as Platform)}>{PLATFORMS.map((p) => <option key={p} value={p}>{pname(p)}</option>)}</select>
         <input aria-label="Handle" placeholder="@handle" value={handle} onChange={(e) => setHandle(e.target.value)} />
+        <Button size="sm" variant="outline" onClick={async () => { try { const { url } = await startTikTokConnect(); window.location.href = url; } catch (e) { err(e); } }}><Plus />Connect TikTok</Button>
         <Button size="sm" disabled={!handle.trim()} onClick={async () => { try { await addManualChannel({ data: { platform: newP, handle } }); setHandle(""); await refresh(); toast.success("Channel added"); } catch (e) { err(e); } }}><Plus />Add manual channel</Button>
       </div>
     </section>
@@ -137,6 +148,8 @@ export function Distribute({ clip, onClose }: { clip: { id: string; title: strin
   const [copy, setCopy] = useState<Partial<Record<Platform, string>>>({});
   const [ytTitle, setYtTitle] = useState(`${(clip.title ?? "").slice(0, 90)} #Shorts`);
   const [when, setWhen] = useState<"now" | "later">("now"); const [at, setAt] = useState(""); const [busy, setBusy] = useState(false); const [ai, setAi] = useState(false); const [askCopy, setAskCopy] = useState("");
+  const [tt, setTt] = useState<Record<string, TikTokOptions>>({});
+  const ttChans = chans.filter((c) => selected.includes(c.id) && c.platform === "TIKTOK" && c.status === "CONNECTED");
   const plats = [...new Set(chans.filter((c) => selected.includes(c.id)).map((c) => c.platform as Platform))];
   const text = (p: Platform) => copy[p] ?? base;
   const sec = (clip.duration_ms ?? 0) / 1000;
@@ -144,11 +157,13 @@ export function Distribute({ clip, onClose }: { clip: { id: string; title: strin
   async function confirm() {
     const bad = plats.flatMap((p) => { const i = copyIssue(p, p === "YOUTUBE" ? ytTitle : text(p)); return i ? [i] : []; });
     if (bad.length) { toast.error(bad[0]!); return; }
+    for (const c of ttChans) { const i = tiktokOptionsIssue(tt[c.id] ?? DEFAULT_TIKTOK_OPTIONS, [], sec, null); if (i) { toast.error(i); return; } }
     if (when === "later" && !at) { toast.error("Pick a date and time."); return; }
     setBusy(true);
     try {
-      const n = await queuePosts({ data: { clipId: clip.id, scheduledAt: when === "later" ? new Date(at).toISOString() : null, items: chans.filter((c) => selected.includes(c.id)).map((c) => ({ channelId: c.id, caption: text(c.platform as Platform), ...(c.platform === "YOUTUBE" ? { title: ytTitle } : {}) })) } });
-      toast.success(`${n} post${n === 1 ? "" : "s"} ${when === "now" ? "queued" : "scheduled"}`); await qc.invalidateQueries({ queryKey: ["posts"] }); onClose();
+      const n = await queuePosts({ data: { clipId: clip.id, scheduledAt: when === "later" ? new Date(at).toISOString() : null, items: chans.filter((c) => selected.includes(c.id)).map((c) => ({ channelId: c.id, caption: text(c.platform as Platform), ...(c.platform === "YOUTUBE" ? { title: ytTitle } : {}), ...(ttChans.some((t) => t.id === c.id) ? { tiktok: tt[c.id] as TikTokOptions & { privacy: "SELF_ONLY" } } : {}) })) } });
+      toast.success(`${n.count} post${n.count === 1 ? "" : "s"} ${when === "now" ? "queued" : "scheduled"}`);
+      if (n.autoIds.length) { toast.info("Uploading to TikTok…"); void publishNow({ data: { postIds: n.autoIds } }).then(() => { toast.success("Sent to TikTok. It may take a few minutes to appear on your profile."); void qc.invalidateQueries({ queryKey: ["posts"] }); }).catch(err); } await qc.invalidateQueries({ queryKey: ["posts"] }); onClose();
     } catch (e) { err(e); } finally { setBusy(false); }
   }
   return <div className="review-modal-back" onClick={onClose}><div role="dialog" aria-label="Distribute" className="glass-panel review-modal" onClick={(e) => e.stopPropagation()}>
@@ -170,6 +185,7 @@ export function Distribute({ clip, onClose }: { clip: { id: string; title: strin
       {plats.map((p) => <div key={p} className="editor-fields"><strong>{pname(p)}</strong>
         {p === "YOUTUBE" && <label>Title <small className="muted">{ytTitle.length}/100</small><input value={ytTitle} onChange={(e) => setYtTitle(e.target.value)} /></label>}
         <label>{p === "YOUTUBE" ? "Description" : "Caption"} <small className="muted">{text(p).length}/{COPY_LIMITS[p]}</small><textarea rows={4} value={text(p)} onChange={(e) => setCopy((x) => ({ ...x, [p]: e.target.value }))} /></label>
+        {p === "TIKTOK" && ttChans.map((c) => <TikTokPostSettings key={c.id} channelId={c.id} durationSec={sec} value={tt[c.id] ?? DEFAULT_TIKTOK_OPTIONS} onChange={(o) => setTt((x) => ({ ...x, [c.id]: o }))} />)}
         {warn(p).map((w) => <p key={w} className="caption" style={{ color: "var(--warning, #FF9F0A)" }}>{w}</p>)}</div>)}
       <div className="filter-bar"><label className="lib-check"><input type="radio" checked={when === "now"} onChange={() => setWhen("now")} />Post now</label><label className="lib-check"><input type="radio" checked={when === "later"} onChange={() => setWhen("later")} />Schedule</label>
         {when === "later" && <input type="datetime-local" aria-label="Schedule time" value={at} onChange={(e) => setAt(e.target.value)} />}</div>
