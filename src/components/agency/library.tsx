@@ -29,7 +29,7 @@ function putFile(url: string, method: string, headers: Record<string, string>, f
 export function Library() {
   const qc = useQueryClient();
   const acct = useQuery({ queryKey: ["engine-account"], queryFn: () => engineAccount() });
-  const lib = useQuery({ queryKey: ["library"], queryFn: () => listLibrary(), refetchInterval: (q) => (q.state.data?.sources.some((s) => s.status === "UPLOADING" && s.kind === "LINK") ? 8000 : false) });
+  const lib = useQuery({ queryKey: ["library"], queryFn: () => listLibrary(), refetchInterval: (q) => (q.state.data?.sources.some((s) => s.status === "UPLOADING" && s.kind === "LINK") || q.state.data?.projects.some((c) => c.status === "EXPORTING") ? 8000 : false) });
   const [tab, setTab] = useState<Tab>("Sources");
   const [progress, setProgress] = useState<Progress[]>([]);
   const refresh = async () => { await qc.invalidateQueries({ queryKey: ["library"] }); await qc.invalidateQueries({ queryKey: ["engine-account"] }); };

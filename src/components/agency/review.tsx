@@ -240,13 +240,13 @@ function PreviewModal({ clip, source, search, onClose, onExport, onAct, refresh 
   // so this reopens on its own with the real video.
   const rendering = clip.status === "EXPORTING";
   const preview = useQuery({
-    queryKey: ["clip-preview", clip.id],
+    queryKey: ["clip-preview", clip.id, clip.edits],
     queryFn: () => clipPreview({ data: { clipId: clip.id } }),
     staleTime: 10 * 60_000,
     retry: false,
-    enabled: !clip.video_url && !rendering,
+    enabled: (!clip.video_url || needsReexport(clip)) && !rendering,
   });
-  const url = clip.video_url ?? preview.data?.url ?? null;
+  const url = rendering ? null : needsReexport(clip) ? preview.data?.url ?? null : clip.video_url ?? preview.data?.url ?? null;
   return <Modal title={clip.title ?? "Preview"} onClose={onClose}>
     <label className="lib-check"><input type="checkbox" checked={only} onChange={(e) => setOnly(e.target.checked)} />Transcript only</label>
     {!only && (
