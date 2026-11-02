@@ -1,10 +1,12 @@
 README.md
 pyproject.toml
 app/__init__.py
+app/__main__.py
 app/auth.py
 app/config.py
 app/db.py
 app/errors.py
+app/idle.py
 app/ids.py
 app/main.py
 app/media.py
@@ -23,6 +25,7 @@ app/pipeline/frame.py
 app/pipeline/imports.py
 app/pipeline/ingest.py
 app/pipeline/jobs.py
+app/pipeline/speaker.py
 app/pipeline/transcribe.py
 app/pipeline/ytdlp_opts.py
 app/routers/__init__.py
@@ -34,10 +37,14 @@ crayzmundo_engine.egg-info/SOURCES.txt
 crayzmundo_engine.egg-info/dependency_links.txt
 crayzmundo_engine.egg-info/requires.txt
 crayzmundo_engine.egg-info/top_level.txt
+tests/test_ai_provider.py
 tests/test_analyze.py
 tests/test_compose.py
 tests/test_contract.py
+tests/test_idle.py
 tests/test_import_queue.py
 tests/test_pipeline.py
+tests/test_proxy_fallback.py
+tests/test_speaker.py
 tests/test_transcribe_pcm.py
 tests/test_webhooks.py
