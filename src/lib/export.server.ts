@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { toAss, styleFor, wordsFromCues, type Cue, type CaptionStyle, type Overlays, type TitleStyle } from "./finish-rules";
+import { EXPORT_SIZES } from "./review-rules";
 
 /**
  * Rendering happens on the Engine, not in the browser.
@@ -20,6 +22,8 @@ type Row = {
   aspect: string | null;
   layout: string | null;
   caption_style_id: string | null;
+  caption_style: unknown;
+  captions: unknown;
   title_text: string | null;
   title_style: string | null;
   watermark_text: string | null;
@@ -30,10 +34,10 @@ type Row = {
 };
 
 const SELECT =
-  "id,start_ms,end_ms,aspect,layout,caption_style_id,title_text,title_style,watermark_text,overlays,caption_options,engine_project_id,edits";
+  "id,start_ms,end_ms,aspect,layout,caption_style_id,caption_style,captions,title_text,title_style,watermark_text,overlays,caption_options,engine_project_id,edits";
 
 /** The clip as it looks here, in the shape the Engine's PATCH expects. */
-function patchFor(c: Row): Record<string, unknown> {
+export function patchFor(c: Row): Record<string, unknown> {
   const p: Record<string, unknown> = {};
   if (typeof c.start_ms === "number" && typeof c.end_ms === "number" && c.end_ms > c.start_ms) {
     // The Engine re-slices the words to match, so captions follow the trim.
@@ -44,7 +48,26 @@ function patchFor(c: Row): Record<string, unknown> {
   // Without this the layout chosen in the editor never reaches the render.
   if (c.layout) p["layout"] = c.layout;
   if (c.caption_style_id) p["caption_style_id"] = c.caption_style_id;
-  return { ...p, ...overlayPatch(c) };
+  const cues = Array.isArray(c.captions) ? c.captions as Cue[] : [];
+  const durationMs = Math.max(1, (c.end_ms ?? 0) - (c.start_ms ?? 0));
+  const ov = (c.overlays ?? {}) as Overlays;
+  const overlays = overlayPatch(c);
+  const ass: Record<string, string> = {};
+  for (const resolution of ["HD", "UHD", "preview"] as const) {
+    const size = EXPORT_SIZES[resolution === "UHD" ? "UHD" : "HD"];
+    const [aw = 9, ah = 16] = (c.aspect ?? "9:16").split(":").map(Number);
+    const short = Math.min(size.w, size.h) / (resolution === "preview" ? 2 : 1);
+    const w = aw >= ah ? Math.round(short * aw / ah) : short;
+    const h = aw >= ah ? short : Math.round(short * ah / aw);
+    ass[resolution === "HD" ? "1080p" : resolution === "UHD" ? "2160p" : "preview"] = toAss({
+      w, h, durationMs, segments: [{ start_ms: 0, end_ms: durationMs }], cues,
+      style: styleFor(c.caption_style_id, c.caption_style as Partial<CaptionStyle> | null),
+      captionsOn: overlays.caption_options.enabled,
+      title: c.title_text?.trim() ? { text: c.title_text, style: (c.title_style ?? "bold_band") as TitleStyle, y: ov.title?.y ?? 14, highlight_word: ov.title?.highlight_word, highlight: ov.title?.highlight } : null,
+      watermark: c.watermark_text?.trim() ? { text: c.watermark_text, pos: ov.watermark?.pos ?? "centre-below-captions", opacity: ov.watermark?.opacity ?? 0.5 } : null,
+    });
+  }
+  return { ...p, ...overlays, captions: wordsFromCues(cues), caption_options: { ...overlays.caption_options, finish_ass: ass } };
 }
 
 /**
@@ -56,10 +79,11 @@ function patchFor(c: Row): Record<string, unknown> {
 export function overlayPatch(c: Pick<Row, "title_text" | "title_style" | "watermark_text" | "overlays" | "caption_options">) {
   const ov = (c.overlays && typeof c.overlays === "object" ? c.overlays : {}) as {
     watermark?: { pos?: string; opacity?: number };
+    title?: { y?: number; highlight_word?: string; highlight?: string };
   };
   const enabled = (c.caption_options as { enabled?: boolean } | null)?.enabled !== false;
   return {
-    title: c.title_text?.trim() ? { text: c.title_text.trim(), style: c.title_style || "bold_band" } : {},
+    title: c.title_text?.trim() ? { text: c.title_text.trim(), style: c.title_style || "bold_band", ...ov.title } : {},
     watermark: c.watermark_text?.trim()
       ? { text: c.watermark_text.trim(), position: ov.watermark?.pos ?? "centre-below-captions", opacity: ov.watermark?.opacity ?? 0.5 }
       : {},
@@ -69,6 +93,16 @@ export function overlayPatch(c: Pick<Row, "title_text" | "title_style" | "waterm
 
 async function fail(db: Db, id: string, message: string) {
   await db.from("clips").update({ status: "FAILED", error: message }).eq("id", id);
+}
+
+export async function syncClipOnEngine(db: Db, id: string) {
+  const row = await db.from("clips").select(SELECT).eq("id", id).single();
+  if (row.error) throw new Error(row.error.message);
+  const c = row.data as Row;
+  if (!c.engine_project_id) throw new Error("This clip has no Engine project.");
+  const { engineClient } = await import("./engine.server");
+  const r = await engineClient("PATCH", `/v1/projects/${encodeURIComponent(c.engine_project_id)}`, patchFor(c));
+  if (!r.ok) throw new Error(r.error.message);
 }
 
 /**
@@ -92,6 +126,9 @@ export async function exportClipsOnEngine(db: Db, ids: string[], resolution: Res
       continue;
     }
     const pid = encodeURIComponent(c.engine_project_id);
+    const claimed = await db.from("clips").update({ status: "EXPORTING", error: null }).eq("id", c.id).in("status", ["READY", "APPROVED"]).select("id").maybeSingle();
+    if (claimed.error) throw new Error(claimed.error.message);
+    if (!claimed.data) continue;
     const patch = patchFor(c);
     const pr = await engineClient("PATCH", `/v1/projects/${pid}`, patch);
     // Rendering after a rejected update would export the old look and call it done.
@@ -113,7 +150,7 @@ export async function exportClipsOnEngine(db: Db, ids: string[], resolution: Res
       string,
       unknown
     >;
-    await db
+    const saved = await db
       .from("clips")
       .update({
         status: "EXPORTING",
@@ -122,11 +159,12 @@ export async function exportClipsOnEngine(db: Db, ids: string[], resolution: Res
         error: null,
         edits: {
           ...edits,
-          finish_dirty: undefined,
+          finish_dirty: true,
           export_started_at: new Date().toISOString(),
         } as never,
       })
       .eq("id", c.id);
+    if (saved.error) throw new Error(saved.error.message);
     started.push(c.id);
   }
   return { started, failed };

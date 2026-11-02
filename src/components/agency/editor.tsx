@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { ArrowLeft, AtSign, Captions, Check, Download, Eye, EyeOff, Loader2, Pause, Play, Save, Send, SlidersHorizontal, Sparkles, Type, Volume2, VolumeX, Wand2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -46,7 +47,9 @@ async function loadPreviewFont() {
 
 export function Editor({ clipId }: { clipId: string }) {
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["editor", clipId], queryFn: () => editorData({ data: { id: clipId } }) });
+  const saveFinishFn = useServerFn(saveFinish);
+  const startExportFn = useServerFn(startExport);
+  const q = useQuery({ queryKey: ["editor", clipId], queryFn: () => editorData({ data: { id: clipId } }), refetchInterval: (query) => query.state.data?.clip.status === "EXPORTING" ? 5000 : false });
   const c = q.data?.clip;
   const [presetId, setPresetId] = useState("bold_white");
   const [custom, setCustom] = useState<Partial<CaptionStyle>>({});
@@ -107,7 +110,16 @@ export function Editor({ clipId }: { clipId: string }) {
   const patch = () => ({ caption_style_id: presetId, caption_style: custom, captions: cues, caption_options: { enabled: captionsOn }, title_text: title, title_style: titleStyle, overlays: ov, watermark_text: mark, aspect: aspect as (typeof ASPECTS)[number], layout });
 
   async function save(ids = [clipId], saveAsBrand = false) {
-    try { const n = await saveFinish({ data: { ids, patch: patch(), saveAsBrand } }); await qc.invalidateQueries({ queryKey: ["review"] }); await qc.invalidateQueries({ queryKey: ["editor", clipId] }); toast.success(ids.length > 1 ? `Applied to ${n} clips` : "Saved"); } catch (e) { err(e); }
+    setBusy("Saving…");
+    try {
+      const r = await saveFinishFn({ data: { ids, patch: patch(), saveAsBrand } });
+      await refreshClips();
+      if (r.failed.length) toast.error(`Edits saved, but ${r.failed.length} render updates failed: ${r.failed[0]?.error}`);
+      else toast.success(r.started.length ? `Saved — rendering ${r.started.length} ${r.started.length === 1 ? "clip" : "clips"}` : "Saved");
+    } catch (e) { err(e); } finally { setBusy(""); }
+  }
+  async function refreshClips() {
+    await Promise.all(["review", "editor", "library", "clip-preview", "clips-workspace"].map((key) => qc.invalidateQueries({ queryKey: [key] })));
   }
   /** Ask for a different headline for this clip, keeping the old one until one arrives. */
   async function reheadline() {
@@ -150,10 +162,11 @@ export function Editor({ clipId }: { clipId: string }) {
   }
 
   async function exportNow() {
+    setBusy("Saving…");
     try {
       // Save first so the Engine renders what is on screen, then hand it over.
-      await saveFinish({ data: { ids: [clipId], patch: patch() } });
-      const r = await startExport({ data: { ids: [clipId], resolution: "HD" } });
+      await saveFinishFn({ data: { ids: [clipId], patch: patch(), render: false } });
+      const r = await startExportFn({ data: { ids: [clipId], resolution: c?.resolution === "UHD" ? "UHD" : "HD" } });
       if (r.engineFailed.length) { toast.error(r.engineFailed[0]!.error); return; }
       if (!r.engineQueued) {
         // An older clip with no Engine project behind it still renders in the
@@ -173,7 +186,15 @@ export function Editor({ clipId }: { clipId: string }) {
   const exported = c.status === "READY" && !!c.video_url;
   const step = exported ? 3 : canExport ? 2 : 1;
   const posName = ([["Top", 18], ["Middle", 50], ["Lower", 72], ["Bottom", 86]] as const).find(([, y]) => Math.abs(style.y - y) < 4)?.[0];
-  const applyShared = async () => { const p = patch(); const { captions: _c, title_text: _t, ...shared } = p; try { await saveFinish({ data: { ids: applyTo, patch: shared } }); await saveFinish({ data: { ids: [clipId], patch: p } }); toast.success(`Applied to ${applyTo.length} ${applyTo.length === 1 ? "clip" : "clips"}`); setApplyTo([]); await qc.invalidateQueries({ queryKey: ["review"] }); } catch (e) { err(e); } };
+  const applyShared = async () => {
+    setBusy("Applying…");
+    try {
+      const r = await saveFinishFn({ data: { ids: [clipId, ...applyTo], patch: patch(), shareLook: true } });
+      await refreshClips();
+      if (r.failed.length) toast.error(`Edits saved, but ${r.failed.length} render updates failed: ${r.failed[0]?.error}`);
+      else { toast.success(`Applied — ${r.started.length} clips rendering`); setApplyTo([]); }
+    } catch (e) { err(e); } finally { setBusy(""); }
+  };
 
   return <div className="page ed-page">
     <header className="ed-bar glass-panel">
@@ -194,8 +215,8 @@ export function Editor({ clipId }: { clipId: string }) {
           && <Button variant="ghost" size="sm" onClick={() => decide("REJECTED")} title="Reject this clip"><X />Reject</Button>}
         {c.status === "REJECTED"
           && <Button variant="ghost" size="sm" onClick={() => decide("FOUND")} title="Put this clip back">Rejected</Button>}
-        <Button variant="ghost" size="sm" onClick={() => save([clipId], true)} title="Use these settings on future clips">Save as defaults</Button>
-        <Button variant="outline" size="sm" onClick={() => save()}><Save />Save</Button>
+        <Button variant="ghost" size="sm" disabled={!!busy || c.status === "EXPORTING"} onClick={() => save([clipId], true)} title="Use these settings on future clips">Save as defaults</Button>
+        <Button variant="outline" size="sm" disabled={!!busy || c.status === "EXPORTING"} onClick={() => save()}><Save />{c.status === "EXPORTING" ? "Rendering…" : "Save"}</Button>
         <Button size="sm" onClick={exportNow} disabled={!!busy || !canExport} title={canExport ? "Render this clip" : "Approve the clip in Review first"}><Download />Export</Button>
         <Button variant={exported ? "default" : "outline"} size="sm" onClick={() => setPosting(true)} disabled={!exported} title={exported ? "" : "Export first"}><Send />Post</Button>
       </div>
@@ -298,7 +319,7 @@ export function Editor({ clipId }: { clipId: string }) {
             <button type="button" className="ed-link" disabled={!applyTo.length} onClick={() => setApplyTo([])}>Clear</button>
           </div>
           <div className="ed-apply">{q.data!.others.map((o) => <label key={o.id} className="ed-check"><input type="checkbox" checked={applyTo.includes(o.id)} onChange={(e) => setApplyTo((x) => (e.target.checked ? [...x, o.id] : x.filter((y) => y !== o.id)))} /><span className="min-w-0 truncate">{o.title ?? "Clip"}</span><small className="muted">{o.status.toLowerCase()}</small></label>)}</div>
-          <Button size="sm" disabled={!applyTo.length} onClick={applyShared}><Wand2 />{applyTo.length ? `Apply to ${applyTo.length} ${applyTo.length === 1 ? "clip" : "clips"}` : "Apply to selected clips"}</Button>
+          <Button size="sm" disabled={!applyTo.length || !!busy || c.status === "EXPORTING"} onClick={applyShared}><Wand2 />{applyTo.length ? `Apply to ${applyTo.length} ${applyTo.length === 1 ? "clip" : "clips"}` : "Apply to selected clips"}</Button>
         </details>}
       </aside>
     </div>
@@ -323,10 +344,10 @@ function Preview({ ctl, src, videoUrl, start, end, aspect, layout, framing, styl
       if (!v) return;
       // ms is clip time. The exported clip starts at zero; the full source
       // starts wherever this clip begins.
-      v.currentTime = (videoUrl ? ms : ms + start) / 1000;
+      v.currentTime = (!src && videoUrl ? ms : ms + start) / 1000;
       void v.play().catch(() => {});
     };
-  }, [ctl, videoUrl, start]);
+  }, [ctl, src, videoUrl, start]);
   useEffect(() => { const el = box.current; if (!el) return; const ro = new ResizeObserver(() => setW(el.clientWidth)); ro.observe(el); return () => ro.disconnect(); }, []);
   const k = w / 1080;
   const cue = cueAt(cues, t);

@@ -56,6 +56,7 @@ class Render:
     resolution: str = "1080p"
     loudnorm: bool = True
     preview: bool = False
+    finish_ass: str | None = None           # Complete editor finish layer, in output time.
 
     def __post_init__(self) -> None:
         """`segments` is the only truth inside; a lone source becomes one segment."""
@@ -360,17 +361,21 @@ def build(render: Render, workdir: Path) -> tuple[list[str], Path]:
 
     chain.append("setsar=1")
 
-    if render.captions_enabled and render.words:
+    if render.finish_ass is not None:
+        ass = workdir / "finish.ass"
+        ass.write_text(render.finish_ass, encoding="utf-8")
+        chain.append(f"subtitles={ass.as_posix()}")
+    elif render.captions_enabled and render.words:
         style = BY_ID.get(render.caption_style_id, BY_ID["bold_white"])
         ass = workdir / "captions.ass"
         ass.write_text(build_ass(render.words, style, w, h, censored=render.censored), encoding="utf-8")
         chain.append(f"subtitles={ass.as_posix()}")
 
-    if render.title:
+    if render.title and render.finish_ass is None:
         f = _title_filter(render.title, w, h, workdir)
         if f:
             chain.append(f)
-    if render.watermark:
+    if render.watermark and render.finish_ass is None:
         f = _watermark_filter(render.watermark, w, h, workdir)
         if f:
             chain.append(f)
@@ -460,6 +465,11 @@ def _overlays(render: Render, workdir: Path, chain: list[str], w: int, h: int) -
     the caller can map it.
     """
     last = "base"
+    if render.finish_ass is not None:
+        ass = workdir / "finish.ass"
+        ass.write_text(render.finish_ass, encoding="utf-8")
+        chain.append(f"[{last}]subtitles={ass.as_posix()}[finish]")
+        return "finish"
     if render.captions_enabled and render.words:
         style = BY_ID.get(render.caption_style_id, BY_ID["bold_white"])
         ass = workdir / "captions.ass"

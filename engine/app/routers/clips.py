@@ -216,7 +216,7 @@ def patch_project(project_id: str, body: PatchBody) -> dict:
                 from ..pipeline.transcribe import slice_words
 
                 transcript = s.exec(select(T).where(T.asset_id == p.asset_id)).first()
-                if transcript:
+                if transcript and "captions" not in data:
                     data["captions"] = slice_words(list(transcript.words), new_in, new_out)
         # A preview of the old settings would be a lie, so drop it and let the
         # next open cut a fresh one.
