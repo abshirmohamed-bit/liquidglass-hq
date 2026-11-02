@@ -55,7 +55,7 @@ export function patchFor(c: Row): Record<string, unknown> {
   const ass: Record<string, string> = {};
   for (const resolution of ["HD", "UHD", "preview"] as const) {
     const size = EXPORT_SIZES[resolution === "UHD" ? "UHD" : "HD"];
-    const [aw, ah] = (c.aspect ?? "9:16").split(":").map(Number);
+    const [aw = 9, ah = 16] = (c.aspect ?? "9:16").split(":").map(Number);
     const short = Math.min(size.w, size.h) / (resolution === "preview" ? 2 : 1);
     const w = aw >= ah ? Math.round(short * aw / ah) : short;
     const h = aw >= ah ? short : Math.round(short * ah / aw);
