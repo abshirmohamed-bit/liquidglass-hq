@@ -75,6 +75,7 @@ def _render(s: Session, row: Export) -> Asset:
         title=project.title or None,
         watermark=project.watermark or None,
         resolution=row.resolution,
+        finish_ass=(options.get("finish_ass") or {}).get(row.resolution),
     )
     run_render(render, settings().data_dir / "work" / row.id)
     storage.put_file(out, key, "video/mp4")
@@ -111,6 +112,7 @@ def preview(s: Session, project: Project) -> str:
         words=list(project.captions or []), caption_style_id=project.caption_style_id,
         captions_enabled=options.get("enabled", True), title=project.title or None,
         watermark=project.watermark or None, preview=True, loudnorm=False,
+        finish_ass=(options.get("finish_ass") or {}).get("preview"),
     )
     run_render(render, settings().data_dir / "work" / f"prev_{project.id}")
     storage.put_file(out, key, "video/mp4")
