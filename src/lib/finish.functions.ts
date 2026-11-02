@@ -35,6 +35,8 @@ export const editorData = createServerFn({ method: "GET" }).middleware([requireS
   .inputValidator(z.object({ id: z.string().uuid() }))
   .handler(async ({ context, data }) => {
     const db = context.supabase;
+    const { syncExports } = await import("./export-sync.server");
+    await syncExports(db, [data.id]);
     const row = must(await db.from("clips").select("*").eq("id", data.id).single());
     const c = (await backfillFinish(db, row as unknown as Record<string, unknown>).catch(
       () => row,
@@ -57,15 +59,18 @@ const finishPatch = z.object({
 
 /** Saves Finish settings on one clip, or the style/position/title/watermark on several at once. Captions text stays per clip. */
 export const saveFinish = createServerFn({ method: "POST" }).middleware([requireSupabaseAuth])
-  .inputValidator(z.object({ ids: z.array(z.string().uuid()).min(1).max(200), patch: finishPatch, saveAsBrand: z.boolean().optional() }))
+  .inputValidator(z.object({ ids: z.array(z.string().uuid()).min(1).max(200), patch: finishPatch, saveAsBrand: z.boolean().optional(), render: z.boolean().default(true), shareLook: z.boolean().optional() }))
   .handler(async ({ context, data }) => {
     const db = context.supabase;
-    const rows = must(await db.from("clips").select("id,status,edits").in("id", data.ids));
+    const rows = must(await db.from("clips").select("id,status,edits,resolution,engine_project_id,owner_id").in("id", data.ids));
+    if (rows.length !== new Set(data.ids).size) throw new Error("One of these clips is no longer available.");
+    if (rows.some((r) => r.status === "EXPORTING")) throw new Error("Wait for the current render to finish before saving more edits.");
     for (const [i, r] of rows.entries()) {
       const { captions, ...shared } = data.patch;
       const patch: Record<string, unknown> = { ...shared };
+      if (data.shareLook && r.id !== data.ids[0]) delete patch["title_text"];
       if (captions && (rows.length === 1 || i === rows.findIndex((x) => x.id === data.ids[0]))) patch["captions"] = captions;
-      if (r.status === "READY") patch["edits"] = { ...editsOf(r.edits), finish_dirty: true };
+      patch["edits"] = { ...editsOf(r.edits), finish_dirty: true };
       must(await db.from("clips").update(patch as never).eq("id", r.id).select("id").single());
     }
     if (data.saveAsBrand) {
@@ -74,7 +79,19 @@ export const saveFinish = createServerFn({ method: "POST" }).middleware([require
       if (have) must(await db.from("brand_kits").update(kit).eq("id", have.id).select("id").single());
       else must(await db.from("brand_kits").insert({ ...kit, user_id: context.userId, owner_id: context.userId }).select("id").single());
     }
-    return rows.length;
+    const started: string[] = [];
+    const failed: { id: string; error: string }[] = [];
+    const { exportClipsOnEngine, syncClipOnEngine } = await import("./export.server");
+    if (data.render) {
+      for (const resolution of ["HD", "UHD"] as const) {
+        const ids = rows.filter((r) => r.engine_project_id && ["READY", "APPROVED"].includes(r.status) && (r.resolution === "UHD" ? "UHD" : "HD") === resolution).map((r) => r.id);
+        if (ids.length) { const result = await exportClipsOnEngine(db, ids, resolution); started.push(...result.started); failed.push(...result.failed); }
+      }
+      for (const r of rows.filter((r) => r.engine_project_id && !["READY", "APPROVED"].includes(r.status))) {
+        try { await syncClipOnEngine(db, r.id); } catch (e) { failed.push({ id: r.id, error: e instanceof Error ? e.message : "Could not update the Engine." }); }
+      }
+    }
+    return { saved: rows.length, started, failed };
   });
 
 /** Transcribes one short audio chunk (a few seconds) through the AI gateway; the editor spreads word timings inside the chunk. */

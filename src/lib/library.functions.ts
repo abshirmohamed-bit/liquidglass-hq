@@ -19,6 +19,8 @@ export const engineAccount = createServerFn({ method: "GET" }).middleware([requi
 });
 
 export const listLibrary = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
+  const { syncExports } = await import("./export-sync.server");
+  await syncExports(context.supabase);
   const [s, a, c, p] = await Promise.all([
     context.supabase.from("source_assets").select("*").order("created_at", { ascending: false }),
     context.supabase.from("assets").select("*").order("created_at", { ascending: false }),

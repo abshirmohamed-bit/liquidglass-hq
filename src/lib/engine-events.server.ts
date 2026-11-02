@@ -194,7 +194,7 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
   if (ev.type === "export.completed" || ev.type === "export.failed") {
     const clip = (await db.from("clips").select("*").eq("engine_export_id", String(data["export_id"] ?? "")).maybeSingle()).data;
     if (!clip) return "ignored";
-    if (clip.last_event_id === ev.id) return "duplicate";
+    if (clip.last_event_id === ev.id || clip.status !== "EXPORTING") return "duplicate";
     const link = clip.job_id ? `/review?job=${clip.job_id}` : "/review";
     const people = [...new Set([clip.created_by, clip.assignee].filter(Boolean) as string[])];
     if (ev.type === "export.failed") {
@@ -204,7 +204,7 @@ export async function applyEngineEvent(db: Db, ev: EngineEvent): Promise<EventRe
       const a = (data["asset"] ?? {}) as Record<string, unknown>;
       const num = (k: string) => (typeof a[k] === "number" ? Math.round(a[k] as number) : null);
       const url = typeof a["url"] === "string" ? a["url"] : null;
-      const edits = { ...((clip.edits as object | null) ?? {}), exported: { start_ms: clip.start_ms, end_ms: clip.end_ms } };
+      const edits = { ...((clip.edits as object | null) ?? {}), finish_dirty: false, exported: { start_ms: clip.start_ms, end_ms: clip.end_ms } };
       await db.from("clips").update({
         status: "READY", video_url: url, width: num("width"), height: num("height"), size_bytes: num("size"),
         duration_ms: typeof a["length"] === "number" ? Math.round((a["length"] as number) * 1000) : clip.duration_ms,

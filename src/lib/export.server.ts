@@ -95,6 +95,16 @@ async function fail(db: Db, id: string, message: string) {
   await db.from("clips").update({ status: "FAILED", error: message }).eq("id", id);
 }
 
+export async function syncClipOnEngine(db: Db, id: string) {
+  const row = await db.from("clips").select(SELECT).eq("id", id).single();
+  if (row.error) throw new Error(row.error.message);
+  const c = row.data as Row;
+  if (!c.engine_project_id) throw new Error("This clip has no Engine project.");
+  const { engineClient } = await import("./engine.server");
+  const r = await engineClient("PATCH", `/v1/projects/${encodeURIComponent(c.engine_project_id)}`, patchFor(c));
+  if (!r.ok) throw new Error(r.error.message);
+}
+
 /**
  * Send clips to the Engine to render. Anything changed here — the trim, the
  * aspect, the caption style, the title, the watermark — is pushed first, so

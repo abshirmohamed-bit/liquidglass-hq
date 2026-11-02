@@ -6,18 +6,8 @@ import { EXPORT_SIZES, EXPORT_STALE_MS, STORAGE_PREFIX, makeShareToken, mergeIss
 
 export const reviewData = createServerFn({ method: "GET" }).middleware([requireSupabaseAuth]).handler(async ({ context }) => {
   const db = context.supabase;
-  const active = must(await db.from("clips").select("id,engine_export_id").eq("status", "EXPORTING"));
-  const { engineClient } = await import("./engine.server");
-  const { applyEngineEvent } = await import("./engine-events.server");
-  for (const clip of active.slice(0, 3)) {
-    if (!clip.engine_export_id || clip.engine_export_id.startsWith("exp_") && clip.engine_export_id.includes("-")) continue;
-    const result = await engineClient<{ status: string; asset?: Record<string, unknown>; error?: string }>("GET", `/v1/exports/${encodeURIComponent(clip.engine_export_id)}`);
-    if (!result.ok) continue;
-    if (result.data.status === "completed" || result.data.status === "failed") await applyEngineEvent(db, {
-      id: `poll_${clip.engine_export_id}_${result.data.status}`, type: `export.${result.data.status}`,
-      data: { export_id: clip.engine_export_id, asset: result.data.asset, error: result.data.error },
-    });
-  }
+  const { syncExports } = await import("./export-sync.server");
+  await syncExports(db);
   // Fallback: an export left EXPORTING past the stale window (browser closed mid-render) is marked failed.
   const stale = must(await db.from("clips").select("id,edits").eq("status", "EXPORTING"));
   for (const c of stale) {
@@ -231,14 +221,17 @@ export const clipPreview = createServerFn({ method: "POST" }).middleware([requir
   .inputValidator(z.object({ clipId: z.string().uuid() }))
   .handler(async ({ context, data }): Promise<{ url: string }> => {
     const clip = (await context.supabase.from("clips")
-      .select("id,engine_project_id,video_url").eq("id", data.clipId).maybeSingle()).data;
+      .select("id,engine_project_id,video_url,status,edits").eq("id", data.clipId).maybeSingle()).data;
     if (!clip) throw new Error("That clip no longer exists.");
     // Already exported: the finished file beats a preview render.
-    if (clip.video_url) return { url: clip.video_url };
+    if (clip.status === "EXPORTING") throw new Error("Your updated video is rendering. It will appear when finished.");
+    if (clip.video_url && !editsOf(clip.edits).finish_dirty) return { url: await sign(context.supabase, clip.video_url) ?? clip.video_url };
     if (!clip.engine_project_id) {
       throw new Error("This clip has not reached the Engine yet, so it cannot be previewed.");
     }
     const { engineClient } = await import("./engine.server");
+    const { syncClipOnEngine } = await import("./export.server");
+    await syncClipOnEngine(context.supabase, clip.id);
     const r = await engineClient<{ preview_url: string }>(
       "POST", `/v1/projects/${encodeURIComponent(clip.engine_project_id)}/preview`);
     if (!r.ok) throw new Error(r.error.message);
