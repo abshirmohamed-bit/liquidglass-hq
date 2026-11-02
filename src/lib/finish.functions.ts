@@ -91,7 +91,7 @@ export const saveFinish = createServerFn({ method: "POST" }).middleware([require
         try { await syncClipOnEngine(db, r.id); } catch (e) { failed.push({ id: r.id, error: e instanceof Error ? e.message : "Could not update the Engine." }); }
       }
     }
-    await db.from("audit_logs").insert({ user_id: context.userId, action: data.ids.length > 1 ? "clip.finish_applied" : "clip.finish_saved", entity: "clips", entity_id: data.ids[0], details: { clip_ids: data.ids, render_started: started, render_failed: failed } as never });
+    await db.from("audit_logs").insert({ user_id: context.userId, action: data.ids.length > 1 ? "clip.finish_applied" : "clip.finish_saved", entity: "clips", entity_id: data.ids[0] ?? null, details: { clip_ids: data.ids, render_started: started, render_failed: failed } as never });
     return { saved: rows.length, started, failed };
   });
 
