@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
 import { toAss, styleFor, wordsFromCues, type Cue, type CaptionStyle, type Overlays, type TitleStyle } from "./finish-rules";
-import { EXPORT_SIZES } from "./review-rules";
+import { exportSize } from "./review-rules";
 
 /**
  * Rendering happens on the Engine, not in the browser.
@@ -54,11 +54,10 @@ export function patchFor(c: Row): Record<string, unknown> {
   const overlays = overlayPatch(c);
   const ass: Record<string, string> = {};
   for (const resolution of ["HD", "UHD", "preview"] as const) {
-    const size = EXPORT_SIZES[resolution === "UHD" ? "UHD" : "HD"];
-    const [aw = 9, ah = 16] = (c.aspect ?? "9:16").split(":").map(Number);
-    const short = Math.min(size.w, size.h) / (resolution === "preview" ? 2 : 1);
-    const w = aw >= ah ? Math.round(short * aw / ah) : short;
-    const h = aw >= ah ? short : Math.round(short * ah / aw);
+    const size = exportSize(resolution === "UHD" ? "UHD" : "HD", c.aspect);
+    const scale = resolution === "preview" ? 2 : 1;
+    const w = Math.round(size.w / scale);
+    const h = Math.round(size.h / scale);
     ass[resolution === "HD" ? "1080p" : resolution === "UHD" ? "2160p" : "preview"] = toAss({
       w, h, durationMs, segments: [{ start_ms: 0, end_ms: durationMs }], cues,
       style: styleFor(c.caption_style_id, c.caption_style as Partial<CaptionStyle> | null),
