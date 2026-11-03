@@ -9,10 +9,13 @@ export async function syncExports(db: SupabaseClient<Database>, ids?: string[]) 
   if (active.error) throw new Error(active.error.message);
   const { engineClient } = await import("./engine.server");
   const { applyEngineEvent } = await import("./engine-events.server");
-  await Promise.all((active.data ?? []).slice(0, 20).map(async (clip) => {
+  const clips = (active.data ?? []).slice(0, 20);
+  for (let offset = 0; offset < clips.length; offset += 6) {
+  await Promise.all(clips.slice(offset, offset + 6).map(async (clip) => {
     if (!clip.engine_export_id || /^exp_[a-f0-9]+-/.test(clip.engine_export_id)) return;
-    const result = await engineClient<{ status: string; asset?: Record<string, unknown>; error?: string }>("GET", `/v1/exports/${encodeURIComponent(clip.engine_export_id)}`);
+    const result = await engineClient<{ status: string; asset?: Record<string, unknown>; error?: string }>("GET", `/v1/exports/${encodeURIComponent(clip.engine_export_id)}`, undefined, { timeoutMs: 3000, wake: false });
     if (!result.ok || !["completed", "failed"].includes(result.data.status)) return;
     await applyEngineEvent(db, { id: `poll_${clip.engine_export_id}_${result.data.status}`, type: `export.${result.data.status}`, data: { export_id: clip.engine_export_id, asset: result.data.asset, error: result.data.error } });
   }));
+  }
 }

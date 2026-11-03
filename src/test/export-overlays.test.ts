@@ -20,6 +20,12 @@ describe("export overlays", () => {
 
 const clip = { ...base, id: "clip", start_ms: 120000, end_ms: 125000, aspect: "9:16", layout: "full-video", caption_style_id: "bold_white", caption_style: {}, captions: [{ start_ms: 0, end_ms: 2000, text: "Edited words" }], engine_project_id: "project", edits: {} };
 describe("complete Engine finish layer", () => {
+  it("matches landscape export dimensions", () => {
+    const p = patchFor({ ...clip, aspect: "16:9" });
+    const ass = (p["caption_options"] as { finish_ass: Record<string, string> }).finish_ass["1080p"];
+    expect(ass).toContain("PlayResX: 1920");
+    expect(ass).toContain("PlayResY: 1080");
+  });
   it("sends edited words in clip time", () => {
     expect(patchFor(clip)["captions"]).toEqual([{ start_ms: 0, end_ms: 1000, text: "Edited" }, { start_ms: 1000, end_ms: 2000, text: "words" }]);
   });

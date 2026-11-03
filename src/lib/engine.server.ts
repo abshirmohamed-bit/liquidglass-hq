@@ -18,7 +18,7 @@ export async function engineBaseUrl(): Promise<string | null> {
   try { const v = JSON.parse(data.value); return typeof v === "string" && v ? v.replace(/\/+$/, "") : null; } catch { return data.value.replace(/\/+$/, ""); }
 }
 
-export async function engineClient<T = unknown>(method: Method, path: string, body?: unknown, opts: { baseUrl?: string | null; fetchImpl?: typeof fetch } = {}): Promise<EngineResult<T>> {
+export async function engineClient<T = unknown>(method: Method, path: string, body?: unknown, opts: { baseUrl?: string | null; fetchImpl?: typeof fetch; timeoutMs?: number; wake?: boolean } = {}): Promise<EngineResult<T>> {
   const key = process.env["ENGINE_API_KEY"];
   const base = opts.baseUrl !== undefined ? opts.baseUrl : await engineBaseUrl();
   if (!base || !key) return { ok: false, error: { code: "ENGINE_NOT_CONFIGURED", message: "Connect your crayZmundo Engine in Settings (ENGINE_URL and ENGINE_API_KEY)." } };
@@ -27,9 +27,10 @@ export async function engineClient<T = unknown>(method: Method, path: string, bo
     method,
     headers: { Authorization: `Bearer ${key}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
     body: body !== undefined ? JSON.stringify(body) : null,
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000),
   });
   try {
-    let res = await sendWaking(send);
+    let res = opts.wake === false ? await send() : await sendWaking(send);
     if (res.status === 429) {
       const wait = Math.min(Number(res.headers.get("Retry-After")) || 1, 30);
       await new Promise((r) => setTimeout(r, wait * 1000));
