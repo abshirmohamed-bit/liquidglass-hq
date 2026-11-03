@@ -125,7 +125,7 @@ export async function exportClipsOnEngine(db: Db, ids: string[], resolution: Res
       continue;
     }
     const pid = encodeURIComponent(c.engine_project_id);
-    const claimed = await db.from("clips").update({ status: "EXPORTING", error: null }).eq("id", c.id).in("status", ["READY", "APPROVED"]).select("id").maybeSingle();
+    const claimed = await db.from("clips").update({ status: "EXPORTING", engine_export_id: null, error: null }).eq("id", c.id).in("status", ["READY", "APPROVED"]).select("id").maybeSingle();
     if (claimed.error) throw new Error(claimed.error.message);
     if (!claimed.data) continue;
     const patch = patchFor(c);
