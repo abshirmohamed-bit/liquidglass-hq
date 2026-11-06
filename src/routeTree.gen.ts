@@ -42,6 +42,7 @@ import { Route as ApiPublicHooksEngineRouteImport } from './routes/api/public/ho
 import { Route as ApiPublicHooksLibraryPurgeRouteImport } from './routes/api/public/hooks/library-purge'
 import { Route as ApiPublicHooksPublishDueRouteImport } from './routes/api/public/hooks/publish-due'
 import { Route as ApiPublicTiktokCallbackRouteImport } from './routes/api/public/tiktok/callback'
+import { Route as ApiPublicYoutubeCallbackRouteImport } from './routes/api/public/youtube/callback'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -215,6 +216,12 @@ const ApiPublicTiktokCallbackRoute = ApiPublicTiktokCallbackRouteImport.update({
   path: '/api/public/tiktok/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicYoutubeCallbackRoute =
+  ApiPublicYoutubeCallbackRouteImport.update({
+    id: '/api/public/youtube/callback',
+    path: '/api/public/youtube/callback',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -249,6 +256,7 @@ export interface FileRoutesByFullPath {
   '/api/public/hooks/library-purge': typeof ApiPublicHooksLibraryPurgeRoute
   '/api/public/hooks/publish-due': typeof ApiPublicHooksPublishDueRoute
   '/api/public/tiktok/callback': typeof ApiPublicTiktokCallbackRoute
+  '/api/public/youtube/callback': typeof ApiPublicYoutubeCallbackRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -283,6 +291,7 @@ export interface FileRoutesByTo {
   '/api/public/hooks/library-purge': typeof ApiPublicHooksLibraryPurgeRoute
   '/api/public/hooks/publish-due': typeof ApiPublicHooksPublishDueRoute
   '/api/public/tiktok/callback': typeof ApiPublicTiktokCallbackRoute
+  '/api/public/youtube/callback': typeof ApiPublicYoutubeCallbackRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -319,6 +328,7 @@ export interface FileRoutesById {
   '/api/public/hooks/library-purge': typeof ApiPublicHooksLibraryPurgeRoute
   '/api/public/hooks/publish-due': typeof ApiPublicHooksPublishDueRoute
   '/api/public/tiktok/callback': typeof ApiPublicTiktokCallbackRoute
+  '/api/public/youtube/callback': typeof ApiPublicYoutubeCallbackRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -355,6 +365,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/library-purge'
     | '/api/public/hooks/publish-due'
     | '/api/public/tiktok/callback'
+    | '/api/public/youtube/callback'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -389,6 +400,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/library-purge'
     | '/api/public/hooks/publish-due'
     | '/api/public/tiktok/callback'
+    | '/api/public/youtube/callback'
   id:
     | '__root__'
     | '/'
@@ -424,6 +436,7 @@ export interface FileRouteTypes {
     | '/api/public/hooks/library-purge'
     | '/api/public/hooks/publish-due'
     | '/api/public/tiktok/callback'
+    | '/api/public/youtube/callback'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -440,6 +453,7 @@ export interface RootRouteChildren {
   ApiPublicHooksLibraryPurgeRoute: typeof ApiPublicHooksLibraryPurgeRoute
   ApiPublicHooksPublishDueRoute: typeof ApiPublicHooksPublishDueRoute
   ApiPublicTiktokCallbackRoute: typeof ApiPublicTiktokCallbackRoute
+  ApiPublicYoutubeCallbackRoute: typeof ApiPublicYoutubeCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -675,6 +689,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicTiktokCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/youtube/callback': {
+      id: '/api/public/youtube/callback'
+      path: '/api/public/youtube/callback'
+      fullPath: '/api/public/youtube/callback'
+      preLoaderRoute: typeof ApiPublicYoutubeCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -742,6 +763,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicHooksLibraryPurgeRoute: ApiPublicHooksLibraryPurgeRoute,
   ApiPublicHooksPublishDueRoute: ApiPublicHooksPublishDueRoute,
   ApiPublicTiktokCallbackRoute: ApiPublicTiktokCallbackRoute,
+  ApiPublicYoutubeCallbackRoute: ApiPublicYoutubeCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
